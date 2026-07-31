@@ -1,0 +1,15 @@
+<manifest projecttype="ACCOUNTCUSTOMIZATION">
+  <projectname>WO Status Tracking</projectname>
+  <frameworkversion>1.0</frameworkversion>
+  <dependencies>
+    <features>
+      <feature required="true">SERVERSIDESCRIPTING</feature>
+    </features>
+    <files>
+      <file>/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking.js</file>
+      <file>/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Queries.js</file>
+      <file>/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Labels.js</file>
+      <file>/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Drilldown.js</file>
+    </files>
+  </dependencies>
+</manifest>

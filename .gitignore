@@ -1,0 +1,15 @@
+# ไฟล์ lock ของ Excel ที่เกิดตอนเปิดไฟล์ค้างไว้
+~$*
+
+# credential / auth ของ SDF — ห้ามเข้า repo
+.env
+.env.*
+*.p12
+*.pem
+
+# โปรไฟล์เบราว์เซอร์ตอน QA (ใหญ่และมี session cookie)
+.qa-profiles/
+
+# ของที่เครื่องมือสร้าง
+node_modules/
+*.log

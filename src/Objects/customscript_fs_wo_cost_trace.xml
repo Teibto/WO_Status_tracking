@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<suitelet scriptid="customscript_fs_wo_cost_trace">
+    <description>พิสูจน์ที่มาของต้นทุนใบสั่งผลิต 1 ใบ (UAT) — Foodstar MFG</description>
+    <isinactive>F</isinactive>
+    <name>WO Cost Trace</name>
+    <notifyadmins>F</notifyadmins>
+    <notifyemails/>
+    <notifyowner>T</notifyowner>
+    <notifyuser>F</notifyuser>
+    <scriptfile>[/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js]</scriptfile>
+    <scriptdeployments>
+        <scriptdeployment scriptid="customdeploy_fs_wo_cost_trace">
+            <allemployees>T</allemployees>
+            <allpartners>F</allpartners>
+            <allroles>T</allroles>
+            <isdeployed>T</isdeployed>
+            <ispublic>F</ispublic>
+            <loglevel>DEBUG</loglevel>
+            <status>RELEASED</status>
+            <title>WO Cost Trace</title>
+        </scriptdeployment>
+    </scriptdeployments>
+</suitelet>

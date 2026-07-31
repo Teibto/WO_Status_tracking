@@ -1,0 +1,9 @@
+<manifest projecttype="ACCOUNTCUSTOMIZATION">
+  <projectname>WO Status Tracking</projectname>
+  <frameworkversion>1.0</frameworkversion>
+  <dependencies>
+    <features>
+      <feature required="true">SERVERSIDESCRIPTING</feature>
+    </features>
+  </dependencies>
+</manifest>

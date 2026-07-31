@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>WO Status Tracking — Mockup</title>
+<style>
+  :root{
+    --bg:#f5f7fa; --panel:#ffffff; --panel2:#eef2f6; --line:#d7dee6;
+    --txt:#1f2933; --muted:#64748b; --accent:#2563eb;
+    --ok:#15803d; --ok-bg:#dcfce7;
+    --wait:#b45309; --wait-bg:#fef3c7;
+    --err:#dc2626; --err-bg:#fee2e2;
+    --na:#94a3b8; --na-bg:#eef2f6;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--txt);font-size:13px}
+  header{padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+  header h1{margin:0;font-size:17px;font-weight:600}
+  header .tag{color:var(--muted);font-weight:400}
+  header .sub{color:var(--muted);font-size:12px;margin-top:3px}
+
+  .langtog{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex-shrink:0}
+  .langtog button{background:var(--panel);border:0;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)}
+  .langtog button.on{background:var(--accent);color:#fff}
+
+  .filterbar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:14px 22px;background:var(--panel2);border-bottom:1px solid var(--line)}
+  .filterbar .fld{display:flex;flex-direction:column;gap:4px}
+  .filterbar label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .filterbar select,.filterbar input{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;min-width:150px}
+  .filterbar button{background:var(--accent);color:#fff;border:0;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px}
+
+  .kpis{display:flex;gap:12px;padding:14px 22px}
+  .kpi{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+  .kpi .n{font-size:24px;font-weight:700}
+  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
+  .kpi.err .n{color:var(--err)} .kpi.wait .n{color:var(--wait)} .kpi.ok .n{color:var(--ok)}
+
+  .wrap{padding:0 22px 40px;overflow-x:auto}
+  table{width:100%;border-collapse:collapse;margin-top:6px;min-width:1240px}
+  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;background:var(--bg)}
+  th.cp,td.cp{text-align:center;width:74px}
+  tr.wo{cursor:pointer}
+  tr.wo:hover{background:var(--panel)}
+  tr.wo>td:first-child{font-weight:600}
+  .twist{display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
+  tr.open .twist{transform:rotate(90deg)}
+
+  tr.batch{background:var(--panel)}
+  tr.batch td:first-child{padding-left:34px;color:var(--txt)}
+  tr.batch:hover{background:var(--panel2)}
+  tr.task{background:var(--panel2)}
+  tr.task td:first-child{padding-left:58px;color:var(--muted)}
+
+  .pill{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;font-size:15px;line-height:1}
+  .pill.ok{background:var(--ok-bg);color:var(--ok)}
+  .pill.wait{background:var(--wait-bg);color:var(--wait)}
+  .pill.err{background:var(--err-bg);color:var(--err)}
+  .pill.na{background:var(--na-bg);color:var(--na)}
+
+  .note{font-size:11px;color:var(--muted);max-width:340px;white-space:normal}
+  .note.err{color:var(--err)} .note.wait{color:var(--wait)}
+  .hidden{display:none}
+
+  .legend{display:flex;gap:20px;flex-wrap:wrap;padding:14px 22px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:8px}
+  .legend span{display:inline-flex;align-items:center;gap:6px}
+  .badge{font-size:14px}
+
+  #tip{position:fixed;z-index:50;background:#1f2933;border:1px solid #1f2933;color:#fff;padding:8px 10px;border-radius:6px;font-size:11.5px;max-width:320px;pointer-events:none;display:none;white-space:normal;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.18)}
+</style>
+</head>
+<body>
+<header>
+  <div>
+    <h1><span id="h-title"></span> <span class="tag" id="h-tag"></span></h1>
+    <div class="sub" id="h-sub"></div>
+  </div>
+  <div class="langtog">
+    <button id="lang-th" class="on" onclick="setLang('th')">ไทย</button>
+    <button id="lang-en" onclick="setLang('en')">ENG</button>
+  </div>
+</header>
+
+<div class="filterbar">
+  <div class="fld"><label id="f-sub-l"></label>
+    <select><option>Foodstar Co., Ltd.</option><option>TEIBTO Manufacturing</option><option id="f-sub-all"></option></select></div>
+  <div class="fld"><label id="f-loc-l"></label>
+    <select id="f-loc"></select></div>
+  <div class="fld"><label id="f-from-l"></label><input type="date" value="2026-06-01" /></div>
+  <div class="fld"><label id="f-to-l"></label><input type="date" value="2026-06-13" /></div>
+  <button id="f-go"></button>
+</div>
+
+<div class="kpis">
+  <div class="kpi"><div class="n">5</div><div class="l" id="k-total"></div></div>
+  <div class="kpi ok"><div class="n">1</div><div class="l" id="k-ok"></div></div>
+  <div class="kpi wait"><div class="n">1</div><div class="l" id="k-wait"></div></div>
+  <div class="kpi err"><div class="n">3</div><div class="l" id="k-err"></div></div>
+</div>
+
+<div class="wrap">
+<table>
+  <thead><tr id="head"></tr></thead>
+  <tbody id="rows"></tbody>
+</table>
+</div>
+
+<div class="legend" id="legend"></div>
+<div id="tip"></div>
+
+<script>
+const S={ok:'✓',wait:'◷',err:'✕',na:'–'};
+
+const I18N={
+ th:{
+  title:'ติดตามสถานะใบสั่งผลิต', tag:'— ตัวอย่าง (Mockup)',
+  sub:'ติดตามสถานะการผลิตทีละขั้น และตรวจความถูกต้องเบื้องต้น · ดูได้ถึงระดับ Batch และ Operation',
+  fSub:'บริษัท', allSub:'— ทุกบริษัท —', fLoc:'สถานที่ผลิต', allLoc:'— ทุกสถานที่ —',
+  fFrom:'วันที่ผลิต — ตั้งแต่', fTo:'ถึง', go:'ค้นหา',
+  kTotal:'ใบสั่งผลิต', kOk:'ครบทุกขั้น', kWait:'กำลังดำเนินการ', kErr:'พบความผิดปกติ',
+  cWO:'ใบสั่งผลิต', cLoc:'สถานที่ผลิต', cLine:'ไลน์ผลิต', cNote:'หมายเหตุ / ผิดปกติตรงไหน',
+  cols:[
+   {h:'อนุมัติ',tip:'ใบสั่งผลิตได้รับการอนุมัติแล้วหรือยัง (ต้องอนุมัติก่อนจึงปล่อยผลิตได้)'},
+   {h:'ปล่อยผลิต',tip:'ปล่อย Batch เข้าสู่การผลิตแล้วหรือยัง'},
+   {h:'ป้อนวัตถุดิบ',tip:'วัตถุดิบตามสูตร (BOM) ถูกป้อนครบทุกรายการหรือยัง (นับรายการ ไม่นับจำนวน)'},
+   {h:'เครื่องจักร',tip:'บันทึกเครื่องจักรครบ และเวลาเครื่องตรงกับรายละเอียดหรือยัง'},
+   {h:'แรงงาน',tip:'บันทึกแรงงาน (กลุ่ม/เวลา) ครบและถูกต้องหรือยัง'},
+   {h:'เวลา',tip:'เวลารวมที่บันทึกตรงกับช่วงเริ่ม–จบหรือยัง'},
+   {h:'ปิดงานผลิต',tip:'ปิดงานผลิตครบ และจำนวนที่ปิดตรงกับที่ผลิตจริงหรือยัง'},
+   {h:'สร้างต้นทุน',tip:'ระบบสร้างต้นทุนของงานผลิตแล้วหรือยัง'}
+  ],
+  legend:['ครบ / ผ่าน','รอ / ยังไม่ครบ (ปกติ — เฝ้าติดตาม)','ผิดปกติ (ข้อมูลไม่ตรง — ต้องตรวจสอบ)','ยังไม่ถึงขั้นนี้'],
+  rollup:'สถานะ WO = สถานะแย่สุดของ Batch ข้างใน · ตัวเลขมุม = จำนวน Batch ที่มีปัญหา · คลิกแถวเพื่อขยาย'
+ },
+ en:{
+  title:'Work Order Status Tracking', tag:'— Mockup',
+  sub:'Track production status step by step with basic data validation · drill down to Batch and Operation',
+  fSub:'Subsidiary', allSub:'— All subsidiaries —', fLoc:'Location', allLoc:'— All locations —',
+  fFrom:'WO Date — From', fTo:'To', go:'Search',
+  kTotal:'Work Orders', kOk:'All steps complete', kWait:'In progress', kErr:'Issues found',
+  cWO:'Work Order', cLoc:'Location', cLine:'Line', cNote:'Note / what is wrong',
+  cols:[
+   {h:'Approve',tip:'Has the work order been approved? (must approve before release)'},
+   {h:'Release',tip:'Has the batch been released to production?'},
+   {h:'Feed Mat.',tip:'Are all BOM materials fed? (checks item list, not quantity)'},
+   {h:'Machine',tip:'Machine recorded and machine time matches the detail?'},
+   {h:'Labor',tip:'Labor (group/time) recorded completely and correctly?'},
+   {h:'Time',tip:'Recorded total time matches the start–end span?'},
+   {h:'WO Completion',tip:'Is the work order completed and the completed qty matching actual production?'},
+   {h:'Cost Gen.',tip:'Has the system generated the production cost?'}
+  ],
+  legend:['Complete / passed','Pending / incomplete (normal — monitor)','Issue (data mismatch — investigate)','Not reached yet'],
+  rollup:'WO status = worst status among its batches · corner number = batches with an issue · click a row to expand'
+ }
+};
+
+// cp order: [approve, release, feedMat, machine, labor, time, woc, value]
+const data=[
+ {wo:'WO-26-00148',item:'Soy Sauce Premium 500ml',qty:'12,000 ea',date:'2026-06-10',
+  loc:{th:'โรงงานบางปะกง',en:'Bang Pakong Plant'},line:'Line 1',
+  cp:['ok','ok','ok','ok','ok','err','err','na'],
+  note:{th:'Batch B02 จำนวนปิดงานไม่ตรงกับที่ผลิต — กระทบต้นทุน',en:'Batch B02 completed qty does not match production — affects cost'},noteCls:'err',
+  batches:[
+   {b:'Batch B01 (LOT2606-A)',cp:['ok','ok','ok','ok','ok','ok','ok','na'],
+    note:{th:'ปิดงานครบ · รอระบบสร้างต้นทุน',en:'Completed · waiting for cost generation'},noteCls:'wait',
+    tasks:[{t:{th:'OP-10 ผสม',en:'OP-10 Mixing'},cp:['ok','ok','ok','ok','ok','ok','ok','na'],note:{th:'',en:''}},
+           {t:{th:'OP-20 บรรจุ',en:'OP-20 Filling'},cp:['ok','ok','ok','ok','ok','ok','ok','na'],note:{th:'',en:''}}]},
+   {b:'Batch B02 (LOT2606-B)',cp:['ok','ok','ok','ok','ok','err','err','na'],
+    note:{th:'ข้อมูลผิดปกติที่ OP-20',en:'Data issue at OP-20'},noteCls:'err',
+    tasks:[{t:{th:'OP-10 ผสม',en:'OP-10 Mixing'},cp:['ok','ok','ok','ok','ok','ok','ok','na'],note:{th:'',en:''}},
+           {t:{th:'OP-20 บรรจุ',en:'OP-20 Filling'},cp:['ok','ok','ok','ok','ok','err','err','na'],
+            note:{th:'เวลารวมที่บันทึก 95 นาที ไม่ตรงกับช่วงเริ่ม–จบ 120 นาที · และจำนวนปิดงาน 985 ไม่ตรงกับจำนวนที่ผลิต 1,000',
+                  en:'Recorded total time 95 min ≠ start–end span 120 min · and completed qty 985 ≠ produced qty 1,000'},noteCls:'err'}]}
+  ]},
+
+ {wo:'WO-26-00151',item:'Chili Paste 1kg',qty:'3,500 ea',date:'2026-06-11',
+  loc:{th:'โรงงานบางปะกง',en:'Bang Pakong Plant'},line:'Line 2',
+  cp:['ok','ok','wait','na','na','na','na','na'],
+  note:{th:'ยังป้อนวัตถุดิบไม่ครบ — ขาด "กระเทียมป่น"',en:'Materials incomplete — missing "Garlic Powder"'},noteCls:'wait',
+  batches:[
+   {b:'Batch B01 (LOT2606-C)',cp:['ok','ok','wait','na','na','na','na','na'],
+    note:{th:'ป้อนวัตถุดิบแล้ว 4 จาก 5 รายการ',en:'Fed 4 of 5 materials'},noteCls:'wait',
+    tasks:[{t:{th:'OP-10 ต้ม',en:'OP-10 Cooking'},cp:['ok','ok','wait','na','na','na','na','na'],
+            note:{th:'ขาดวัตถุดิบ: กระเทียมป่น',en:'Missing material: Garlic Powder'},noteCls:'wait'}]}
+  ]},
+
+ {wo:'WO-26-00139',item:'Fish Sauce 700ml',qty:'8,000 ea',date:'2026-06-09',
+  loc:{th:'โรงงานสมุทรสาคร',en:'Samut Sakhon Plant'},line:'Line 3',
+  cp:['ok','ok','ok','err','ok','ok','ok','ok'],
+  note:{th:'เวลาเครื่องจักรบันทึกไม่ตรงกัน',en:'Machine time records do not match'},noteCls:'err',
+  batches:[
+   {b:'Batch B01 (LOT2606-D)',cp:['ok','ok','ok','err','ok','ok','ok','ok'],
+    note:{th:'เวลาเครื่องจักรไม่ตรงกับรายละเอียด',en:'Machine time does not match detail'},noteCls:'err',
+    tasks:[{t:{th:'OP-30 บรรจุขวด',en:'OP-30 Bottling'},cp:['ok','ok','ok','err','ok','ok','ok','ok'],
+            note:{th:'เวลาเครื่องจักร 60 นาที ไม่ตรงกับเวลารวมในรายละเอียด 75 นาที · ระบุสาเหตุเครื่องหยุดแต่ไม่ได้ลงเวลาเริ่ม–จบที่หยุด',
+                  en:'Machine time 60 min ≠ detail total 75 min · downtime reason set but start–end of downtime not recorded'},noteCls:'err'}]}
+  ]},
+
+ {wo:'WO-26-00155',item:'Seasoning Powder 200g',qty:'20,000 ea',date:'2026-06-12',
+  loc:{th:'โรงงานสมุทรสาคร',en:'Samut Sakhon Plant'},line:'Line 1',
+  cp:['ok','ok','ok','ok','ok','ok','ok','ok'],
+  note:{th:'ครบทุกขั้น — ปกติ',en:'All steps complete — normal'},noteCls:'',
+  batches:[
+   {b:'Batch B01 (LOT2606-E)',cp:['ok','ok','ok','ok','ok','ok','ok','ok'],note:{th:'',en:''},
+    tasks:[{t:{th:'OP-10 ผสมแห้ง',en:'OP-10 Dry blending'},cp:['ok','ok','ok','ok','ok','ok','ok','ok'],note:{th:'',en:''}},
+           {t:{th:'OP-20 บรรจุ',en:'OP-20 Packing'},cp:['ok','ok','ok','ok','ok','ok','ok','ok'],note:{th:'',en:''}}]}
+  ]},
+
+ {wo:'WO-26-00160',item:'Tomato Ketchup 920g',qty:'6,000 ea',date:'2026-06-13',
+  loc:{th:'โรงงานบางปะกง',en:'Bang Pakong Plant'},line:'Line 4',
+  cp:['ok','ok','ok','ok','ok','ok','ok','err'],
+  note:{th:'ปิดงานผลิตแล้ว แต่ระบบยังไม่สร้างต้นทุน',en:'Completed but system has not generated cost'},noteCls:'err',
+  batches:[
+   {b:'Batch B01 (LOT2606-F)',cp:['ok','ok','ok','ok','ok','ok','ok','err'],
+    note:{th:'ยังไม่มีรายการต้นทุนของงานนี้',en:'No cost record for this order yet'},noteCls:'err',
+    tasks:[{t:{th:'OP-10 ต้ม',en:'OP-10 Cooking'},cp:['ok','ok','ok','ok','ok','ok','ok','err'],
+            note:{th:'งานปิดแล้วแต่ยังไม่มีต้นทุนผูกอยู่',en:'Completed but no cost linked yet'},noteCls:'err'}]}
+  ]}
+];
+
+let lang='th';
+const $=id=>document.getElementById(id);
+
+function cpCells(arr,tips){
+  return arr.map((s,i)=>`<td class="cp" data-tip="${tips?tips[i].tip:''}"><span class="pill ${s}">${S[s]}</span></td>`).join('');
+}
+// WO rollup = worst status of batches + count of batches in that worst state (shown when WO has >1 batch and status is a problem)
+function woRollup(w){
+  const rank={na:0,ok:1,wait:2,err:3}, inv=['na','ok','wait','err'];
+  return w.cp.map((_,i)=>{
+    let worst=0; w.batches.forEach(b=>{worst=Math.max(worst,rank[b.cp[i]]);});
+    let cnt=0; w.batches.forEach(b=>{if(rank[b.cp[i]]===worst)cnt++;});
+    const st=inv[worst];
+    return {st, badge:(w.batches.length>1 && (st==='err'||st==='wait'))?cnt:null};
+  });
+}
+function cpCellsRollup(roll,tips){
+  return roll.map((r,i)=>`<td class="cp" data-tip="${tips[i].tip}"><span class="pill ${r.st}">${S[r.st]}${r.badge?`<sup style="font-size:9px;font-weight:700;margin-left:1px">${r.badge}</sup>`:''}</span></td>`).join('');
+}
+function noteCell(n,cls){return `<td><span class="note ${cls||''}">${n||''}</span></td>`;}
+
+function render(){
+  const t=I18N[lang];
+  document.documentElement.lang=lang;
+  $('h-title').textContent=t.title; $('h-tag').textContent=t.tag; $('h-sub').textContent=t.sub;
+  $('f-sub-l').textContent=t.fSub; $('f-sub-all').textContent=t.allSub;
+  $('f-loc-l').textContent=t.fLoc; $('f-from-l').textContent=t.fFrom; $('f-to-l').textContent=t.fTo; $('f-go').textContent=t.go;
+  $('k-total').textContent=t.kTotal; $('k-ok').textContent=t.kOk; $('k-wait').textContent=t.kWait; $('k-err').textContent=t.kErr;
+  $('lang-th').classList.toggle('on',lang==='th'); $('lang-en').classList.toggle('on',lang==='en');
+
+  // location filter options
+  const locs=[...new Set(data.map(w=>w.loc[lang]))];
+  $('f-loc').innerHTML=`<option>${t.allLoc}</option>`+locs.map(l=>`<option>${l}</option>`).join('');
+
+  // header
+  $('head').innerHTML=
+    `<th style="min-width:230px">${t.cWO}</th><th style="min-width:150px">${t.cLoc}</th><th>${t.cLine}</th>`+
+    t.cols.map(c=>`<th class="cp" data-tip="${c.tip}">${c.h}</th>`).join('')+
+    `<th>${t.cNote}</th>`;
+
+  // rows
+  let html='';
+  data.forEach((w,i)=>{
+    html+=`<tr class="wo" data-g="${i}"><td><span class="twist">▶</span> ${w.wo} &nbsp;·&nbsp; <span style="color:var(--muted);font-weight:400">${w.item}</span><div style="color:var(--muted);font-weight:400;font-size:11px;padding-left:18px">${w.qty} · ${w.date}</div></td><td>${w.loc[lang]}</td><td>${w.line}</td>${cpCellsRollup(woRollup(w),t.cols)}${noteCell(w.note[lang],w.noteCls)}</tr>`;
+    w.batches.forEach((b)=>{
+      html+=`<tr class="batch hidden" data-p="${i}"><td>${b.b}</td><td></td><td></td>${cpCells(b.cp,t.cols)}${noteCell(b.note[lang],b.noteCls)}</tr>`;
+      b.tasks.forEach((tk)=>{
+        html+=`<tr class="task hidden" data-p="${i}"><td>${tk.t[lang]}</td><td></td><td></td>${cpCells(tk.cp,t.cols)}${noteCell(tk.note[lang],tk.noteCls)}</tr>`;
+      });
+    });
+  });
+  $('rows').innerHTML=html;
+
+  $('rows').querySelectorAll('tr.wo').forEach(r=>{
+    r.addEventListener('click',()=>{
+      const g=r.dataset.g; r.classList.toggle('open');
+      document.querySelectorAll(`tr[data-p="${g}"]`).forEach(x=>x.classList.toggle('hidden'));
+    });
+  });
+
+  $('legend').innerHTML=
+    `<span><span class="badge" style="color:var(--ok)">✓</span> ${t.legend[0]}</span>`+
+    `<span><span class="badge" style="color:var(--wait)">◷</span> ${t.legend[1]}</span>`+
+    `<span><span class="badge" style="color:var(--err)">✕</span> ${t.legend[2]}</span>`+
+    `<span><span class="badge" style="color:var(--na)">–</span> ${t.legend[3]}</span>`+
+    `<span style="margin-left:auto">${t.rollup}</span>`;
+
+  bindTips();
+}
+
+function setLang(l){lang=l;render();}
+
+const tip=$('tip');
+function bindTips(){
+  document.querySelectorAll('[data-tip]').forEach(el=>{
+    if(!el.dataset.tip) return;
+    el.onmousemove=e=>{tip.textContent=el.dataset.tip;tip.style.display='block';tip.style.left=(e.clientX+14)+'px';tip.style.top=(e.clientY+14)+'px';};
+    el.onmouseleave=()=>tip.style.display='none';
+  });
+}
+
+render();
+</script>
+</body>
+</html>

@@ -1,0 +1,8 @@
+<deploy>
+    <files>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/*</path>
+    </files>
+    <objects>
+        <path>~/Objects/*</path>
+    </objects>
+</deploy>
