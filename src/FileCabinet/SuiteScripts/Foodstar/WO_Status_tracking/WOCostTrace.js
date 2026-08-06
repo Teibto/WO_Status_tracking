@@ -243,7 +243,8 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
              NVL(I.isphantom, 'F')                     AS is_phantom,
              NVL(I.custitem_mfg_summarycostitem, 'F')  AS is_summary,
              TL.quantity                               AS quantity,
-             BUILTIN.DF(TL.units)                      AS unit_name
+             BUILTIN.DF(TL.units)                      AS unit_name,
+             TL.subsidiary                             AS sub_id
       FROM transactionline TL
       LEFT JOIN item I ON I.id = TL.item
       WHERE TL.transaction IN (${inList(woIds)}) AND TL.taxline = 'F'
@@ -683,6 +684,8 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
              I.displayname                               AS item_name,
              TL.quantity                                 AS wo_qty,
              BUILTIN.DF(TL.units)                        AS unit_name,
+             -- subsidiary อ่านจากบรรทัด เพราะบนหัวเอกสารเป็น NOT_EXPOSED (ใช้จับคู่ Cost ref)
+             TL.subsidiary                               AS sub_id,
              I.custitem_item_basepercarton               AS base_per_carton
       FROM transaction WO
       JOIN transactionline TL ON TL.transaction = WO.id
@@ -792,6 +795,156 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
         AND NVL(ACC.custrecord_mfg_acc_dl_oh, 0) <> 1
       GROUP BY TL.custcol_mfg2_ref_workorder
     `));
+  }
+
+  // ═══ Cost ref — ใช้แยก "ไม่มีต้นทุนแปรสภาพ" ออกจาก "ยังไม่ปันส่วน" ═══════════
+  //
+  // สินค้าบางกลุ่มไม่มีต้นทุนแปรสภาพโดยการตั้งค่า — Cost ref ของสินค้านั้นตั้งทุกช่องต้นทุนไว้
+  // เป็น 0 หรือปล่อยว่าง (ตัวอย่างที่ผู้ใช้ชี้: customrecord_mfg_cost_ref id 17 บน SB1)
+  // ใบพวกนี้ไม่ควรขึ้นคำเตือน "ยังไม่ปันส่วนต้นทุนแปรสภาพ" เพราะไม่มีอะไรให้ปันส่วน
+  // คำเตือนต้องขึ้นเฉพาะเมื่อ **มีต้นทุนใน Cost ref** หรือ **จับคู่ Cost ref ไม่ได้เลย**
+  //
+  // ⚠ จับคู่ที่ระดับ **สินค้า** เท่านั้น ไม่ join work center ของ task
+  //   ใบที่ยังไม่ปล่อยงานจะไม่มี work center → กลายเป็น "จับคู่ไม่ได้" ทั้งที่สินค้านั้นมี Cost ref
+  //   คือย้ายที่เกิด false positive ไม่ใช่กำจัด · จะเพิ่ม work center ก็ต่อเมื่อพบว่าคำตัดสินต่างกันจริง
+  //
+  // ดึงทีเดียวตามรายการสินค้า (สินค้าน้อยกว่าใบสั่งผลิตมาก) แล้วจับคู่บริษัท/ช่วงวันที่ใน JS
+
+  const COST_REF_LABEL = 'Cost ref ของสินค้าที่ผลิต';
+
+  // rectype ของ customrecord_mfg_cost_ref บน SB1 — ใช้ประกอบลิงก์เปิด record เท่านั้น
+  // ⚠ เลข rectype เป็นของแต่ละบัญชี ถ้าเอาขึ้น production ต้องตรวจก่อนว่าเป็นเลขเดียวกัน
+  const COST_REF_RECTYPE = 595;
+
+  /** ช่องต้นทุนบน Cost ref — ครบทุกช่องที่ engine ปันส่วนต้นทุนอ่านไปใช้ */
+  const COST_REF_COSTS = [
+    { col: 'c_dept_fixed', field: 'custrecord_dept_fixed_cost',   label: 'OH แผนก คงที่' },
+    { col: 'c_dept_var',   field: 'custrecord_dept_var_cost',     label: 'OH แผนก ผันแปร' },
+    { col: 'c_dept_fac',   field: 'custrecord_dept_fac_cost',     label: 'OH แผนก facility' },
+    { col: 'c_mac_fixed',  field: 'custrecord_mac_fixed_cost',    label: 'OH เครื่องจักร คงที่' },
+    { col: 'c_mac_var',    field: 'custrecord_mfg_mac_var_cost',  label: 'OH เครื่องจักร ผันแปร' },
+    { col: 'c_labor',      field: 'custrecord_labor_normal_cost', label: 'ค่าแรงปกติ' },
+    { col: 'c_indirect',   field: 'custrecord_indirect_cost',     label: 'ต้นทุนทางอ้อม' }
+  ];
+
+  // custrecord_mfg_cost_ref_option: 1 = Calculate Cost from Set Up Rate · 2 = Using Cost from Record
+  const COST_REF_OPT_FROM_RECORD = '2';
+
+  /**
+   * Cost ref ทุกแถวของสินค้าที่ระบุ พร้อมช่วงผลบังคับจาก header
+   * คืน failed=true เมื่อคำสั่งพัง เพื่อไม่ให้ "อ่านไม่ได้" ถูกอ่านเป็น "ไม่มี Cost ref"
+   * (query พังคืนแถวว่าง ซึ่งถ้าไม่แยกไว้จะกลายเป็นคำเตือนผิดทุกใบพร้อมกัน)
+   */
+  function qCostRef(itemIds) {
+    if (!itemIds || !itemIds.length) return { rows: [], failed: false };
+    const at = QLOG.length;
+    const costCols = COST_REF_COSTS.map(c => `             CR.${c.field} AS ${c.col},`).join('\n');
+    const rows = runSQL(COST_REF_LABEL, `
+      SELECT CR.id                                            AS cr_id,
+             CR.custrecord_item_ref                           AS item_id,
+             CR.custrecord_workcenter                         AS wc_id,
+             CR.custrecord_mfg_cost_ref_option                AS cr_option,
+             CR.custrecord_qty                                AS ref_qty,
+${costCols}
+             CS.id                                            AS setup_id,
+             CS.name                                          AS setup_name,
+             CS.custrecord_mfg_costref_setup_subsidiary       AS sub_id,
+             TO_CHAR(CS.custrecord_mfg_costref_setup_startdate, 'YYYY-MM-DD') AS start_iso,
+             TO_CHAR(CS.custrecord_mfg_costref_setup_enddate,   'YYYY-MM-DD') AS end_iso
+      FROM customrecord_mfg_cost_ref CR
+      LEFT JOIN customrecord_mfg_costref_setup CS ON CS.id = CR.custrecord_mfg_cost_refparent
+      WHERE CR.custrecord_item_ref IN (${inList(itemIds)})
+        AND NVL(CR.isinactive, 'F') = 'F'
+    `);
+    let failed = false;
+    for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
+    return { rows: rows, failed: failed };
+  }
+
+  /** ผลรวมทุกช่องต้นทุนบน Cost ref 1 แถว — ว่างกับ 0 นับเหมือนกัน */
+  function costRefCost(r) {
+    let sum = 0;
+    COST_REF_COSTS.forEach(c => { sum += Math.abs(asNum(r[c.col])); });
+    return sum;
+  }
+
+  /** แถว Cost ref นี้มีผลกับใบสั่งผลิตของบริษัทและวันที่นี้หรือไม่ (ช่องว่าง = ไม่จำกัด) */
+  function costRefInEffect(r, subId, dateIso) {
+    const rs = asStr(r.sub_id), sub = asStr(subId);
+    if (rs && sub && rs !== sub) return false;
+    const s = asStr(r.start_iso), e = asStr(r.end_iso), d = asStr(dateIso);
+    if (d) {
+      if (s && d < s) return false;
+      if (e && d > e) return false;
+    }
+    return true;
+  }
+
+  /**
+   * คำตัดสินของ Cost ref ต่อใบสั่งผลิตหนึ่งใบ
+   *   has     มีต้นทุนตั้งไว้     → ยังไม่ปันส่วน = เตือน
+   *   nomatch จับคู่ไม่ได้เลย     → ยังไม่ปันส่วน = เตือน (คนละสาเหตุกับ has จึงแยกข้อความ)
+   *   zero    ตั้งไว้ 0/ว่างหมด   → ไม่มีอะไรให้ปันส่วน = ไม่เตือน
+   *   rate    คิดจาก Set Up Rate → ช่องต้นทุนบน record ไม่ใช่คำตอบ สรุปว่า "ไม่มี" ไม่ได้
+   *   unknown อ่าน Cost ref ไม่สำเร็จ → กลับไปใช้คำเตือนเดิม ไม่สรุปอะไรเพิ่ม
+   */
+  function classifyCostRef(all, subId, dateIso) {
+    if (!all || all.failed) return { verdict: 'unknown', rows: [], cost: 0 };
+    const rows = (all.rows || []).filter(r => costRefInEffect(r, subId, dateIso));
+    if (!rows.length) return { verdict: 'nomatch', rows: [], cost: 0 };
+    let cost = 0;
+    rows.forEach(r => { cost += costRefCost(r); });
+    if (cost > 0) return { verdict: 'has', rows: rows, cost: cost };
+    if (rows.some(r => asStr(r.cr_option) !== COST_REF_OPT_FROM_RECORD)) {
+      return { verdict: 'rate', rows: rows, cost: 0 };
+    }
+    return { verdict: 'zero', rows: rows, cost: 0 };
+  }
+
+  /** เลข Cost ref ที่จับคู่ได้ — ใส่ในหมายเหตุให้ตามไปเปิด record ตรวจเองได้ */
+  function costRefIds(cr) {
+    return uniq((cr.rows || []).map(r => r.cr_id)).join(', ');
+  }
+
+  /**
+   * ข้อความบอกต้นทุนที่ตั้งไว้ — บอกเป็นตัวเลขได้เฉพาะตอนที่ตัวเลขนั้นมีความหมายเดียว
+   *
+   * ห้ามบอกผลรวมของหลายแถว: แต่ละแถวมีปริมาณอ้างอิง (`custrecord_qty`) ของตัวเอง
+   * ผลรวมดิบจึงไม่ใช่ต้นทุนของอะไรทั้งนั้น (เจอจริงบน SB1: 6 แถวรวมได้ 56.04 ซึ่งอ่านผิดได้ทันที)
+   * แถว option 1 ก็บอกยอดไม่ได้ เพราะ engine ไม่ได้ใช้ช่องต้นทุนบน record ใบนั้น
+   * กรณีที่บอกไม่ได้ ให้บอก "มีต้นทุนตั้งไว้ n แถว" ซึ่งเป็นข้อเท็จจริงที่พอสำหรับการตัดสินใจ
+   */
+  function costRefAmountText(cr) {
+    const withCost = (cr.rows || []).filter(r => costRefCost(r) > 0);
+    if (withCost.length === 1 && asStr(withCost[0].cr_option) === COST_REF_OPT_FROM_RECORD) {
+      return 'ตั้งต้นทุนไว้ ' + fmt(costRefCost(withCost[0]), 2)
+        + ' ต่อปริมาณอ้างอิง ' + fmt(asNum(withCost[0].ref_qty), 4);
+    }
+    return 'มีต้นทุนตั้งไว้ ' + withCost.length + ' แถว';
+  }
+
+  /**
+   * หมายเหตุเมื่อใบสั่งผลิตไม่มีต้นทุนแปรสภาพ — เลือกข้อความตามคำตัดสินของ Cost ref
+   * ใช้ทั้งชั้นภาพรวมและชั้นเจาะลึก เพื่อให้สองชั้นตอบเรื่องเดียวกันเหมือนกัน
+   */
+  function costRefNote(cr) {
+    if (cr.verdict === 'zero') {
+      return { cls: 'info', text: 'ไม่มีต้นทุนแปรสภาพตามการตั้งค่า — Cost ref '
+        + costRefIds(cr) + ' ตั้งต้นทุนไว้เป็น 0/ว่างทุกช่อง' };
+    }
+    if (cr.verdict === 'has') {
+      return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ — Cost ref ' + costRefIds(cr)
+        + ' ' + costRefAmountText(cr) };
+    }
+    if (cr.verdict === 'rate') {
+      return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ — Cost ref ' + costRefIds(cr)
+        + ' คิดจาก Set Up Rate จึงดูจากช่องต้นทุนบน record ไม่ได้' };
+    }
+    if (cr.verdict === 'nomatch') {
+      return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ — จับคู่ Cost ref ไม่ได้เลย '
+        + '(ไม่มีแถวที่ตรงทั้งสินค้า บริษัท และช่วงวันที่)' };
+    }
+    return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ (อ่าน Cost ref ไม่สำเร็จ — ดูท้ายหน้า)' };
   }
 
   // ═══ model ═════════════════════════════════════════════════════════════════
@@ -967,6 +1120,14 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     let produced = 0;
     wocs.forEach(w => { produced += asNum(w.fg_qty); });
 
+    // Cost ref ของสินค้าที่ผลิต — ใช้อธิบายว่าที่ไม่มีต้นทุนแปรสภาพนั้นเป็นการตั้งค่าหรือเป็นงานค้าง
+    // จับคู่ด้วยบริษัทจากบรรทัดสินค้า และวันที่ของใบสั่งผลิตใบนี้ (เงื่อนไขเดียวกับชั้นภาพรวม)
+    const wo = ctx.woById[woId] || {};
+    const costRef = classifyCostRef(
+      { rows: (ctx.costRefByItem || {})[asStr(fg && fg.item_id)] || [],
+        failed: !!(ctx.costRefAll && ctx.costRefAll.failed) },
+      fg && fg.sub_id, asStr(wo.wo_date_iso));
+
     // ต้นทุนแปรสภาพ: WIP (class 1) คือยอดรวมที่ระบบโอนเข้างานระหว่างทำ
     const ca = ctx.caByWO[woId] || [];
     let convStd = 0, convAct = 0;
@@ -987,6 +1148,7 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
       ca: ca,
       convStd: convStd,
       convAct: convAct,
+      costRef: costRef,
       summaryLines: summaryLines,
       summaryDocs: summaryDocs,
       issueDocs: uniq(issues.map(r => r.tran_id)),
@@ -1028,6 +1190,7 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     if (parentWOIds.length) {
       const extraWO = runSQL('WO ต้นทาง (header)', `
         SELECT WO.id AS wo_id, WO.tranid AS wo_no, WO.trandate AS wo_date,
+               TO_CHAR(WO.trandate, 'YYYY-MM-DD') AS wo_date_iso,
                BUILTIN.DF(WO.entitystatus) AS wo_status,
                BUILTIN.DF(WO.subsidiary) AS subsidiary,
                BUILTIN.DF(WO.custbody_mfg_work_order_type) AS wo_type,
@@ -1127,6 +1290,11 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
         .concat(cas.filter(r => asStr(r.wo_id) === rootId).map(r => r.ca_id))
         .concat(issues.filter(r => asStr(r.wo_id) === rootId).map(r => r.tran_id))
     );
+    // ── Cost ref ของสินค้าที่ผลิต (ทั้ง WO แม่และ WO ต้นทางของกึ่งสำเร็จรูป) ──
+    const fgItemIds = uniq(lines.filter(r => asStr(r.mainline) === 'T').map(r => r.item_id));
+    ctx.costRefAll = qCostRef(fgItemIds);
+    ctx.costRefByItem = groupBy(ctx.costRefAll.rows, 'item_id');
+
     ctx.wipRows = qWipRecon(woTranIds);
     const refRows = qDocWoRefs(woTranIds);
     ctx.docWoCount = {};
@@ -1242,6 +1410,9 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     const rm = byWo(qSummaryRM(woIds), 'wo_id');
     const conv = byWo(qSummaryConv(woIds), 'wo_id');
     const sc = byWo(qSummarySummaryCost(woIds), 'wo_id');
+    // Cost ref ดึงตามสินค้า (ไม่ใช่ตามใบ) แล้วจับคู่บริษัท/วันที่ของแต่ละใบใน JS
+    const crAll = qCostRef(uniq(use.map(r => r.item_id)));
+    const crByItem = groupBy(crAll.rows, 'item_id');
 
     const rows = use.map(h => {
       const id = asStr(h.wo_id);
@@ -1266,7 +1437,11 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
           + ' จาก ' + wocCount + ' ใบอยู่นอกช่วง (ยอดผลิตได้รวมทุกใบ)' });
       }
       if (!rmCost) notes.push({ cls: 'warn', text: 'ยังไม่มีใบเบิกวัตถุดิบ' });
-      if (!dlOh) notes.push({ cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ' });
+      // ไม่มีต้นทุนแปรสภาพ ≠ ผิดเสมอ — ให้ Cost ref เป็นตัวตัดสินว่าเป็นการตั้งค่าหรือเป็นงานค้าง
+      const cr = classifyCostRef(
+        { rows: crByItem[asStr(h.item_id)] || [], failed: crAll.failed },
+        h.sub_id, asStr(h.wo_date_iso));
+      if (!dlOh) notes.push(costRefNote(cr));
       if (scDocs === 0) notes.push({ cls: 'warn', text: 'ยังไม่มีใบ MFG Summary Cost' });
       // ใบซ้ำที่มีมูลค่า = ตีราคาซ้ำ ต้องแก้ · ใบซ้ำที่มูลค่า 0 = เอกสารเปล่าค้าง สะอาดขึ้นได้แต่ไม่กระทบยอด
       if (scDocsValued > 1) {
@@ -1307,6 +1482,7 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
         sc_docs: scDocs,
         sc_docs_valued: scDocsValued,
         sc_gap: scValue - cost,
+        cost_ref: { verdict: cr.verdict, cost: cr.cost, ids: costRefIds(cr), rows: cr.rows.length },
         notes: notes
       };
     });
@@ -1425,6 +1601,8 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
   .lvl2{margin-left:16px;border-left:3px solid #54aeff;padding-left:12px}
   .lvl3{margin-left:16px;border-left:3px solid #ffab70;padding-left:12px}
   .bad{color:#cf222e;font-weight:700}.warn{color:#9a6700}.ok{color:#1a7f37}
+  /* info = ข้อเท็จจริงที่ต้องรู้แต่ไม่ใช่ปัญหา เช่น สินค้าที่ตั้งค่าไว้ว่าไม่มีต้นทุนแปรสภาพ */
+  .info{color:#57606a}
   .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:9px;background:#ddf4ff;color:#0550ae;margin-left:5px}
   .err{background:#fff5f5;border:1px solid #cf222e;color:#cf222e;padding:7px 9px;border-radius:4px;margin:7px 0;font-size:12px}
   pre{margin:0;white-space:pre-wrap;font-size:11px;font-family:Consolas,monospace}
@@ -1534,8 +1712,13 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
 
   function renderSummaryKpis(sm) {
     let rm = 0, dl = 0, cost = 0, gap = 0, gapAbs = 0, gapCount = 0;
-    let noWoc = 0, noIssue = 0, flagged = 0;
+    let noWoc = 0, noIssue = 0, flagged = 0, noConv = 0, convByDesign = 0;
     sm.rows.forEach(r => {
+      // ใบที่ไม่มีต้นทุนแปรสภาพ แยกสองพวก: ตั้งค่าไว้ว่าไม่มี (ไม่ต้องทำอะไร) กับยังไม่ได้ปันส่วน (งานค้าง)
+      if (!r.dl_oh_cost) {
+        if (r.cost_ref && r.cost_ref.verdict === 'zero') convByDesign++;
+        else noConv++;
+      }
       rm += r.rm_cost; dl += r.dl_oh_cost; cost += r.cost;
       gap += r.sc_gap;
       // ผลต่างสุทธิกลบกันเองได้ (+600,000 กับ −600,000 = 0 ทั้งที่ผิดสองใบ)
@@ -1558,6 +1741,9 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
         gapCount ? 'bad' : 'ok')
       + kpi('ยังไม่เบิกวัตถุดิบ', esc(String(noIssue)), noIssue ? 'warn' : 'ok')
       + kpi('ยังไม่ปิดงานผลิต', esc(String(noWoc)), noWoc ? 'warn' : 'ok')
+      + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv))
+        + (convByDesign ? ' <span class="tag">ไม่มีตามการตั้งค่าอีก ' + esc(String(convByDesign)) + '</span>' : ''),
+        noConv ? 'warn' : 'ok')
       + kpi('ตีราคาซ้ำ (ต้องแก้)', esc(String(flagged)), flagged ? 'bad' : 'ok')
       + '</div>';
   }
@@ -1762,8 +1948,44 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     return h + '</table>';
   }
 
+  /**
+   * บรรทัดสรุป Cost ref ของสินค้าที่ผลิต — บอกว่าที่ไม่มีต้นทุนแปรสภาพนั้นตั้งใจหรือค้าง
+   * ลิงก์ไป record ที่จับคู่ได้ เพื่อให้คำเตือนที่ถูกกลบตรวจย้อนได้ว่ากลบเพราะอะไร
+   */
+  function renderCostRefLine(s) {
+    const cr = s.costRef || { verdict: 'unknown', rows: [] };
+    const link = r => '<a target="_blank" href="/app/common/custom/custrecordentry.nl?rectype='
+      + COST_REF_RECTYPE + '&id=' + encodeURIComponent(asStr(r.cr_id)) + '">Cost ref '
+      + esc(asStr(r.cr_id)) + '</a>';
+    const links = (cr.rows || []).map(link).join(' · ');
+    if (cr.verdict === 'unknown') {
+      return '<p class="warn">อ่าน Cost ref ไม่สำเร็จ — ดูสาเหตุที่ท้ายหน้า</p>';
+    }
+    if (cr.verdict === 'nomatch') {
+      return '<p class="warn">จับคู่ Cost ref ของสินค้านี้ไม่ได้เลย '
+        + '(ไม่มีแถวที่ตรงทั้งสินค้า บริษัท และช่วงวันที่ของใบสั่งผลิต)</p>';
+    }
+    if (cr.verdict === 'zero') {
+      return '<p class="info">' + links + ' ตั้งต้นทุนไว้เป็น 0/ว่างทุกช่อง — '
+        + 'สินค้ากลุ่มนี้ไม่มีต้นทุนแปรสภาพโดยการตั้งค่า</p>';
+    }
+    if (cr.verdict === 'rate') {
+      return '<p class="info">' + links + ' ตั้งเป็น Calculate Cost from Set Up Rate — '
+        + 'ต้นทุนไม่ได้อยู่บนตัว record จึงสรุปจากช่องต้นทุนไม่ได้</p>';
+    }
+    return '<p class="info">' + links + ' ' + esc(costRefAmountText(cr)) + '</p>';
+  }
+
   function renderCostAlloc(s) {
-    if (!s.ca.length) return '<p class="warn">ยังไม่มีเอกสารปันส่วนต้นทุน — ต้นทุนแปรสภาพยังไม่ถูกสร้าง</p>';
+    const crLine = renderCostRefLine(s);
+    if (!s.ca.length) {
+      const cr = s.costRef || {};
+      // ไม่มีเอกสารปันส่วน + Cost ref ตั้งไว้ 0 ทุกช่อง = ถูกต้องแล้ว ไม่ใช่งานค้าง
+      const head = cr.verdict === 'zero'
+        ? '<p class="info">ไม่มีเอกสารปันส่วนต้นทุน — ถูกต้องตามการตั้งค่า สินค้านี้ไม่มีต้นทุนแปรสภาพ</p>'
+        : '<p class="warn">ยังไม่มีเอกสารปันส่วนต้นทุน — ต้นทุนแปรสภาพยังไม่ถูกสร้าง</p>';
+      return head + crLine;
+    }
     let h = `<table><tr><th>เอกสาร</th><th>ใบปิดงานผลิต</th><th>ประเภทต้นทุน</th><th>บัญชี</th>
       <th class="n">มาตรฐาน</th><th class="n">จริง</th></tr>`;
     let wipStd = 0, wipAct = 0;
@@ -1784,7 +2006,7 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     if (Math.abs(gap) > 0.01) {
       h += `<tr><td colspan="4" class="bad">ผลต่าง WIP กับผลรวมองค์ประกอบ</td>` + numCell(gap, 2) + '<td class="n"></td></tr>';
     }
-    return h + '</table>';
+    return h + '</table>' + crLine;
   }
 
   function renderTotals(s, ctx) {
