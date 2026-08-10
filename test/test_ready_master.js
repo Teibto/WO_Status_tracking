@@ -252,6 +252,13 @@ function run(params) {
   rd.woKey = rp.woKey;
   return rd;
 }
+function run2(key, params) {
+  const rp = T.readReadyParams(Object.assign({ ready: key }, params || {}));
+  const rd = T.buildReady(rp);
+  rd.params = rp;
+  rd.woKey = rp.woKey;
+  return rd;
+}
 function node(rd, itemId, depth) {
   return rd.nodes.filter(n => n.item_id === String(itemId)
     && (depth == null || n.depth === depth))[0];
@@ -398,17 +405,16 @@ eq('ไม่สรุปว่ายังไม่ผูก BOM',
 eq('ติดธงไว้ที่ผลรวม', rd3.struct_failed, true);
 
 // ── ทางเข้าด้วยรหัสสินค้า: วันตั้ง master ยังไม่มีใบสั่งผลิตให้อ้าง ──
+// D1 ของ UAT (2026-08-10) ต้องตรวจ master ให้จบ แต่ WO ถูกเปิดวัน D2
+function itemFx(itemRow, more) {
+  return Object.assign({}, BASE, { 'WO header': [], 'สินค้าจากรหัส': [itemRow] }, more || {});
+}
+const FG_ROW = { item_id: 501, item_code: '10010900101', item_name: 'FG ส้ม 300 มล.',
+  item_type: 'Assembly', item_inactive: 'F', stock_unit_id: 40, stock_unit_name: 'BOTTLE' };
+
 console.log('\n── ทางเข้าด้วยรหัสสินค้า (ยังไม่มีใบสั่งผลิต) ──');
-FX = Object.assign({}, BASE, {
-  'WO header': [],
-  'สินค้าจากรหัส': [
-    { item_id: 501, item_code: '10010900101', item_name: 'FG ส้ม 300 มล.',
-      item_type: 'Assembly', item_inactive: 'F', stock_unit_id: 40, stock_unit_name: 'BOTTLE' }
-  ]
-});
-const ri = T.readReadyParams({ ready: '10010900101', rloc: '10,23' });
-const rdi = T.buildReady(ri);
-rdi.params = ri; rdi.woKey = ri.woKey;
+FX = itemFx(FG_ROW);
+const rdi = run2('10010900101', { rloc: '10,23' });
 eq('ตรวจได้แม้ไม่มีใบสั่งผลิต', rdi.ok, true);
 eq('รู้ว่ามาทางรหัสสินค้า', rdi.basis, 'item');
 eq('ใช้ขนาด batch ของ revision เป็นฐาน', rdi.root_qty, 3300);
@@ -423,12 +429,48 @@ eq('บอกบนหน้าว่ายังไม่มีใบให้�
 eq('บอกฐานจำนวนบนหน้า', htmlI.indexOf('ขนาด batch ของ revision') >= 0, true);
 
 console.log('\n── กรอกจำนวนเองทับฐานได้ ──');
-const ri2 = T.readReadyParams({ ready: '10010900101', rloc: '10', rqty: '6600' });
-const rdi2 = T.buildReady(ri2);
-rdi2.params = ri2;
+const rdi2 = run2('10010900101', { rloc: '10', rqty: '6600' });
 eq('ใช้จำนวนที่กรอก', rdi2.root_qty, 6600);
 eq('บอกว่ากรอกเอง', rdi2.qty_basis, 'manual');
-eq('ปริมาณสองเท่าของ batch', rdi2.nodes.filter(n => n.item_id === '701' && n.depth === 1)[0].need, 66, 1e-12);
+eq('ปริมาณสองเท่าของ batch',
+  rdi2.nodes.filter(n => n.item_id === '701' && n.depth === 1)[0].need, 66, 1e-12);
+
+console.log('\n── ทางรหัสสินค้าที่ไม่เลือกคลัง ต้องไม่สรุปว่าพร้อม ──');
+const rdi3 = run2('10010900101', {});
+eq('ไม่มีคลังให้ตัดสิน', rdi3.loc_id, '');
+// FG มี BOM 2 ใบที่เป็น default ของคนละคลัง ไม่มีใบไหน master default
+// ไม่รู้คลังก็เลือกไม่ได้จริง จึงต้องเป็น ambiguous ไม่ใช่หยิบใบแรกมาใช้
+eq('เลือก BOM ไม่ได้เมื่อไม่รู้คลัง', rdi3.nodes[0].bom.verdict, 'ambiguous');
+eq('ผลตรวจ BOM เป็นต้องแก้', T.bomVerdictText(rdi3.nodes[0]).cls, 'bad');
+const htmlI3 = T.renderReadyPage(rdi3);
+eq('ติดป้ายบอกว่ายังไม่เลือกคลัง', htmlI3.indexOf('ยังไม่เลือกคลัง') >= 0, true);
+eq('หัวตารางบอกว่าข้ามการตรวจตามคลัง',
+  htmlI3.indexOf('ข้ามการตรวจ BOM/routing ตามคลัง') >= 0, true);
+
+// กิ่งที่ทุกช่องผ่านหมด แต่ไม่ได้เลือกคลัง ต้องยังเป็น "ตรวจไม่ครบ" ไม่ใช่ "พร้อม"
+FX = itemFx({ item_id: 601, item_code: '23010100009', item_name: 'Premixed',
+  item_type: 'Assembly', item_inactive: 'F', stock_unit_id: 30, stock_unit_name: 'Bag' }, {
+  'component ใน revision': BASE['component ใน revision'].filter(c =>
+    !(c.rev_id === 1801 && c.comp_item === 602)),
+  'Cost ref ของสินค้าที่ผลิต': BASE['Cost ref ของสินค้าที่ผลิต'].concat([
+    { cr_id: 18, item_id: 601, wc_id: 1495, cr_option: 2, ref_qty: 1, c_labor: 0,
+      setup_id: 1, sub_id: 2, start_iso: '2026-01-01', end_iso: '2026-12-31' }
+  ]),
+  'ยอดคงเหลือรายคลัง': [
+    { item_id: 701, loc_id: 10, loc_name: 'PD_B1', on_hand: 99999, avail: 99999, committed: 0 }
+  ]
+});
+const rdi4 = run2('23010100009', {});
+eq('ทุกช่องผ่าน', T.bomVerdictText(rdi4.nodes[0]).cls, 'ok');
+eq('คำตัดสินรวมเป็น "ตรวจไม่ครบ" เพราะไม่รู้คลังผลิต',
+  T.renderReadyPage(rdi4).indexOf('ตรวจไม่ครบ') >= 0, true);
+
+console.log('\n── ใส่รหัสวัตถุดิบที่ไม่ได้ผลิตเอง ──');
+FX = itemFx({ item_id: 701, item_code: '21030200001', item_name: 'น้ำเชื่อม',
+  item_type: 'InvtPart', item_inactive: 'F', stock_unit_id: 11, stock_unit_name: 'KG' });
+const rdr = run2('21030200001', { rloc: '10' });
+eq('ไม่ขึ้นว่ายังไม่ผูก BOM', T.bomVerdictText(rdr.nodes[0]).cls, 'info');
+eq('ยังเทียบยอดคงเหลือให้', rdr.need_rows.length, 1);
 
 console.log('\n── หาไม่เจอทั้งใบสั่งผลิตและรหัสสินค้า ──');
 FX = Object.assign({}, BASE, { 'WO header': [], 'สินค้าจากรหัส': [] });
@@ -436,6 +478,7 @@ const rdx = T.buildReady(T.readReadyParams({ ready: 'ไม่มีจริง
 eq('บอกว่าหาไม่เจอทั้งสองแบบ', rdx.error.indexOf('ไม่พบทั้งใบสั่งผลิตและรหัสสินค้า') >= 0, true);
 
 FX = BASE;
+
 console.log('\n── สินค้าที่ใบสั่งผลิตนี้ผลิตเอง ต้องมี routing ของคลังนั้นจริง ──');
 FX = Object.assign({}, BASE, {
   'Manufacturing routing': BASE['Manufacturing routing'].map(r =>

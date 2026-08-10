@@ -2925,6 +2925,10 @@ ${costCols}
     function visit(itemId, code, name, type, need, unitName, unitId, depth, path, src) {
       const key = asStr(itemId);
       const entry = st.byItem[key] || null;
+      const isMadeType = !!READY_MADE_TYPES[asStr(type)];
+      // "ต้องมี BOM" = ชนิดสินค้าประกอบเองได้ หรือหา BOM ของมันเจอจริง
+      // ไม่งั้นวัตถุดิบที่ถูกใส่เป็นสินค้าตั้งต้นจะขึ้นว่า "ยังไม่ผูก BOM" ทั้งที่ไม่ต้องมี
+      const needsBom = isMadeType || !!(entry && entry.bomPick && entry.bomPick.bom);
       const node = {
         depth: depth,
         item_id: key,
@@ -2935,8 +2939,8 @@ ${costCols}
         unit_name: asStr(unitName),
         unit_id: asStr(unitId),
         item_source: asStr(src),
-        made: !!(entry && entry.bomPick),
-        bom: entry ? entry.bomPick : null,
+        made: needsBom && !!(entry && entry.bomPick),
+        bom: needsBom && entry ? entry.bomPick : null,
         rev: entry ? entry.revPick : null,
         batch_qty: entry ? entry.batchQty : 0,
         cycle: false,
@@ -2950,7 +2954,6 @@ ${costCols}
         return node;
       }
       const comps = entry && entry.comps ? entry.comps : [];
-      const isMadeType = !!READY_MADE_TYPES[asStr(type)];
       if (!comps.length) {
         // ปลายทาง — ต้องมีของในคลังจริง จึงรวมยอดที่ต้องใช้ไว้เทียบสต๊อก
         const cur = leafNeed[key] || { item_id: key, code: asStr(code), name: asStr(name),
@@ -3068,7 +3071,7 @@ ${costCols}
       fg = {
         item_id: it.item_id, item_code: it.item_code, item_name: it.item_name,
         quantity: 0, unit_name: it.stock_unit_name, sub_id: '',
-        item_inactive: it.item_inactive
+        item_type: it.item_type, item_inactive: it.item_inactive
       };
     }
 
@@ -3105,7 +3108,9 @@ ${costCols}
       uomById: groupOne(qUOM(), 'uom_id'),
       readyRoot: {
         code: asStr(fg.item_code), name: asStr(fg.item_name),
-        type: 'Assembly', unit_id: ''
+        // ใบสั่งผลิตผลิตของที่ประกอบเองอยู่แล้ว · ทางรหัสสินค้าอ่านชนิดจริงจาก item
+        // เพราะผู้ใช้อาจใส่รหัสวัตถุดิบมา ซึ่งไม่ควรขึ้นว่า "ยังไม่ผูก BOM"
+        type: asStr(fg.item_type) || 'Assembly', unit_id: ''
       }
     };
     const walk = walkReady(ctx, st, asStr(fg.item_id), rootQty, asStr(fg.unit_name));
@@ -3245,8 +3250,11 @@ ${costCols}
              I.stockunit             AS stock_unit_id,
              BUILTIN.DF(I.stockunit) AS stock_unit_name
       FROM item I
-      WHERE UPPER(I.itemid) = UPPER(?) ${byId ? 'OR I.id = ' + k : ''}
-    `, [k]);
+      WHERE (UPPER(I.itemid) = UPPER(?) ${byId ? 'OR I.id = ' + k : ''})
+      ORDER BY CASE WHEN UPPER(I.itemid) = UPPER(?) THEN 0 ELSE 1 END
+    `, [k, k]);
+    // วงเล็บรอบ OR และการเรียงให้รหัสสินค้ามาก่อน internal id — กันกรณีรหัสของสินค้าตัวหนึ่ง
+    // ไปตรงกับ internal id ของอีกตัว แล้วหยิบผิดตัวเงียบ ๆ
   }
 
   /** คลังของใบสั่งผลิต — อ่านจากบรรทัดหลัก */
@@ -3478,9 +3486,15 @@ ${costCols}
     const woBad = rd.wo_check.filter(c => !c.match).length;
     const kpi = (label, val, cls) =>
       `<div class="kpi"><b class="${cls || ''}">${val}</b><span>${label}</span></div>`;
-    const verdict = bad ? 'ยังไม่พร้อม' : (unk ? 'ตรวจไม่ครบ' : (warn ? 'พร้อมแบบมีข้อสังเกต' : 'พร้อม'));
+    // ทางเข้าด้วยรหัสสินค้าที่ไม่เลือกคลัง = ข้าม M-02/M-05 ส่วนที่ตัดสินตามคลังไปทั้งดุ้น
+    // ต้องไม่สรุปว่า "พร้อม" เพราะคนทดสอบที่ลืมเลือกคลังจะได้หน้าที่เขียวเกินความจริง
+    const skipLoc = rd.basis === 'item' && !rd.loc_id;
+    const verdict = bad ? 'ยังไม่พร้อม'
+      : ((unk || skipLoc) ? 'ตรวจไม่ครบ' : (warn ? 'พร้อมแบบมีข้อสังเกต' : 'พร้อม'));
     return '<div class="kpis">'
-      + kpi('คำตัดสินรวม', esc(verdict), bad ? 'bad' : (unk ? 'warn' : (warn ? 'warn' : 'ok')))
+      + kpi('คำตัดสินรวม', esc(verdict)
+        + (skipLoc ? ' <span class="tag">ยังไม่เลือกคลัง</span>' : ''),
+        bad ? 'bad' : ((unk || skipLoc) ? 'warn' : (warn ? 'warn' : 'ok')))
       + kpi('รายการที่ต้องแก้', esc(String(bad)), bad ? 'bad' : 'ok')
       + kpi('ข้อสังเกต', esc(String(warn)), warn ? 'warn' : 'ok')
       + kpi('ตรวจไม่ได้ (query พัง)', esc(String(unk)), unk ? 'warn' : 'ok')
