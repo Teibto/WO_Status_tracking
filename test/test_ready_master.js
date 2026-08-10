@@ -161,14 +161,16 @@ const BASE = {
     { routing_id: 614, seq: 1, op_name: 'Mixing', wc_id: 1490, run_rate: 0, setup_time: 0, cost_template: 1 },
     { routing_id: 614, seq: 2, op_name: 'Filling', wc_id: 1491, run_rate: 0, setup_time: 0, cost_template: 1 },
     { routing_id: 614, seq: 3, op_name: 'Packing', wc_id: 1492, run_rate: 0, setup_time: 0, cost_template: 1 },
-    { routing_id: 700, seq: 1, op_name: 'RD Mixing', wc_id: 1490, run_rate: 0, setup_time: 0, cost_template: 1 },
-    { routing_id: 700, seq: 2, op_name: 'RD Packing', wc_id: 1493, run_rate: 0, setup_time: 0, cost_template: 1 }
+    { routing_id: 700, seq: 1, op_name: 'RD Mixing', wc_id: 1494, run_rate: 0, setup_time: 0, cost_template: 1 },
+    { routing_id: 700, seq: 2, op_name: 'RD Packing', wc_id: 1495, run_rate: 0, setup_time: 0, cost_template: 1 }
   ],
   'Work center': [
     { wc_id: 1490, wc_name: 'Mixing_PD_B1', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 10, wc_loc_name: 'PD_B1' },
     { wc_id: 1491, wc_name: 'Filling_PD_B1', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 10, wc_loc_name: 'PD_B1' },
     { wc_id: 1492, wc_name: 'Packing_PD_B1', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 10, wc_loc_name: 'PD_B1' },
-    { wc_id: 1493, wc_name: 'RD Packing', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 10, wc_loc_name: 'PD_B1' }
+    // work center ของ semi ผูกคลัง RMRD ให้ตรงกับ routing ของมัน (ข้อมูลจริงบน SB1 ตรงกันทั้ง 12 ขั้นตอน)
+    { wc_id: 1494, wc_name: 'RD Mixing_RMRD', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 32, wc_loc_name: 'RMRD' },
+    { wc_id: 1495, wc_name: 'RD Packing_RMRD', is_wc: 'T', wc_inactive: 'F', sub_id: 2, wc_loc: 32, wc_loc_name: 'RMRD' }
   ],
   'Cost ref ของสินค้าที่ผลิต': [
     { cr_id: 14, item_id: 501, wc_id: 1490, cr_option: 2, ref_qty: 48, c_labor: 0.95,
@@ -178,10 +180,10 @@ const BASE = {
     { cr_id: 16, item_id: 501, wc_id: 1492, cr_option: 2, ref_qty: 48, c_labor: 0.95,
       setup_id: 1, sub_id: 2, start_iso: '2026-01-01', end_iso: '2026-12-31' },
     // 601 ตั้งไว้แค่ work center เดียวจากสองขั้นตอน → ขาด
-    { cr_id: 17, item_id: 601, wc_id: 1490, cr_option: 2, ref_qty: 1, c_labor: 0,
+    { cr_id: 17, item_id: 601, wc_id: 1494, cr_option: 2, ref_qty: 1, c_labor: 0,
       setup_id: 1, sub_id: 2, start_iso: '2026-01-01', end_iso: '2026-12-31' },
     // แถวปีที่แล้วของ 501 — ต้องไม่ถูกนับ (ช่วงวันที่ไม่ครอบ)
-    { cr_id: 99, item_id: 501, wc_id: 1493, cr_option: 2, ref_qty: 48, c_labor: 9.99,
+    { cr_id: 99, item_id: 501, wc_id: 1495, cr_option: 2, ref_qty: 48, c_labor: 9.99,
       setup_id: 2, sub_id: 2, start_iso: '2025-01-01', end_iso: '2025-12-31' }
   ],
   'ยอดคงเหลือรายคลัง': [
@@ -322,6 +324,18 @@ eq('routing ของ semi อยู่คลังตัวเอง = ผ่�
 eq('บอกคลังของ routing ไว้เป็นข้อเท็จจริง',
   T.routingVerdictText(node(rd, 601, 1)).text.indexOf('@RMRD') >= 0, true);
 
+console.log('\n── work center ที่ผูกคลังคนละคลังกับ routing = การตั้งค่าที่ขัดกันเอง (M-06) ──');
+// ข้อมูลจริงบน SB1 ตรงกันทั้ง 12 ขั้นตอน เช็คนี้จึงไม่ใช่ noise
+FX = Object.assign({}, BASE, {
+  'Work center': BASE['Work center'].map(w =>
+    w.wc_id === 1494 ? Object.assign({}, w, { wc_loc: 10, wc_loc_name: 'PD_B1' }) : w)
+});
+const rdw = run({ rloc: '10' });
+eq('ขึ้นข้อสังเกต', T.routingVerdictText(node(rdw, 601, 1)).cls, 'warn');
+eq('บอกชื่อ work center และคลังที่ขัดกัน',
+  T.routingVerdictText(node(rdw, 601, 1)).text.indexOf('RD Mixing_RMRD (PD_B1)') >= 0, true);
+FX = BASE;
+
 console.log('\n── Cost ref ต้องครบทุก work center ที่ routing ใช้ (M-09) ──');
 eq('FG ครบทั้ง 3 work center', T.costRefVerdictText(rd.nodes[0]).cls, 'ok');
 eq('อ้างเลข Cost ref ให้ตามไปดู',
@@ -383,6 +397,45 @@ eq('ไม่สรุปว่ายังไม่ผูก BOM',
   T.bomVerdictText(rd3.nodes[0]).text.indexOf('ยังไม่ผูก') >= 0, false);
 eq('ติดธงไว้ที่ผลรวม', rd3.struct_failed, true);
 
+// ── ทางเข้าด้วยรหัสสินค้า: วันตั้ง master ยังไม่มีใบสั่งผลิตให้อ้าง ──
+console.log('\n── ทางเข้าด้วยรหัสสินค้า (ยังไม่มีใบสั่งผลิต) ──');
+FX = Object.assign({}, BASE, {
+  'WO header': [],
+  'สินค้าจากรหัส': [
+    { item_id: 501, item_code: '10010900101', item_name: 'FG ส้ม 300 มล.',
+      item_type: 'Assembly', item_inactive: 'F', stock_unit_id: 40, stock_unit_name: 'BOTTLE' }
+  ]
+});
+const ri = T.readReadyParams({ ready: '10010900101', rloc: '10,23' });
+const rdi = T.buildReady(ri);
+rdi.params = ri; rdi.woKey = ri.woKey;
+eq('ตรวจได้แม้ไม่มีใบสั่งผลิต', rdi.ok, true);
+eq('รู้ว่ามาทางรหัสสินค้า', rdi.basis, 'item');
+eq('ใช้ขนาด batch ของ revision เป็นฐาน', rdi.root_qty, 3300);
+eq('บอกฐานที่ใช้', rdi.qty_basis, 'batch');
+eq('คลังแรกที่เลือกถูกใช้เป็นคลังผลิต', rdi.loc_id, '10');
+eq('เลือก BOM ตาม default ของคลังนั้นได้', rdi.nodes[0].bom.verdict, 'loc');
+eq('ปริมาณคิดจากฐาน batch (33 KG ต่อ batch 3,300)',
+  rdi.nodes.filter(n => n.item_id === '701' && n.depth === 1)[0].need, 33, 1e-12);
+eq('ไม่ยันยอดกับใบสั่งผลิต', rdi.wo_check.length, 0);
+const htmlI = T.renderReadyPage(rdi);
+eq('บอกบนหน้าว่ายังไม่มีใบให้เทียบ', htmlI.indexOf('ยังไม่มีใบสั่งผลิตให้เทียบ') >= 0, true);
+eq('บอกฐานจำนวนบนหน้า', htmlI.indexOf('ขนาด batch ของ revision') >= 0, true);
+
+console.log('\n── กรอกจำนวนเองทับฐานได้ ──');
+const ri2 = T.readReadyParams({ ready: '10010900101', rloc: '10', rqty: '6600' });
+const rdi2 = T.buildReady(ri2);
+rdi2.params = ri2;
+eq('ใช้จำนวนที่กรอก', rdi2.root_qty, 6600);
+eq('บอกว่ากรอกเอง', rdi2.qty_basis, 'manual');
+eq('ปริมาณสองเท่าของ batch', rdi2.nodes.filter(n => n.item_id === '701' && n.depth === 1)[0].need, 66, 1e-12);
+
+console.log('\n── หาไม่เจอทั้งใบสั่งผลิตและรหัสสินค้า ──');
+FX = Object.assign({}, BASE, { 'WO header': [], 'สินค้าจากรหัส': [] });
+const rdx = T.buildReady(T.readReadyParams({ ready: 'ไม่มีจริง' }));
+eq('บอกว่าหาไม่เจอทั้งสองแบบ', rdx.error.indexOf('ไม่พบทั้งใบสั่งผลิตและรหัสสินค้า') >= 0, true);
+
+FX = BASE;
 console.log('\n── สินค้าที่ใบสั่งผลิตนี้ผลิตเอง ต้องมี routing ของคลังนั้นจริง ──');
 FX = Object.assign({}, BASE, {
   'Manufacturing routing': BASE['Manufacturing routing'].map(r =>

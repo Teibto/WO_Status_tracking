@@ -1813,7 +1813,7 @@ ${costCols}
         // ทำให้ ↗ ไปอยู่ต่อท้ายเลขพอดี กดโดนลิงก์ record แทนรายงานเป็นประจำ
         + `<td><a class="drill" href="${selfUrl(Object.assign(filterParams(sm.filters), { wo: r.wo_no }))}"
               title="ดูที่มาของต้นทุนใบนี้ — เปิดหน้าเจาะลึกในรายงานนี้">${esc(r.wo_no)}</a>`
-        + `<div class="nsrec"><a href="${selfUrl({ ready: r.wo_no })}"
+        + `<div class="nsrec"><a href="${selfUrl(Object.assign(filterParams(sm.filters), { ready: r.wo_no }))}"
               title="ตรวจว่า master ของสายการผลิตใบนี้ตั้งครบหรือยัง">ตรวจความพร้อม master</a></div>`
         + `<div class="nsrec">${tranLink('workorder', r.wo_id, 'เปิดใบสั่งผลิตใน NetSuite ↗')}</div></td>`
         + `<td>${esc(r.wo_date)}</td>`
@@ -3030,38 +3030,56 @@ ${costCols}
   }
 
   /**
-   * ประกอบผลตรวจความพร้อมของ WO หนึ่งใบ
-   * เอาสินค้าและจำนวนจากใบสั่งผลิตที่เปิดไว้แล้ว (ผู้ใช้เลือกฐานนี้ ไม่ใช่กรอกจำนวนเอง)
-   * แล้วไล่ BOM ลงทุกระดับ
+   * ประกอบผลตรวจความพร้อมของสินค้าที่จะผลิต
+   *
+   * สองทางเข้า ผลตรวจ master เหมือนกันทั้งคู่
+   *   เลขที่ใบสั่งผลิต → เอาสินค้า จำนวน คลัง และวันที่จากใบนั้น (ทางหลัก)
+   *   รหัสสินค้า      → ใช้ตอนยังไม่มีใบสั่งผลิต เช่นวันตั้ง master ก่อนเริ่มทดสอบ
+   *                     จำนวนใช้ขนาด batch ของ revision · คลังและวันที่มาจากช่องกรอก
    */
   function buildReady(rp) {
-    // ช่องเลือกคลังต้องมีตัวเลือกให้เห็นแม้ตอนหาใบสั่งผลิตไม่เจอ ไม่งั้นแก้เลขแล้วเลือกคลังใหม่ไม่ได้
+    // ช่องเลือกคลังต้องมีตัวเลือกให้เห็นแม้ตอนหาไม่เจอ ไม่งั้นแก้เลขแล้วเลือกคลังใหม่ไม่ได้
     const blank = { ok: false, woKey: rp.woKey, params: rp, locations: [], stock_locs: [],
       qty_from_wo: 0, date_iso: '' };
     const woRows = qWO(rp.woKey);
-    if (!woRows.length) {
-      blank.locations = (qReadyLocations().rows || []);
-      blank.error = 'ไม่พบใบสั่งผลิตเลขที่นี้';
-      return blank;
-    }
-    const wo = woRows[0];
-    const woId = asStr(wo.wo_id);
-    const lines = qWOLines([woId]);
-    const fg = lines.filter(r => asStr(r.mainline) === 'T')[0] || null;
-    if (!fg) {
-      blank.locations = (qReadyLocations().rows || []);
-      blank.wo = wo;
-      blank.error = 'ใบสั่งผลิตนี้ไม่มีบรรทัดสินค้าที่ผลิต';
-      return blank;
+    let wo = null, woId = '', lines = [], fg = null, basis = 'wo';
+
+    if (woRows.length) {
+      wo = woRows[0];
+      woId = asStr(wo.wo_id);
+      lines = qWOLines([woId]);
+      fg = lines.filter(r => asStr(r.mainline) === 'T')[0] || null;
+      if (!fg) {
+        blank.locations = (qReadyLocations().rows || []);
+        blank.wo = wo;
+        blank.error = 'ใบสั่งผลิตนี้ไม่มีบรรทัดสินค้าที่ผลิต';
+        return blank;
+      }
+    } else {
+      const itemRows = qReadyItem(rp.woKey);
+      if (!itemRows.length) {
+        blank.locations = (qReadyLocations().rows || []);
+        blank.error = 'ไม่พบทั้งใบสั่งผลิตและรหัสสินค้าที่ตรงกับ "' + rp.woKey + '"';
+        return blank;
+      }
+      basis = 'item';
+      const it = itemRows[0];
+      wo = { wo_no: '', wo_date: '', wo_date_iso: '' };
+      fg = {
+        item_id: it.item_id, item_code: it.item_code, item_name: it.item_name,
+        quantity: 0, unit_name: it.stock_unit_name, sub_id: '',
+        item_inactive: it.item_inactive
+      };
     }
 
     // บริษัทและคลังอ่านจากบรรทัดเอกสาร — transaction.subsidiary เป็น NOT_EXPOSED (ข้อ 6)
+    // ทางเข้าด้วยรหัสสินค้าไม่มีเอกสารให้อ่าน จึงไม่จำกัดบริษัท และใช้คลังที่ผู้ใช้เลือกเป็นคลังผลิต
     const subId = asStr(fg.sub_id);
-    const woLoc = qReadyWOLocation(woId);
+    const woLoc = basis === 'wo'
+      ? qReadyWOLocation(woId)
+      : { loc_id: rp.locIds.length ? rp.locIds[0] : '', loc_name: '' };
     const locId = asStr(woLoc.loc_id);
-    const dateIso = rp.asOf || asStr(wo.wo_date_iso);
-    const rootQty = rp.qtyOverride && isFinite(Number(rp.qtyOverride))
-      ? Number(rp.qtyOverride) : Math.abs(asNum(fg.quantity));
+    const dateIso = rp.asOf || (basis === 'wo' ? asStr(wo.wo_date_iso) : todayIso());
 
     const locList = qReadyLocations();
     // คลังที่ใช้เทียบสต๊อก: ผู้ใช้เลือกได้หลายคลัง (คลังป้อน + คลังผลิต) ค่าเริ่มต้น = คลังของ WO
@@ -3069,6 +3087,19 @@ ${costCols}
     const stockLocs = rp.locAll ? [] : (rp.locIds.length ? rp.locIds : (locId ? [locId] : []));
 
     const st = loadReadyStructure([asStr(fg.item_id)], locId, dateIso);
+
+    // จำนวนตั้งต้น: ใบสั่งผลิตมีจำนวนอยู่แล้ว · ทางเข้าด้วยรหัสสินค้าใช้ขนาด batch ของ revision
+    // ต้องบอกบนหน้าว่าใช้ฐานไหน ไม่งั้นอ่านตัวเลขผิดฐานแล้วไม่รู้ตัว
+    const rootEntry = st.byItem[asStr(fg.item_id)] || null;
+    const batchQty = rootEntry ? asNum(rootEntry.batchQty) : 0;
+    let qtyBasis = 'manual';
+    let rootQty = Number(rp.qtyOverride);
+    if (!rp.qtyOverride || !isFinite(rootQty) || rootQty <= 0) {
+      if (basis === 'wo') { rootQty = Math.abs(asNum(fg.quantity)); qtyBasis = 'wo'; }
+      else if (batchQty) { rootQty = batchQty; qtyBasis = 'batch'; }
+      else { rootQty = 1; qtyBasis = 'one'; }
+    }
+    const defaultQty = basis === 'wo' ? Math.abs(asNum(fg.quantity)) : batchQty;
 
     const ctx = {
       uomById: groupOne(qUOM(), 'uom_id'),
@@ -3143,7 +3174,7 @@ ${costCols}
         const k = asStr(r.item_id);
         woComp[k] = (woComp[k] || 0) + Math.abs(asNum(r.quantity));
       });
-    const lvl1 = walk.nodes.filter(n => n.depth === 1);
+    const lvl1 = basis === 'wo' ? walk.nodes.filter(n => n.depth === 1) : [];
     const woCheck = lvl1.map(n => {
       const onWo = woComp[n.item_id];
       const has = onWo != null;
@@ -3160,25 +3191,29 @@ ${costCols}
         return { item_id: k, code: asStr(ln.item_code), qty: woComp[k], unit_name: asStr(ln.unit_name) };
       });
 
+    const locRow = (locList.rows || []).filter(l => asStr(l.loc_id) === locId)[0] || null;
+
     return {
       ok: true,
       woKey: rp.woKey,
       params: rp,
+      basis: basis,
       wo: wo,
       wo_id: woId,
       fg: fg,
       sub_id: subId,
       loc_id: locId,
-      loc_name: asStr(woLoc.loc_name),
+      loc_name: asStr(woLoc.loc_name) || (locRow ? asStr(locRow.loc_name) : ''),
       date_iso: dateIso,
       root_qty: rootQty,
-      qty_from_wo: Math.abs(asNum(fg.quantity)),
+      qty_basis: qtyBasis,
+      batch_qty: batchQty,
+      qty_from_wo: defaultQty,
       locations: locList.rows || [],
       stock_locs: stockLocs,
       // ระดับที่รายงานไล่ได้จริง = ชั้นที่ลึกสุดในต้นไม้ ไม่ใช่รอบที่ loop โหลดโครง
       // (โครงชั้นสุดท้ายถูกโหลดพร้อมกับชั้นก่อนหน้า จึงนับจาก node ตรง ๆ ไม่ให้ต่างกัน 1)
       depth_reached: walk.nodes.reduce((m, n) => (n.depth > m ? n.depth : m), 0),
-      levels_loaded: st.depthReached,
       struct_failed: st.failed,
       stock_failed: stock.failed,
       nodes: walk.nodes,
@@ -3190,6 +3225,28 @@ ${costCols}
       routing_failed: routings.failed,
       cost_ref_failed: costRefs.failed
     };
+  }
+
+  /**
+   * หาสินค้าจากรหัส — ใช้ตอนยังไม่มีใบสั่งผลิต
+   * วันตั้ง master (D1 ของ UAT) ยังไม่มีใบสั่งผลิตให้อ้าง แต่ต้องตรวจ master ให้ได้แล้ว
+   * รับได้ทั้งรหัสสินค้าและ internal id
+   */
+  function qReadyItem(key) {
+    const k = asStr(key).trim();
+    if (!k) return [];
+    const byId = /^\d+$/.test(k);
+    return runSQL('สินค้าจากรหัส', `
+      SELECT I.id                    AS item_id,
+             I.itemid                AS item_code,
+             I.displayname           AS item_name,
+             I.itemtype              AS item_type,
+             NVL(I.isinactive, 'F')  AS item_inactive,
+             I.stockunit             AS stock_unit_id,
+             BUILTIN.DF(I.stockunit) AS stock_unit_name
+      FROM item I
+      WHERE UPPER(I.itemid) = UPPER(?) ${byId ? 'OR I.id = ' + k : ''}
+    `, [k]);
   }
 
   /** คลังของใบสั่งผลิต — อ่านจากบรรทัดหลัก */
@@ -3295,6 +3352,15 @@ ${costCols}
     const ops = n.steps.map(s => asStr(s.op_name)).join(' → ');
     if (noWc) return readyVerdict('bad', ops + ' — ' + noWc + ' ขั้นตอนไม่ได้ระบุ work center');
     if (badWc) return readyVerdict('bad', ops + ' — work center ' + badWc + ' ตัวใช้งานไม่ได้');
+    // work center ที่ผูกคลังไว้คนละคลังกับ routing = การตั้งค่าที่ขัดกันเอง (M-06)
+    // เทียบกับคลังของ routing ไม่ใช่คลังของ FG จึงใช้ได้ทุกชั้น
+    const wrongLocWc = n.wcs.filter(w => w.wc && asStr(w.wc.wc_loc)
+      && asStr(rt.routing.loc_id) && asStr(w.wc.wc_loc) !== asStr(rt.routing.loc_id));
+    if (wrongLocWc.length) {
+      return readyVerdict('warn', ops + ' — work center '
+        + wrongLocWc.map(w => asStr(w.wc.wc_name) + ' (' + (asStr(w.wc.wc_loc_name) || 'ไม่ระบุ') + ')').join(' · ')
+        + ' ผูกคลังไว้คนละคลังกับ routing (' + asStr(rt.routing.loc_name) + ')');
+    }
     // คลังของ routing บอกไว้เป็นข้อเท็จจริง — ของกึ่งสำเร็จรูปถูกผลิตที่คลังของตัวเอง
     // ไม่ใช่คลังของ FG จึงไม่ใช่ความผิดพลาด (ข้อมูลจริงบน SB1: semi ผลิตที่ RMRD)
     const at = asStr(rt.routing.loc_name) ? ' @' + asStr(rt.routing.loc_name) : ' (ไม่ระบุคลัง)';
@@ -3377,8 +3443,9 @@ ${costCols}
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
       <input type="hidden" name="rloc" id="rlocval" value="${esc(p.locAll ? 'all' : (rd.stock_locs || []).join(','))}">
-      <label>เลขที่ใบสั่งผลิต</label>
-      <input type="text" name="ready" value="${esc(rd.woKey)}" placeholder="WO-FSC-00000392" style="width:170px">
+      <label>เลขที่ใบสั่งผลิต หรือรหัสสินค้า</label>
+      <input type="text" name="ready" value="${esc(rd.woKey)}"
+        placeholder="WO-FSC-00000392 หรือ 10010900101" style="width:210px">
       &nbsp;<label>วันที่ที่ใช้ตรวจ master</label>
       <input type="text" name="rdate" value="${esc(p.asOf || '')}" placeholder="${esc(asStr(rd.date_iso))}" style="width:110px">
       &nbsp;<label>จำนวนที่จะผลิต</label>
@@ -3389,8 +3456,10 @@ ${costCols}
         <option value="all"${p.locAll ? ' selected' : ''}>— ทุกคลัง —</option>${opts}</select>
       &nbsp;<button type="submit">ตรวจความพร้อม</button>
       <div style="font-size:11px;color:#57606a;margin-top:6px">
-        ค่าเริ่มต้น: จำนวนและวันที่มาจากใบสั่งผลิต · คลัง = คลังที่ผลิตของใบนั้น
-        · เลือกคลังป้อน (เช่น RMRD · WRM-NP) เพิ่มด้วย ถ้าของยังรออยู่ที่คลังป้อนแล้วย้ายเข้าด้วย TO
+        ใส่เลขที่ใบสั่งผลิต: จำนวน วันที่ และคลัง มาจากใบนั้น · ใส่รหัสสินค้า (ยังไม่มีใบสั่งผลิต):
+        จำนวนใช้ขนาด batch ของ revision · วันที่ = วันนี้ · คลังแรกที่เลือกถูกใช้เป็นคลังผลิต
+        <br>เลือกคลังป้อน (เช่น RMRD · WRM-NP) เพิ่มด้วย ถ้าของยังรออยู่ที่คลังป้อนแล้วย้ายเข้าด้วย TO
+        · ตรวจ master สำหรับ UAT ให้ใส่วันที่ที่เอกสารจะลง เช่น 2026-08-13
       </div>
     </form>`;
   }
@@ -3418,7 +3487,9 @@ ${costCols}
       + kpi('สินค้าในสายการผลิต · ผลิตเอง', esc(String(rd.nodes.length)) + ' · ' + esc(String(madeCount)))
       + kpi('ระดับ BOM ที่ไล่ได้', esc(String(rd.depth_reached)))
       + kpi('วัตถุดิบที่ของไม่พอ', esc(String(shortItems)), shortItems ? 'bad' : 'ok')
-      + kpi('ยอดชั้นที่ 1 ไม่ตรงบรรทัดบน WO', esc(String(woBad)), woBad ? 'warn' : 'ok')
+      + (rd.basis === 'wo'
+        ? kpi('ยอดชั้นที่ 1 ไม่ตรงบรรทัดบน WO', esc(String(woBad)), woBad ? 'warn' : 'ok')
+        : kpi('ยันยอดกับใบสั่งผลิต', 'ยังไม่มีใบ', 'info'))
       + '</div>';
   }
 
@@ -3532,20 +3603,37 @@ ${costCols}
     return h;
   }
 
+  /** ฐานของจำนวนที่ใช้คิด — ต้องบอกทุกครั้ง ไม่งั้นอ่านตัวเลขผิดฐานแล้วไม่รู้ตัว */
+  const QTY_BASIS_LABEL = {
+    wo: 'จำนวนบนใบสั่งผลิต',
+    batch: 'ขนาด batch ของ revision',
+    one: 'ไม่ได้ตั้งขนาด batch — ใช้ 1 หน่วยเป็นฐาน',
+    manual: 'กรอกเอง'
+  };
+
   function renderReadyHeader(rd) {
     const w = rd.wo;
-    const qtyNote = rd.params.qtyOverride
-      ? ' <span class="tag">ปรับจำนวนเอง จากใบจริง ' + esc(fmt(rd.qty_from_wo, 4)) + '</span>' : '';
-    const dateNote = rd.params.asOf
-      ? ' <span class="tag">ระบุเอง</span>' : ' <span class="tag">วันที่ใบสั่งผลิต</span>';
-    return `<div class="card"><table class="kv">
-      <tr><td>ใบสั่งผลิต</td><td>${tranLink('workorder', rd.wo_id, asStr(w.wo_no))}
+    const byItem = rd.basis === 'item';
+    const qtyNote = ' <span class="tag">' + esc(QTY_BASIS_LABEL[rd.qty_basis] || '') + '</span>'
+      + (rd.qty_basis === 'manual' && rd.qty_from_wo
+        ? ' <span class="tag">ค่าตั้งต้น ' + esc(fmt(rd.qty_from_wo, 4)) + '</span>' : '');
+    const dateNote = rd.params.asOf ? ' <span class="tag">ระบุเอง</span>'
+      : (byItem ? ' <span class="tag">วันนี้</span>' : ' <span class="tag">วันที่ใบสั่งผลิต</span>');
+    const first = byItem
+      ? `<tr><td>ทางเข้า</td><td>รหัสสินค้า <span class="tag">ยังไม่มีใบสั่งผลิต</span></td>
+          <td>คลังที่ใช้เป็นคลังผลิต</td><td>${rd.loc_id
+            ? esc(rd.loc_name) + ' <span class="tag">id ' + esc(rd.loc_id) + '</span>'
+            : '<span class="miss">ไม่ได้เลือก — ข้ามการตรวจ BOM/routing ตามคลัง</span>'}</td></tr>`
+      : `<tr><td>ใบสั่งผลิต</td><td>${tranLink('workorder', rd.wo_id, asStr(w.wo_no))}
           <span class="tag">id ${esc(rd.wo_id)}</span></td>
-          <td>คลังที่ผลิต</td><td>${esc(rd.loc_name)} <span class="tag">id ${esc(rd.loc_id)}</span></td></tr>
+          <td>คลังที่ผลิต</td><td>${esc(rd.loc_name)} <span class="tag">id ${esc(rd.loc_id)}</span></td></tr>`;
+    return `<div class="card"><table class="kv">
+      ${first}
       <tr><td>สินค้าที่ผลิต</td><td>${itemLink(rd.fg.item_id, asStr(rd.fg.item_code) + ' — ' + asStr(rd.fg.item_name))}</td>
           <td>จำนวนที่ใช้คิด</td><td><b>${esc(fmt(rd.root_qty, 4))}</b> ${esc(asStr(rd.fg.unit_name))}${qtyNote}</td></tr>
       <tr><td>วันที่ตรวจ master</td><td>${esc(rd.date_iso)}${dateNote}</td>
-          <td>บริษัท (id)</td><td>${esc(rd.sub_id)}</td></tr>
+          <td>บริษัท (id)</td><td>${rd.sub_id ? esc(rd.sub_id)
+            : '<span class="info">ไม่จำกัด (ไม่มีเอกสารให้อ่าน)</span>'}</td></tr>
     </table></div>`;
   }
 
@@ -3553,10 +3641,11 @@ ${costCols}
     let h = CSS + READY_CSS + '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
       + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
       + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
-    if (rd.woKey) {
-      h += '<div class="crumb"><a href="' + selfUrl({ ready: '' }) + '">← กลับภาพรวมต้นทุน</a>'
-        + ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a></div>';
-    }
+    h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
+      + '">← กลับภาพรวมต้นทุน</a>'
+      + (rd.ok && rd.basis === 'wo'
+        ? ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
+      + '</div>';
     h += renderReadyForm(rd);
     if (!rd.ok) {
       return h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>' + renderQLog();
@@ -3568,7 +3657,15 @@ ${costCols}
     }
     h += '<h2>สายการผลิตตามชั้น BOM</h2>' + renderReadyTree(rd);
     h += '<h2>ของที่ต้องมีในคลัง</h2>' + renderReadyStock(rd);
-    h += '<h2>ยันยอดกับใบสั่งผลิต</h2>' + renderReadyWoCheck(rd);
+    if (rd.basis === 'wo') {
+      h += '<h2>ยันยอดกับใบสั่งผลิต</h2>' + renderReadyWoCheck(rd);
+    } else {
+      // ทางเข้าด้วยรหัสสินค้าไม่มีบรรทัดเอกสารให้ยันยอด จึงต้องบอกตรง ๆ ว่าตัวเลขยังไม่ถูกยัน
+      h += '<h2>ยันยอดกับใบสั่งผลิต</h2><p class="sub">ยังไม่มีใบสั่งผลิตให้เทียบ '
+        + 'ปริมาณที่แสดงคิดจาก BOM โดยตรงบนฐาน <b>' + esc(fmt(rd.root_qty, 4)) + ' '
+        + esc(asStr(rd.fg.unit_name)) + '</b> (' + esc(QTY_BASIS_LABEL[rd.qty_basis] || '') + ') '
+        + 'เปิดรายงานนี้ซ้ำด้วยเลขที่ใบสั่งผลิตหลังเปิดใบแล้ว จะได้ตารางยันยอดรายบรรทัด</p>';
+    }
     h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
     return h;
   }
@@ -3615,6 +3712,8 @@ ${costCols}
         rd = buildReady(rp);
         rd.woKey = rp.woKey;
         rd.params = rp;
+        // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม (เหมือนชั้นเจาะลึก)
+        rd.filters = filters;
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
         ctx.response.write(CSS + READY_CSS + '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
