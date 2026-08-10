@@ -67,6 +67,12 @@ const FX = {
       production_line: 'LINE5', item_id: 607, sub_id: 2,
       item_code: '20010100011', item_name: 'FG ผูก summary cost ไม่ครบ', wo_qty: 54000,
       unit_name: 'BOTTLE', base_per_carton: 12 },
+    // 1012 = ตัวเลขจริงของ WO-FSC-00000227 บน SB1 (ยอดวัตถุดิบถูกนับซ้ำ 10 ใบ)
+    // ล็อกไว้เป็น golden ของการแยกส่วนผลต่าง — บั๊กฝั่ง engine ที่สร้างใบ summary cost
+    { wo_id: 1012, wo_no: 'WOFSC00000227R', wo_date: '31/7/2026', wo_date_iso: '2026-07-31',
+      production_line: 'LINE5', item_id: 608, sub_id: 2,
+      item_code: '20010100012', item_name: 'FG วัตถุดิบถูกนับซ้ำ', wo_qty: 180000,
+      unit_name: 'BOTTLE', base_per_carton: 12 },
     // บรรทัด mainline='T' ซ้ำของใบเดิม — ต้องถูกตัดออก ไม่งั้นยอดของใบนี้ถูกบวกสองครั้ง
     { wo_id: 1001, wo_no: 'WOFSC00000470', wo_date: '23/7/2026', wo_date_iso: '2026-07-23',
       wo_status: 'Released', production_line: 'LINE1', item_id: 501,
@@ -98,6 +104,8 @@ const FX = {
     { wo_id: 1010, woc_qty: 165600, woc_count: 30, woc_fg_count: 10, woc_sc_linked: 10, woc_in_range: 30,
       woc_last: '31/07/2026', woc_last_iso: '2026-07-31' },
     { wo_id: 1011, woc_qty: 54000, woc_count: 9, woc_fg_count: 3, woc_sc_linked: 2, woc_in_range: 9,
+      woc_last: '31/07/2026', woc_last_iso: '2026-07-31' },
+    { wo_id: 1012, woc_qty: 165600, woc_count: 30, woc_fg_count: 10, woc_sc_linked: 10, woc_in_range: 30,
       woc_last: '31/07/2026', woc_last_iso: '2026-07-31' }
   ],
   'ภาพรวม — วัตถุดิบและบรรจุภัณฑ์': [
@@ -109,14 +117,17 @@ const FX = {
     { wo_id: 1008, rm_cost: 1000, doc_count: 1, item_count: 2 },
     { wo_id: 1009, rm_cost: 1000, doc_count: 1, item_count: 2 },
     { wo_id: 1010, rm_cost: 1000, doc_count: 10, item_count: 5 },
-    { wo_id: 1011, rm_cost: 1000, doc_count: 3, item_count: 5 }
+    { wo_id: 1011, rm_cost: 1000, doc_count: 3, item_count: 5 },
+    // ใบเบิกใบเดียวสำหรับทั้ง 10 batch — ต้นตอที่ทำให้ยอดถูกนับซ้ำได้
+    { wo_id: 1012, rm_cost: 173138.54, doc_count: 1, item_count: 19 }
   ],
   'ภาพรวม — ต้นทุนแปรสภาพ': [
     { wo_id: 1001, dl_oh_std: 70298.58, dl_oh_act: 70298.58, ca_docs: 1 },
     { wo_id: 1003, dl_oh_std: 100, dl_oh_act: 100, ca_docs: 1 },
     { wo_id: 1004, dl_oh_std: 21754, dl_oh_act: 21754, ca_docs: 1 },
     { wo_id: 1010, dl_oh_std: 500, dl_oh_act: 500, ca_docs: 10 },
-    { wo_id: 1011, dl_oh_std: 300, dl_oh_act: 300, ca_docs: 3 }
+    { wo_id: 1011, dl_oh_std: 300, dl_oh_act: 300, ca_docs: 3 },
+    { wo_id: 1012, dl_oh_std: 60710, dl_oh_act: 60710, ca_docs: 3 }
   ],
   // Cost ref — ค่าจริงของ record 17 บน SB1 คือ option 2 (Using Cost from Record)
   // ช่องต้นทุนเป็น 0 สองช่อง ที่เหลือว่าง (null) · header ครอบทั้งปี 2026 บริษัท 2
@@ -170,7 +181,9 @@ const FX = {
     // 10 ใบมีมูลค่า ผูกครบทั้ง 10 รอบปิดงาน = ถูกต้อง (นี่คือเคสที่ระบบเดิมรายงานผิดว่า "ตีราคาซ้ำ")
     { wo_id: 1010, sc_value: 1500, sc_docs: 10, sc_docs_valued: 10, sc_docs_orphan: 0 },
     // ปิดงาน 3 รอบ มีใบ summary cost 2 ใบ ผูกครบทั้งสองใบ = ไม่ซ้ำ แต่ขาดไป 1 รอบ
-    { wo_id: 1011, sc_value: 1300, sc_docs: 2, sc_docs_valued: 2, sc_docs_orphan: 0 }
+    { wo_id: 1011, sc_value: 1300, sc_docs: 2, sc_docs_valued: 2, sc_docs_orphan: 0 },
+    // 9 x 179,396.34 + 174,539.54 = 1,789,106.60 (ค่าจริงบน SB1)
+    { wo_id: 1012, sc_value: 1789106.60, sc_docs: 10, sc_docs_valued: 10, sc_docs_orphan: 0 }
   ]
 };
 
@@ -204,7 +217,7 @@ global.__setLabel = (l) => { CURRENT_LABEL = l; };
 
 // ดึงฟังก์ชันภายในออกมาทดสอบ: เติม export ชั่วคราวก่อน return ของ define
 const patched = src.replace('return { onRequest: onRequest };',
-  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, renderSummaryGrid, summaryLink } };');
+  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, renderSummaryGrid, summaryLink, explainSummaryGap } };');
 
 eval(patched);
 
@@ -275,6 +288,30 @@ eq('บอกว่าขาดไป 1 รอบ',
   ru.notes.some(n => n.text.indexOf('ปิดงานผลิต 3 รอบ แต่มีใบ MFG Summary Cost ผูกแค่ 2 ใบ') >= 0), true);
 eq('ห้ามกล่าวหาว่าซ้ำ', ru.notes.some(n => n.text.indexOf('ตีราคาซ้ำ') >= 0), false);
 
+// ── ผลต่าง summary cost: ยอดวัตถุดิบถูกนับซ้ำเท่าจำนวนใบ (บั๊กฝั่ง engine ที่สร้างเอกสาร) ──
+// ตัวเลขจริงของ WO-FSC-00000227 บน SB1 — ปิดสมการได้ทั้งก้อน จึงล็อกไว้เป็น golden
+console.log('\n── แยกส่วนผลต่าง: ยอดใบเบิกวัตถุดิบถูกนับซ้ำ 10 ใบ ──');
+const rd = sm.rows.filter(x => x.wo_no === 'WOFSC00000227R')[0];
+eq('ใบเบิกวัตถุดิบใบเดียว', rd.rm_docs, 1);
+eq('ยอดวัตถุดิบ', rd.rm_cost, 173138.54);
+eq('ต้นทุนแปรสภาพ', rd.dl_oh_cost, 60710);
+eq('ต้นทุนที่ควรเป็น', rd.cost, 233848.54);
+eq('Summary Cost Item เป็นจริง', rd.sc_value, 1789106.60);
+eq('ผลต่าง', rd.sc_gap, 1555258.06, 1e-6);
+// 9 x 173,138.54 = 1,558,246.86 · เกินผลต่างจริงอยู่ 2,988.80 (แปรสภาพของ batch สุดท้ายที่ใบคิดต่ำไป)
+eq('ยอดที่นับเกิน = (10-1) x ยอดวัตถุดิบ', rd.sc_rm_overcount, 1558246.86, 1e-6);
+eq('อธิบายผลต่างได้เกือบทั้งก้อน', rd.sc_rm_overcount / rd.sc_gap, 1.00192, 1e-5);
+eq('ขึ้นหมายเหตุแยกส่วนผลต่าง',
+  rd.notes.some(n => n.text.indexOf('ถูกนับซ้ำใน 10 ใบ summary cost') >= 0), true);
+eq('หมายเหตุชี้ไปฝั่งสร้างเอกสาร',
+  rd.notes.some(n => n.text.indexOf('ประเด็นฝั่งสร้างเอกสาร') >= 0), true);
+eq('เป็น warn ไม่ใช่ bad (ไม่ใช่งานที่ฝั่งนี้แก้)',
+  rd.notes.filter(n => n.cls === 'bad').length, 0);
+// ใบที่สมการปิดพอดี ต้องไม่ขึ้นหมายเหตุนี้ ไม่งั้นกลายเป็น noise ทุกใบที่มีหลาย batch
+eq('ใบที่สมการปิดไม่ขึ้นหมายเหตุแยกส่วน',
+  rb.notes.some(n => n.text.indexOf('ถูกนับซ้ำ') >= 0), false);
+eq('ใบที่สมการปิด overcount เป็น 0 จริง', rb.sc_gap, 0, 1e-9);
+
 console.log('\n── ปันส่วนแปรสภาพแล้วแต่ยังไม่เบิกวัตถุดิบ (เคสที่พบมากใน SB1) ──');
 const r4 = sm.rows.filter(x => x.wo_no === 'WOFSC00000496')[0];
 eq('rm_cost เป็น 0 จริง', r4.rm_cost, 0);
@@ -342,12 +379,12 @@ const fdef = T.readFilters({});
 eq('ไม่ส่งอะไรมา = เดือนปัจจุบันทั้งเดือน', fdef.from, fdef.month + '-01');
 
 console.log('\n── โครงผลลัพธ์ (บรรทัด mainline ซ้ำต้องถูกตัด) ──');
-eq('shown', sm.shown, 11);
-eq('total', sm.total, 11);
+eq('shown', sm.shown, 12);
+eq('total', sm.total, 12);
 eq('truncated', sm.truncated, false);
 eq('WOFSC00000470 โผล่ครั้งเดียว', sm.rows.filter(x => x.wo_no === 'WOFSC00000470').length, 1);
 let sumRm = 0; sm.rows.forEach(x => { sumRm += x.rm_cost; });
-eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 8, 1e-8);
+eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 8 + 173138.54, 1e-8);
 
 console.log('\n── render ต้องไม่ throw และมีลิงก์เจาะลึก ──');
 const html = T.renderSummaryPage(sm);
@@ -423,7 +460,7 @@ FX['Cost ref ของสินค้าที่ผลิต'] = FX_CR;
 console.log('\n── ตัด max แล้วต้องบอกว่าตัด ──');
 const sm2 = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31', max: '1' }));
 eq('shown', sm2.shown, 1);
-eq('total', sm2.total, 11);
+eq('total', sm2.total, 12);
 eq('truncated', sm2.truncated, true);
 eq('html แจ้งการตัด', T.renderSummaryPage(sm2).indexOf('แต่แสดงเพียง') > 0, true);
 
@@ -465,6 +502,64 @@ const lkMove = T.summaryLink([scLine(9001, -100)], [wocLine(3, 50, 8888)]);
 eq('id ที่ไม่ใช่ใบ summary cost ไม่นับว่าผูก', lkMove.linkedDocs, 0);
 eq('ใบ summary cost จึงกลายเป็น orphan', lkMove.orphanDocs.join(','), '9001');
 eq('และใบปิดงานนับว่ายังไม่ผูก', lkMove.unlinkedWocs.length, 1);
+
+// ── ชั้นเจาะลึก: explainSummaryGap ต้องแยกส่วนผลต่างได้ตรงกับตัวเลขจริงของ WO-FSC-00000227 ──
+console.log('\n── explainSummaryGap (ชั้นเจาะลึก) ──');
+// สร้าง s แบบย่อจากค่าจริงบน SB1: 10 batch · ใบเบิกใบเดียว 173,138.54 · แปรสภาพ batch ละ 6,257.80
+// (batch สุดท้ายผลิต 3,600 จาก 18,000 แปรสภาพจึงเป็น 4,389.80 และใบคิดไว้แค่ 1,401.00)
+const BATCHES = [3924, 3934, 3935, 3936, 3937, 3938, 3939, 3940, 3941, 3942];
+const gWocs = [], gSc = [], gCa = [];
+BATCHES.forEach((b, i) => {
+  const last = i === BATCHES.length - 1;
+  const iaId = 184213 + i * 2;
+  const fgWocId = 184214 + i * 2;
+  const convBatch = last ? 4389.8 : 6257.8;
+  const onDoc = last ? 1401.0 : 6257.8;       // ยอดแปรสภาพที่ "ใบ summary cost" คิดไว้
+  // ใบปิดงานขั้นกลางสองใบ (ปริมาณ 0) + ใบขั้นสุดท้ายที่ผูกใบ summary cost
+  gWocs.push({ woc_id: 900 + i * 3, woc_no: 'WOC-mix-' + b, batch_id: b, fg_qty: 0, sc_ia: null });
+  gWocs.push({ woc_id: 901 + i * 3, woc_no: 'WOC-fil-' + b, batch_id: b, fg_qty: 0, sc_ia: null });
+  gWocs.push({ woc_id: fgWocId, woc_no: 'WOC-pack-' + b, batch_id: b,
+    fg_qty: last ? 3600 : 18000, sc_ia: iaId });
+  gSc.push({ tran_id: iaId, doc_no: 'IA-' + iaId, recordtype: 'inventoryadjustment',
+    amount: -(173138.54 + onDoc) });
+  // เอกสารปันส่วนอ้าง WOC ราย ขั้นตอน — ใส่ยอดของ batch ไว้ที่ใบปิดงานขั้นสุดท้ายของ batch นั้น
+  gCa.push({ woc_id: fgWocId, cost_class: 7, std_cost: convBatch, act_cost: convBatch });
+});
+const gS = {
+  rmTotal: 173138.54, convStd: 60710, summaryLines: gSc, wocs: gWocs, ca: gCa,
+  issueDocs: [190321], summaryLink: T.summaryLink(gSc, gWocs)
+};
+const g = T.explainSummaryGap(gS, {});
+eq('ผลต่างตรงกับที่ชั้นภาพรวมได้', g.gap, 1555258.06, 1e-6);
+eq('เข้าลายเซ็นอาการ (ทุกใบมียอดวัตถุดิบทั้งก้อนอยู่ข้างใน)', g.detected, true);
+eq('ใบ summary cost ที่มีมูลค่า', g.docs, 10);
+eq('ใบเบิกวัตถุดิบใบเดียว', g.rmDocs, 1);
+eq('ยอดที่นับเกิน', g.overCount, 1558246.86, 1e-6);
+eq('เหลือที่อธิบายไม่ได้ = แปรสภาพ batch สุดท้ายที่ใบคิดต่ำไป', g.residual, -2988.80, 1e-6);
+// ใบ 9 ใบแรกต้องปิดพอดี ใบสุดท้ายเท่านั้นที่ต่าง — ยืนยันว่าแยกส่วนราย batch ถูก
+eq('เก้าใบแรกแปรสภาพตรงกับที่ปันส่วน',
+  g.rows.slice(0, 9).every(r => Math.abs(r.conv_diff) < 0.005), true);
+eq('ใบสุดท้ายคิดแปรสภาพต่ำไป 2,988.80', g.rows[9].conv_diff, -2988.80, 1e-6);
+eq('ใบสุดท้ายผูก batch ถูก', g.rows[9].batch_id, '3942');
+eq('หักยอดวัตถุดิบแล้วเหลือเท่าที่ใบคิดไว้', g.rows[9].less_rm, 1401.0, 1e-6);
+
+// ใบเดียวไม่เข้าลายเซ็น — ห้ามสรุปว่านับซ้ำ
+const g1 = T.explainSummaryGap({
+  rmTotal: 1000, convStd: 100, summaryLines: [{ tran_id: 1, doc_no: 'IA-1', amount: -5000 }],
+  wocs: [{ woc_id: 9, woc_no: 'W9', batch_id: 1, fg_qty: 10, sc_ia: 1 }], ca: [], issueDocs: [1],
+  summaryLink: T.summaryLink([{ tran_id: 1, amount: -5000 }],
+    [{ woc_id: 9, fg_qty: 10, sc_ia: 1 }])
+}, {});
+eq('ใบเดียว = ไม่เข้าลายเซ็น', g1.detected, false);
+eq('ไม่คิดยอดนับเกิน', g1.overCount, 0);
+
+// ไม่มียอดวัตถุดิบ = สูตรนี้อธิบายอะไรไม่ได้ ห้ามชี้นิ้วผิดจุด
+const g0 = T.explainSummaryGap({
+  rmTotal: 0, convStd: 100, summaryLines: [{ tran_id: 1, amount: -50 }, { tran_id: 2, amount: -50 }],
+  wocs: [], ca: [], issueDocs: [],
+  summaryLink: T.summaryLink([{ tran_id: 1, amount: -50 }, { tran_id: 2, amount: -50 }], [])
+}, {});
+eq('ไม่มียอดวัตถุดิบ = ไม่เข้าลายเซ็น', g0.detected, false);
 
 console.log('\n' + (fail ? fail + ' FAILED' : 'ผ่านทั้งหมด'));
 process.exit(fail ? 1 : 0);

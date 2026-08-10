@@ -1135,6 +1135,97 @@ ${costCols}
   }
 
   /**
+   * แยกส่วนผลต่าง summary cost — ชี้ว่าผลต่างมาจากการนับยอดใบเบิกวัตถุดิบซ้ำหรือไม่
+   *
+   * เคสที่ผู้ใช้ชี้ (WO-FSC-00000227 บน SB1) ฝั่งสร้างใบ summary cost คิดยอดแต่ละใบเป็น
+   *   `ยอดใบเบิกวัตถุดิบทั้งก้อน + ต้นทุนแปรสภาพของ batch นั้น`
+   * ใบเบิกมีใบเดียวไม่ได้แยกตาม batch ยอดวัตถุดิบจึงถูกนับซ้ำเท่าจำนวน batch
+   * ทั้งที่ควรนับครั้งเดียว → ส่วนเกิน `(จำนวนใบ − 1) × ยอดวัตถุดิบ` ค้างใน WIP
+   *
+   * ⚠ นี่คือบั๊กของ **ฝั่ง engine ที่สร้างใบ summary cost** (repo Pwoc_gen_completion) ซึ่งกำลังแก้อยู่
+   * รายงานนี้มีหน้าที่ชี้จุดและแยกยอดให้เห็น ไม่ได้แก้ตัวเลข
+   *
+   * ตรวจสอบด้วยข้อมูลจริง WO-FSC-00000227: วัตถุดิบ 173,138.54 (ใบเบิกใบเดียว) ·
+   * แปรสภาพ 60,710 · 10 batch · 10 ใบ summary cost รวม 1,789,106.60
+   *   9 ใบแรก 179,396.34 = 173,138.54 + 6,257.80 (แปรสภาพของ batch นั้น) — ตรงทุกหลัก
+   *   ใบสุดท้าย 174,539.54 = 173,138.54 + 1,401.00 ขณะที่แปรสภาพของ batch นั้น 4,389.80 (ขาด 2,988.80)
+   *   ผลต่าง 1,555,258.06 = 9 × 173,138.54 − 2,988.80 — ปิดพอดี
+   */
+  function explainSummaryGap(s, ctx) {
+    const lk = s.summaryLink;
+    const gap = (function () {
+      let v = 0;
+      s.summaryLines.forEach(r => { v += Math.abs(asNum(r.amount)); });
+      return v - (s.rmTotal + s.convStd);
+    })();
+
+    // ต้นทุนแปรสภาพต่อ batch — เอกสารปันส่วนอ้าง WOC ราย ขั้นตอน ซึ่งผูก batch อยู่แล้ว
+    const batchByWoc = {}, wocsByBatch = {};
+    (s.wocs || []).forEach(w => {
+      const b = asStr(w.batch_id);
+      batchByWoc[asStr(w.woc_id)] = b;
+      if (!wocsByBatch[b]) wocsByBatch[b] = [];
+      wocsByBatch[b].push(w);
+    });
+    const convByBatch = {};
+    (s.ca || []).forEach(r => {
+      if (asNum(r.cost_class) === CLASS_WIP) return;  // ยอดรวม ไม่ใช่องค์ประกอบ
+      const b = batchByWoc[asStr(r.woc_id)];
+      if (b == null) return;
+      convByBatch[b] = (convByBatch[b] || 0) + asNum(r.std_cost);
+    });
+
+    // ใบไหนเป็นของ batch ไหน — ผ่านใบปิดงานที่อ้างใบนั้น
+    const batchByDoc = {};
+    (s.wocs || []).forEach(w => {
+      const ia = asStr(w.sc_ia);
+      if (ia && lk.valueByDoc[ia] != null) batchByDoc[ia] = asStr(w.batch_id);
+    });
+
+    const docMeta = {};
+    s.summaryLines.forEach(r => { docMeta[asStr(r.tran_id)] = r; });
+    const rows = Object.keys(lk.valueByDoc)
+      .filter(k => lk.valueByDoc[k] > 0.005)
+      .sort((a, b) => Number(a) - Number(b))
+      .map(k => {
+        const amt = lk.valueByDoc[k];
+        const batch = batchByDoc[k];
+        // มีค่าแปรสภาพของ batch นี้จริงหรือไม่ — batch ที่หาไม่ได้ต้องไม่กลายเป็นศูนย์เงียบ ๆ
+        const hasConv = batch != null && convByBatch[batch] != null;
+        const conv = hasConv ? convByBatch[batch] : null;
+        return {
+          tran_id: k,
+          doc_no: asStr((docMeta[k] || {}).doc_no),
+          recordtype: asStr((docMeta[k] || {}).recordtype),
+          batch_id: batch == null ? '' : batch,
+          amount: amt,
+          less_rm: amt - s.rmTotal,          // ส่วนที่เหลือหลังหักยอดวัตถุดิบทั้งก้อน
+          conv_batch: conv,
+          conv_diff: hasConv ? (amt - s.rmTotal) - conv : null
+        };
+      });
+
+    // ลายเซ็นของอาการ: ทุกใบมีมูลค่ามากกว่าหรือเท่ากับยอดวัตถุดิบทั้งก้อน และมีมากกว่าหนึ่งใบ
+    const n = rows.length;
+    const rmCountedIn = rows.filter(r => r.less_rm > -0.005).length;
+    const detected = n > 1 && s.rmTotal > 0.005 && rmCountedIn === n;
+    const overCount = detected ? (n - 1) * s.rmTotal : 0;
+
+    return {
+      gap: gap,
+      rows: rows,
+      docs: n,
+      rmTotal: s.rmTotal,
+      rmDocs: (s.issueDocs || []).length,
+      detected: detected,
+      overCount: overCount,
+      residual: gap - overCount,
+      // ส่วนที่การนับซ้ำอธิบายได้ คิดเป็นสัดส่วนของผลต่าง — ห้ามหารด้วยศูนย์
+      share: Math.abs(gap) > 0.005 ? overCount / gap : null
+    };
+  }
+
+  /**
    * สรุปหนึ่ง WO ให้อยู่ในรูปเดียวกันทุกชั้น เพื่อใช้ซ้ำได้ทั้ง WO แม่และ WO ต้นทางของ semi
    * ปริมาณและมูลค่าที่เบิกเก็บเป็นค่าลบใน NetSuite — แปลงเป็นค่าบวกเพื่ออ่านง่าย
    */
@@ -1509,6 +1600,7 @@ ${costCols}
       const scDocsValued = asNum((sc[id] || {}).sc_docs_valued);
       const scDocsOrphan = asNum((sc[id] || {}).sc_docs_orphan);
 
+      const rmDocs = asNum((rm[id] || {}).doc_count);
       const wocCount = asNum((prod[id] || {}).woc_count);
       const wocFgCount = asNum((prod[id] || {}).woc_fg_count);
       const wocScLinked = asNum((prod[id] || {}).woc_sc_linked);
@@ -1545,6 +1637,17 @@ ${costCols}
         notes.push({ cls: 'warn', text: 'ใบ MFG Summary Cost มูลค่า 0 ค้างอยู่ ' + (scDocs - scDocsValued)
           + ' ใบ (รวม ' + scDocs + ' ใบ) — ไม่กระทบยอด' });
       }
+      // แยกส่วนผลต่าง: ฝั่งสร้างใบ summary cost ใส่ยอดวัตถุดิบทั้งก้อนลงทุกใบ ทั้งที่ควรนับครั้งเดียว
+      // เป็นประเด็นของ engine ที่สร้างเอกสาร (repo Pwoc_gen_completion) รายงานนี้ทำหน้าที่ชี้จุด
+      // ⚠ เงื่อนไขต้องมี scDocsValued > 1 และมียอดวัตถุดิบ ไม่งั้นสูตรนี้อธิบายอะไรไม่ได้
+      const scGap = scValue - cost;
+      if (scDocsValued > 1 && rmCost > 0.005 && Math.abs(scGap) > 0.01) {
+        const over = (scDocsValued - 1) * rmCost;
+        notes.push({ cls: 'warn', text: 'ผลต่าง ' + fmt(scGap, 2) + ' อธิบายได้ด้วยยอดใบเบิกวัตถุดิบ '
+          + fmt(rmCost, 2) + ' (ใบเบิก ' + rmDocs + ' ใบ) ถูกนับซ้ำใน ' + scDocsValued
+          + ' ใบ summary cost — นับเกิน ' + fmt(over, 2)
+          + ' คิดเป็น ' + fmt(over / scGap * 100, 1) + '% ของผลต่าง · ประเด็นฝั่งสร้างเอกสาร' });
+      }
       if (!bpc) notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
 
       return {
@@ -1578,6 +1681,9 @@ ${costCols}
         sc_docs: scDocs,
         sc_docs_valued: scDocsValued,
         sc_docs_orphan: scDocsOrphan,
+        rm_docs: rmDocs,
+        // ยอดวัตถุดิบที่ถูกนับซ้ำในใบ summary cost — 0 = ไม่เข้าลายเซ็นอาการนี้
+        sc_rm_overcount: (scDocsValued > 1 && rmCost > 0.005) ? (scDocsValued - 1) * rmCost : 0,
         sc_gap: scValue - cost,
         cost_ref: { verdict: cr.verdict, cost: cr.cost, ids: costRefIds(cr), rows: cr.rows.length },
         notes: notes
@@ -2153,6 +2259,68 @@ ${costCols}
   }
 
   /**
+   * แยกส่วนผลต่าง summary cost ให้เห็นว่ายอดวัตถุดิบถูกนับซ้ำกี่ครั้ง
+   * โชว์เฉพาะเมื่อสมการไม่ปิด — ปิดพอดีแล้วไม่มีอะไรต้องอธิบาย
+   */
+  function renderSummaryGapBreakdown(s, ctx) {
+    const g = explainSummaryGap(s, ctx);
+    if (Math.abs(g.gap) <= 0.01 || !g.docs) return '';
+
+    let h = '<h3>ผลต่างมาจากไหน</h3>';
+    if (!g.detected) {
+      h += '<p class="sub">ใบ summary cost ใบเดียวหรือไม่มียอดวัตถุดิบให้เทียบ '
+        + 'จึงแยกส่วนด้วยวิธีนี้ไม่ได้ — ดูตารางความเคลื่อนไหว WIP ด้านล่างแทน</p>';
+      return h;
+    }
+
+    h += '<div class="sub">ฝั่งที่สร้างใบ summary cost คิดยอดแต่ละใบเป็น '
+      + '<b>ยอดใบเบิกวัตถุดิบทั้งก้อน + ต้นทุนแปรสภาพของ batch นั้น</b> '
+      + 'ใบเบิกไม่ได้แยกตาม batch ยอดวัตถุดิบจึงถูกนับซ้ำเท่าจำนวนใบ ทั้งที่ควรนับครั้งเดียว '
+      + '· <b>เป็นประเด็นฝั่ง engine ที่สร้างเอกสาร ไม่ใช่การอ่านของรายงานนี้</b></div>';
+
+    h += `<table><tr><th>ใบ MFG Summary Cost</th><th>batch</th><th class="n">มูลค่าบนใบ</th>
+      <th class="n">หัก ยอดใบเบิกวัตถุดิบทั้งก้อน</th><th class="n">ต้นทุนแปรสภาพของ batch นี้</th>
+      <th class="n">ผลต่าง</th></tr>`;
+    g.rows.forEach(r => {
+      const bad = r.conv_diff != null && Math.abs(r.conv_diff) > 0.01;
+      h += `<tr><td>${tranLink(r.recordtype, r.tran_id, r.doc_no)}</td>
+        <td>${esc(r.batch_id) || '<span class="warn">หา batch ไม่ได้</span>'}</td>`
+        + numCell(r.amount, 2) + numCell(r.less_rm, 2)
+        + (r.conv_batch == null
+          ? '<td class="n warn">อ่านไม่ได้</td><td class="n"></td>'
+          : numCell(r.conv_batch, 2) + numCell(r.conv_diff, 2, bad ? 'bad' : 'ok'))
+        + '</tr>';
+    });
+    h += '</table>';
+
+    h += `<table><tr><th>แยกส่วนผลต่าง</th><th class="n">จำนวน</th><th>ที่มา</th></tr>`;
+    h += `<tr><td>ยอดใบเบิกวัตถุดิบ</td>` + numCell(g.rmTotal, 2)
+      + '<td>ใบเบิก ' + g.rmDocs + ' ใบ — '
+      + (g.rmDocs < g.docs
+        ? 'น้อยกว่าจำนวนใบ summary cost (' + g.docs + ' ใบ) จึงไม่ได้แยกตาม batch'
+        : 'เทียบกับใบ summary cost ' + g.docs + ' ใบ')
+      + '</td></tr>';
+    h += `<tr><td>ถูกนับใน ใบ summary cost</td>` + numCell(g.docs, 0)
+      + '<td>ควรถูกนับครั้งเดียว</td></tr>';
+    h += `<tr class="tot"><td>ยอดที่นับเกิน = (${g.docs} − 1) × ยอดใบเบิก</td>`
+      + numCell(g.overCount, 2, 'bad') + '<td>ส่วนนี้ค้างอยู่ใน WIP</td></tr>';
+    h += `<tr><td>ผลต่างทั้งหมดของใบสั่งผลิตนี้</td>` + numCell(g.gap, 2, 'bad')
+      + '<td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ)</td></tr>';
+    const resBad = Math.abs(g.residual) > 0.01;
+    h += `<tr class="${resBad ? 'tot' : 'grand'}"><td>เหลือที่การนับซ้ำอธิบายไม่ได้</td>`
+      + numCell(g.residual, 2, resBad ? 'warn' : 'ok')
+      + '<td>' + (resBad
+        ? 'ดูคอลัมน์ "ผลต่าง" ในตารางบน — ต้นทุนแปรสภาพที่ใบคิดไว้ไม่ตรงกับที่ปันส่วน'
+        : '<span class="ok">การนับวัตถุดิบซ้ำอธิบายผลต่างได้ทั้งก้อน</span>')
+      + (g.share != null
+        ? ' · การนับซ้ำคิดเป็น ' + fmt(g.share * 100, 1) + '% ของผลต่าง'
+        : '')
+      + '</td></tr>';
+    h += '</table>';
+    return h;
+  }
+
+  /**
    * กระทบยอด WIP — สมการที่ต้องปิด
    * Summary Cost Item ต้องเท่ากับ วัตถุดิบและบรรจุภัณฑ์ + ต้นทุนแปรสภาพ
    * ถ้าไม่เท่า ส่วนต่างจะค้างเป็นยอดใน WIP ของใบสั่งผลิตนี้
@@ -2225,6 +2393,8 @@ ${costCols}
       h += '</td></tr>';
     }
     h += '</table>';
+
+    h += renderSummaryGapBreakdown(s, ctx);
 
     if (!rows.length) return h + '<p class="warn">ไม่พบความเคลื่อนไหวบัญชีงานระหว่างทำ</p>';
 
