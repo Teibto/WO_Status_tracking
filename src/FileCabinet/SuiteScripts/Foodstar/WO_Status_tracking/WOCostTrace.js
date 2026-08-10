@@ -292,7 +292,11 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
     `);
   }
 
-  /** WOC ของ WO — ปริมาณที่ผลิตได้จริง (ตัวหารของต้นทุนต่อหน่วย) */
+  /**
+   * WOC ของ WO — ปริมาณที่ผลิตได้จริง (ตัวหารของต้นทุนต่อหน่วย)
+   * WOC เกิดต่อ "ขั้นตอนงาน" ไม่ใช่ต่อ batch: ใบที่ไม่ใช่ขั้นสุดท้ายมีปริมาณ 0
+   * `batch_id` + `sc_ia` ใช้ตรวจว่าแต่ละ batch ที่ปิดงานมีใบ summary cost ผูกครบไหม
+   */
   function qCompletions(woIds) {
     return runSQL('ใบปิดงานผลิต (WOC)', `
       SELECT TLM.createdfrom                       AS wo_id,
@@ -301,9 +305,11 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
              WOC.trandate                           AS woc_date,
              WOC.custbody_mfg_woc_good_qty          AS good_qty,
              WOC.custbody_mfg_woc_scrap_qty         AS scrap_qty,
+             WOC.custbody_mfg_adjsummarycost        AS sc_ia,
              TLM.quantity                           AS fg_qty,
              TASK.name                              AS task_no,
              TASK.altname                           AS task_name,
+             TASK.custrecord_mfg_tm_releasedbatch   AS batch_id,
              TASK.custrecord_mfg_tm_pro_qty         AS pro_qty
       FROM transaction WOC
       JOIN transactionline TLM ON TLM.transaction = WOC.id AND TLM.mainline = 'T'
@@ -712,6 +718,12 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
       SELECT TLM.createdfrom                        AS wo_id,
              SUM(TLM.quantity)                      AS woc_qty,
              COUNT(DISTINCT WOC.id)                 AS woc_count,
+             -- WOC เกิดต่อ "ขั้นตอนงาน" ไม่ใช่ต่อ batch — ใบที่ไม่ใช่ขั้นสุดท้ายมีปริมาณ 0
+             -- ใบที่มีปริมาณจึงเท่ากับจำนวน batch ที่ปิดงานเสร็จ = ฐานของจำนวนใบ summary cost
+             -- (WO-FSC-00000227: WOC 30 ใบ · มีปริมาณ 10 ใบ · batch 10 batch)
+             COUNT(DISTINCT CASE WHEN NVL(TLM.quantity, 0) <> 0 THEN WOC.id END) AS woc_fg_count,
+             -- ใบ summary cost ที่ใบปิดงานอ้างถึง (custbody_mfg_adjsummarycost)
+             COUNT(DISTINCT WOC.custbody_mfg_adjsummarycost) AS woc_sc_linked,
              ${inRangeCol}                          AS woc_in_range,
              TO_CHAR(MAX(WOC.trandate), 'DD/MM/YYYY') AS woc_last,
              TO_CHAR(MAX(WOC.trandate), 'YYYY-MM-DD') AS woc_last_iso
@@ -749,7 +761,12 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
 
   /**
    * ยอดที่ Summary Cost Item ถูกตั้งไว้ต่อใบสั่งผลิต — ด้านตรงข้ามของ qSummaryRM
-   * ใช้ตรวจกติกา 1 ใบสั่งผลิต = 1 ใบ MFG Summary Cost และหาผลต่างที่ค้างใน WIP
+   * ใช้หาผลต่างที่ค้างใน WIP และตรวจว่ามีใบตีราคาซ้ำหรือไม่
+   *
+   * ⚠ ไม่ใช่กติกา "1 ใบสั่งผลิต = 1 ใบ" — engine สร้างใบ summary cost ใหม่ทุกครั้งที่ปิดงาน
+   * WO ที่แตกหลาย batch จึงต้องมีได้ตามจำนวน batch ที่ปิดงานเสร็จ ตัวชี้ขาดคือ **การผูก**:
+   * ใบที่มีมูลค่าแต่ไม่มีใบปิดงานใดอ้างถึง (`custbody_mfg_adjsummarycost`) = ใบตีราคาซ้ำ
+   * รูป NOT EXISTS นี้คือรูปเดียวกับที่ engine ใช้ใน `findUnconsumedSummaryIA`
    */
   function qSummarySummaryCost(woIds) {
     if (!woIds.length) return [];
@@ -759,7 +776,13 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
              COUNT(DISTINCT T.id)              AS sc_docs,
              -- แยกใบที่มีมูลค่าจริงออกจากใบเปล่า: SB1 มีใบ MFG Summary Cost มูลค่า 0 สร้างซ้ำอยู่จำนวนมาก
              -- (เจอจริง 25 จาก 197 ใบในเดือน 07/2026) ถ้านับรวมกันธงเตือนจะกลายเป็น noise
-             COUNT(DISTINCT CASE WHEN NVL(TL.foreignamount, 0) <> 0 THEN T.id END) AS sc_docs_valued
+             COUNT(DISTINCT CASE WHEN NVL(TL.foreignamount, 0) <> 0 THEN T.id END) AS sc_docs_valued,
+             -- ใบมีมูลค่าที่ไม่มีใบปิดงานอ้างถึงเลย = ตีราคาซ้ำจริง (ทดสอบรูปนี้บน SB1 แล้ว รองรับ)
+             COUNT(DISTINCT CASE WHEN NVL(TL.foreignamount, 0) <> 0
+                                  AND NOT EXISTS (SELECT 1 FROM transaction W
+                                                  WHERE W.recordtype = 'workordercompletion'
+                                                    AND W.custbody_mfg_adjsummarycost = T.id)
+                                 THEN T.id END) AS sc_docs_orphan
       FROM transaction T
       JOIN transactionline TL ON TL.transaction = T.id
       LEFT JOIN item I ON I.id = TL.item
@@ -1055,6 +1078,50 @@ ${costCols}
   };
 
   /**
+   * จับคู่ใบ MFG Summary Cost กับใบปิดงานผลิต — ตัวตัดสินว่า "ซ้ำ" หรือ "ครบ"
+   *
+   * WO ที่แตกหลาย batch มีใบ summary cost ได้ใบต่อ batch ที่ปิดงานเสร็จ จำนวนใบจึงบอกอะไรไม่ได้
+   * สิ่งที่บอกได้คือการผูกผ่าน `workordercompletion.custbody_mfg_adjsummarycost`
+   *   · ใบมีมูลค่าที่ไม่มีใบปิดงานอ้างถึง = ตีราคาซ้ำ (`orphanDocs`)
+   *   · ใบปิดงานที่มีปริมาณแต่ไม่มีใบ summary cost ผูก = ต้นทุน batch นั้นยังไม่ถูกสรุป (`unlinkedWocs`)
+   *
+   * ⚠ `custbody_mfg_adjsummarycost` ถูก engine ใช้ปั๊ม move adjustment ด้วย (`createWOMoveAdj`)
+   * ค่าที่ไม่ว่างจึงไม่ได้แปลว่าเป็นใบ summary cost — ต้อง intersect กับชุด id ที่เป็น summary cost จริง
+   */
+  function summaryLink(summaryLines, wocs) {
+    const valueByDoc = {};
+    (summaryLines || []).forEach(r => {
+      const k = asStr(r.tran_id);
+      valueByDoc[k] = (valueByDoc[k] || 0) + Math.abs(asNum(r.amount));
+    });
+    const isSummaryDoc = {};
+    Object.keys(valueByDoc).forEach(k => { isSummaryDoc[k] = true; });
+
+    // ปิดงาน "หนึ่งรอบ" = ใบปิดงานที่มีปริมาณ (ใบขั้นตอนกลางมีปริมาณ 0 ไม่ได้ตีราคา)
+    const fgWocs = (wocs || []).filter(w => asNum(w.fg_qty) !== 0);
+    const linked = {};
+    const unlinkedWocs = [];
+    fgWocs.forEach(w => {
+      const ia = asStr(w.sc_ia);
+      if (ia && isSummaryDoc[ia]) linked[ia] = true;
+      else unlinkedWocs.push(w);
+    });
+
+    const orphanDocs = Object.keys(valueByDoc)
+      .filter(k => valueByDoc[k] > 0.005 && !linked[k]);
+
+    return {
+      docs: Object.keys(valueByDoc).length,
+      valuedDocs: Object.keys(valueByDoc).filter(k => valueByDoc[k] > 0.005).length,
+      fgWocs: fgWocs.length,
+      linkedDocs: Object.keys(linked).length,
+      orphanDocs: orphanDocs,
+      unlinkedWocs: unlinkedWocs,
+      valueByDoc: valueByDoc
+    };
+  }
+
+  /**
    * สรุปหนึ่ง WO ให้อยู่ในรูปเดียวกันทุกชั้น เพื่อใช้ซ้ำได้ทั้ง WO แม่และ WO ต้นทางของ semi
    * ปริมาณและมูลค่าที่เบิกเก็บเป็นค่าลบใน NetSuite — แปลงเป็นค่าบวกเพื่ออ่านง่าย
    */
@@ -1067,7 +1134,8 @@ ${costCols}
     const isSummary = r => asStr(r.adj_summarycost) === 'T' || asStr(r.is_summary) === 'T';
     const issues = allIssues.filter(r => !isSummary(r));
     const summaryLines = allIssues.filter(isSummary);
-    // กติกาของระบบ: 1 ใบสั่งผลิตต้องมีใบ MFG Summary Cost เพียงใบเดียว
+    // จำนวนใบ summary cost = จำนวน batch ที่ปิดงานเสร็จ ไม่ใช่ 1 ใบต่อ WO
+    // (สรุปกติกาจริงไว้ที่ qSummarySummaryCost) การตรวจอยู่ที่ summaryLink() ด้านล่าง
     const summaryDocs = uniq(summaryLines.map(r => r.tran_id));
     const lines = ctx.woLinesByWO[woId] || [];
     const fg = lines.filter(r => asStr(r.mainline) === 'T')[0] || null;
@@ -1151,6 +1219,7 @@ ${costCols}
       costRef: costRef,
       summaryLines: summaryLines,
       summaryDocs: summaryDocs,
+      summaryLink: summaryLink(summaryLines, wocs),
       issueDocs: uniq(issues.map(r => r.tran_id)),
       unitCostRM: produced !== 0 ? rmTotal / produced : 0,
       unitCostFull: produced !== 0 ? (rmTotal + convStd) / produced : 0
@@ -1425,8 +1494,11 @@ ${costCols}
       const scValue = asNum((sc[id] || {}).sc_value);
       const scDocs = asNum((sc[id] || {}).sc_docs);
       const scDocsValued = asNum((sc[id] || {}).sc_docs_valued);
+      const scDocsOrphan = asNum((sc[id] || {}).sc_docs_orphan);
 
       const wocCount = asNum((prod[id] || {}).woc_count);
+      const wocFgCount = asNum((prod[id] || {}).woc_fg_count);
+      const wocScLinked = asNum((prod[id] || {}).woc_sc_linked);
       const wocInRange = asNum((prod[id] || {}).woc_in_range);
 
       const notes = [];
@@ -1443,11 +1515,20 @@ ${costCols}
         h.sub_id, asStr(h.wo_date_iso));
       if (!dlOh) notes.push(costRefNote(cr));
       if (scDocs === 0) notes.push({ cls: 'warn', text: 'ยังไม่มีใบ MFG Summary Cost' });
-      // ใบซ้ำที่มีมูลค่า = ตีราคาซ้ำ ต้องแก้ · ใบซ้ำที่มูลค่า 0 = เอกสารเปล่าค้าง สะอาดขึ้นได้แต่ไม่กระทบยอด
-      if (scDocsValued > 1) {
-        notes.push({ cls: 'bad', text: 'MFG Summary Cost ที่มีมูลค่า ' + scDocsValued
-          + ' ใบ (กติกาคือ 1 ใบ) — ตีราคาซ้ำ' });
-      } else if (scDocs > 1) {
+      // จำนวนใบ summary cost ไม่ได้ผิดเพราะ "เกิน 1" — WO ที่แตกหลาย batch ต้องมีได้ใบต่อ batch
+      // ตัวชี้ขาดคือการผูก: ใบมีมูลค่าที่ไม่มีใบปิดงานอ้างถึง = ตีราคาซ้ำ · ใบมูลค่า 0 = เอกสารเปล่าค้าง
+      // ⚠ ทุกธงต้องมี wocCount > 0 คุมไว้ — query พังคืนแถวว่างอ่านเป็น 0 ไม่งั้นทุกใบขึ้นแดงพร้อมกัน
+      if (scDocsOrphan > 0) {
+        notes.push({ cls: 'bad', text: 'ใบ MFG Summary Cost ที่มีมูลค่าแต่ไม่มีใบปิดงานอ้างถึง '
+          + scDocsOrphan + ' ใบ (มีมูลค่าทั้งหมด ' + scDocsValued + ' ใบ · ปิดงานผลิต '
+          + wocFgCount + ' รอบ) — ตีราคาซ้ำ' });
+      }
+      // ปิดงานแล้วแต่ยังไม่มีใบ summary cost ผูก = ต้นทุนรอบนั้นยังไม่ถูกสรุป (คนละอาการกับซ้ำ)
+      if (wocCount > 0 && wocFgCount > 0 && wocScLinked < wocFgCount) {
+        notes.push({ cls: 'bad', text: 'ปิดงานผลิต ' + wocFgCount + ' รอบ แต่มีใบ MFG Summary Cost ผูกแค่ '
+          + wocScLinked + ' ใบ — ต้นทุนอีก ' + (wocFgCount - wocScLinked) + ' รอบยังไม่ถูกสรุป' });
+      }
+      if (scDocs > scDocsValued) {
         notes.push({ cls: 'warn', text: 'ใบ MFG Summary Cost มูลค่า 0 ค้างอยู่ ' + (scDocs - scDocsValued)
           + ' ใบ (รวม ' + scDocs + ' ใบ) — ไม่กระทบยอด' });
       }
@@ -1461,6 +1542,8 @@ ${costCols}
         woc_last: asStr((prod[id] || {}).woc_last),
         woc_last_iso: asStr((prod[id] || {}).woc_last_iso),
         woc_count: wocCount,
+        woc_fg_count: wocFgCount,
+        woc_sc_linked: wocScLinked,
         woc_in_range: wocInRange,
         production_line: asStr(h.production_line),
         item_id: asStr(h.item_id),
@@ -1481,6 +1564,7 @@ ${costCols}
         sc_value: scValue,
         sc_docs: scDocs,
         sc_docs_valued: scDocsValued,
+        sc_docs_orphan: scDocsOrphan,
         sc_gap: scValue - cost,
         cost_ref: { verdict: cr.verdict, cost: cr.cost, ids: costRefIds(cr), rows: cr.rows.length },
         notes: notes
@@ -1904,16 +1988,28 @@ ${costCols}
 
   function renderWOCs(s) {
     if (!s.wocs.length) return '<p class="warn">ยังไม่มีใบปิดงานผลิต</p>';
-    let h = `<table><tr><th>ใบปิดงานผลิต</th><th>วันที่</th><th>ขั้นตอน</th>
-      <th class="n">แผน</th><th class="n">ดี</th><th class="n">เสีย</th><th class="n">รับเข้าคลัง</th></tr>`;
+    // ใบปิดงานเกิดต่อขั้นตอน — คอลัมน์ batch กับใบ summary cost ทำให้เห็นว่าใบไหนคือรอบที่ตีราคา
+    const scDoc = {};
+    (s.summaryLines || []).forEach(r => { scDoc[asStr(r.tran_id)] = r; });
+    let h = `<table><tr><th>ใบปิดงานผลิต</th><th>วันที่</th><th>batch</th><th>ขั้นตอน</th>
+      <th class="n">แผน</th><th class="n">ดี</th><th class="n">เสีย</th><th class="n">รับเข้าคลัง</th>
+      <th>ใบ MFG Summary Cost</th></tr>`;
     s.wocs.forEach(r => {
+      const ia = asStr(r.sc_ia), d = scDoc[ia];
+      // ค่าที่ไม่ว่างแต่ไม่ใช่ใบ summary cost = move adjustment (engine ใช้ field เดียวกัน)
+      const scCell = !ia
+        ? (asNum(r.fg_qty) !== 0 ? '<span class="bad">ยังไม่ผูก</span>' : '')
+        : (d ? tranLink(d.recordtype, ia, asStr(d.doc_no))
+             : '<span class="warn">ผูกเอกสาร id ' + esc(ia) + ' ที่ไม่ใช่ใบ summary cost</span>');
       h += `<tr><td>${tranLink('workordercompletion', r.woc_id, asStr(r.woc_no))}</td>
-        <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
+        <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.batch_id))}</td>
+        <td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
         + numCell(asNum(r.pro_qty), 4) + numCell(asNum(r.good_qty), 4)
-        + numCell(asNum(r.scrap_qty), 4) + numCell(asNum(r.fg_qty), 4) + '</tr>';
+        + numCell(asNum(r.scrap_qty), 4) + numCell(asNum(r.fg_qty), 4)
+        + '<td>' + scCell + '</td></tr>';
     });
-    h += `<tr class="tot"><td colspan="6">รวมรับเข้าคลัง (ตัวหารของต้นทุนต่อหน่วย)</td>`
-      + numCell(s.produced, 4) + '</tr></table>';
+    h += `<tr class="tot"><td colspan="7">รวมรับเข้าคลัง (ตัวหารของต้นทุนต่อหน่วย)</td>`
+      + numCell(s.produced, 4) + '<td></td></tr></table>';
     return h;
   }
 
@@ -2074,15 +2170,47 @@ ${costCols}
       + '<td>' + (bad
         ? '<span class="bad">สมการไม่ปิด — ส่วนต่างนี้จะค้างอยู่ในบัญชีงานระหว่างทำ</span>'
         : '<span class="ok">ปิดพอดี</span>') + '</td></tr>';
-    // กติกา: 1 ใบสั่งผลิต = 1 ใบ MFG Summary Cost
+    // กติกา: 1 รอบปิดงานผลิต (1 batch ที่ complete) = 1 ใบ MFG Summary Cost
+    // ตัดสินด้วยการผูก ไม่ใช่จำนวนใบ — WO ที่แตกหลาย batch มีได้หลายใบโดยไม่ผิดอะไร
     const nDoc = docKeys.length;
-    h += `<tr><td>จำนวนเอกสาร MFG Summary Cost ของใบสั่งผลิตนี้</td>` + numCell(nDoc, 0, nDoc === 1 ? 'ok' : 'bad')
-      + '<td>' + (nDoc === 1
-        ? '<span class="ok">ถูกต้องตามกติกา — 1 ใบสั่งผลิตต้องมีใบเดียว</span>'
-        : (nDoc === 0
-          ? '<span class="bad">ไม่พบเลย — ต้นทุนยังไม่ถูกสรุปเข้า summary cost</span>'
-          : '<span class="bad">ผิดกติกา — ต้องมีใบเดียวต่อหนึ่งใบสั่งผลิต ตรวจว่ามีการสร้างซ้ำ</span>'))
+    const lk = s.summaryLink || summaryLink(s.summaryLines, s.wocs);
+    h += `<tr><td>จำนวนเอกสาร MFG Summary Cost ของใบสั่งผลิตนี้</td>` + numCell(nDoc, 0)
+      + '<td>' + (nDoc === 0
+        ? '<span class="bad">ไม่พบเลย — ต้นทุนยังไม่ถูกสรุปเข้า summary cost</span>'
+        : 'มีมูลค่า ' + lk.valuedDocs + ' ใบ'
+          + (nDoc > lk.valuedDocs
+            ? ' · <span class="warn">เอกสารเปล่ามูลค่า 0 อีก ' + (nDoc - lk.valuedDocs)
+              + ' ใบ — ไม่กระทบยอด</span>'
+            : ''))
       + '</td></tr>';
+    h += `<tr><td>รอบปิดงานผลิต (ใบปิดงานที่มีปริมาณ = batch ที่ complete)</td>` + numCell(lk.fgWocs, 0)
+      + '<td>ใบปิดงานทั้งหมด ' + (s.wocs || []).length + ' ใบ — ใบขั้นตอนกลางมีปริมาณ 0 จึงไม่ตีราคา</td></tr>';
+    if (nDoc > 0 || lk.fgWocs > 0) {
+      const nOrphan = lk.orphanDocs.length, nUnlinked = lk.unlinkedWocs.length;
+      const linkBad = nOrphan > 0 || nUnlinked > 0;
+      h += `<tr><td>ใบ summary cost ที่มีใบปิดงานอ้างถึง</td>`
+        + numCell(lk.linkedDocs, 0, linkBad ? 'bad' : 'ok') + '<td>';
+      if (!linkBad) {
+        h += '<span class="ok">ผูกครบ — ปิดงาน ' + lk.fgWocs + ' รอบ มีใบ summary cost ผูก '
+          + lk.linkedDocs + ' ใบ ตรงกัน</span>';
+      } else {
+        const parts = [];
+        if (nOrphan) {
+          parts.push('<span class="bad">ใบมีมูลค่าที่ไม่มีใบปิดงานอ้างถึง ' + nOrphan
+            + ' ใบ — ตีราคาซ้ำ: '
+            + lk.orphanDocs.map(k => tranLink(docs[k].recordtype, k, asStr(docs[k].doc_no))).join(' · ')
+            + '</span>');
+        }
+        if (nUnlinked) {
+          parts.push('<span class="bad">ปิดงานแล้วแต่ยังไม่มีใบ summary cost ผูก ' + nUnlinked
+            + ' รอบ — ต้นทุน batch นั้นยังไม่ถูกสรุป: '
+            + lk.unlinkedWocs.map(w => tranLink('workordercompletion', w.woc_id, asStr(w.woc_no))).join(' · ')
+            + '</span>');
+        }
+        h += parts.join('<br>');
+      }
+      h += '</td></tr>';
+    }
     h += '</table>';
 
     if (!rows.length) return h + '<p class="warn">ไม่พบความเคลื่อนไหวบัญชีงานระหว่างทำ</p>';
@@ -2513,7 +2641,9 @@ ${costCols}
     h += '<h2>กระทบยอดงานระหว่างทำ — Summary Cost Item ต้องเท่ากับ วัตถุดิบ + ต้นทุนแปรสภาพ</h2>'
       + '<div class="sub">กลไกของระบบนี้ให้ WOC เดบิต WIP ด้วย summary cost item แล้วเครดิตออกไปเป็นสินค้าสำเร็จรูป '
       + 'และให้ใบปรับ summary cost เครดิต WIP ย้ายไปบัญชีพัก · WIP จะปิดเป็นศูนย์ได้เมื่อมูลค่า summary cost item '
-      + 'เท่ากับต้นทุนที่เกิดจริงเท่านั้น ส่วนต่างเท่าไหร่จะค้างใน WIP เท่านั้น</div>'
+      + 'เท่ากับต้นทุนที่เกิดจริงเท่านั้น ส่วนต่างเท่าไหร่จะค้างใน WIP เท่านั้น '
+      + '· ใบสั่งผลิตที่แตกหลาย batch มีใบ summary cost ได้ใบต่อ batch ที่ปิดงานเสร็จ '
+      + 'จำนวนใบจึงไม่ใช่ตัวชี้ผิดถูก ตัวชี้คือแต่ละใบมีใบปิดงานอ้างถึงหรือไม่</div>'
       + renderWipRecon(s, m.ctx);
     h += '<h2>ใบปิดงานผลิต</h2>' + renderWOCs(s);
     h += '<h2>ชั้นที่ 1 — วัตถุดิบที่เบิกเข้าใบสั่งผลิตนี้</h2>'

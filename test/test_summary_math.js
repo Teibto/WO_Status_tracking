@@ -56,31 +56,49 @@ const FX = {
       production_line: 'LINE4', item_id: 605, sub_id: 2,
       item_code: '20010100005', item_name: 'FG คิดจาก set up rate', wo_qty: 500,
       unit_name: 'BAG', base_per_carton: 10 },
+    // 1010 = WO-FSC-00000227 ของจริงบน SB1: แตก 10 batch · WOC 30 ใบ (ใบต่อขั้นตอน) ·
+    // ใบที่มีปริมาณ 10 ใบ · ใบ summary cost 10 ใบ ผูกครบ → ห้ามขึ้นธง "ตีราคาซ้ำ" (บั๊กที่ issue #3 แก้)
+    { wo_id: 1010, wo_no: 'WOFSC00000227', wo_date: '30/7/2026', wo_date_iso: '2026-07-30',
+      production_line: 'LINE5', item_id: 606, sub_id: 2,
+      item_code: '20010100010', item_name: 'FG แตกสิบ batch', wo_qty: 180000,
+      unit_name: 'BOTTLE', base_per_carton: 12 },
+    // 1011 = ปิดงาน 3 รอบ แต่มีใบ summary cost ผูกแค่ 2 ใบ → ต้นทุนอีกรอบยังไม่ถูกสรุป
+    { wo_id: 1011, wo_no: 'WOFSC00000228', wo_date: '30/7/2026', wo_date_iso: '2026-07-30',
+      production_line: 'LINE5', item_id: 607, sub_id: 2,
+      item_code: '20010100011', item_name: 'FG ผูก summary cost ไม่ครบ', wo_qty: 54000,
+      unit_name: 'BOTTLE', base_per_carton: 12 },
     // บรรทัด mainline='T' ซ้ำของใบเดิม — ต้องถูกตัดออก ไม่งั้นยอดของใบนี้ถูกบวกสองครั้ง
     { wo_id: 1001, wo_no: 'WOFSC00000470', wo_date: '23/7/2026', wo_date_iso: '2026-07-23',
       wo_status: 'Released', production_line: 'LINE1', item_id: 501,
       item_code: '11010900010', item_name: 'FG ส้ม 300 มล.', wo_qty: 163000,
       unit_name: 'BOTTLE', base_per_carton: 48 }
   ],
+  // woc_fg_count = ใบปิดงานที่มีปริมาณ = จำนวน batch ที่ปิดงานเสร็จ (ฐานของจำนวนใบ summary cost)
+  // woc_sc_linked = จำนวนใบ summary cost ที่ใบปิดงานอ้างถึง
   'ภาพรวม — ผลิตได้จริง': [
     // woc_in_range < woc_count = ปิดงานคร่อมช่วง ต้องขึ้นหมายเหตุแต่ยอดยังนับทุกใบ
-    { wo_id: 1001, woc_qty: 160276, woc_count: 3, woc_in_range: 3,
+    { wo_id: 1001, woc_qty: 160276, woc_count: 3, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 3,
       woc_last: '25/07/2026', woc_last_iso: '2026-07-25' },
-    { wo_id: 1003, woc_qty: 900, woc_count: 2, woc_in_range: 1,
+    { wo_id: 1003, woc_qty: 900, woc_count: 2, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '02/08/2026', woc_last_iso: '2026-08-02' },
-    { wo_id: 1004, woc_qty: 24000, woc_count: 1, woc_in_range: 1,
+    { wo_id: 1004, woc_qty: 24000, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '23/07/2026', woc_last_iso: '2026-07-23' },
     // สามใบทดสอบ Cost ref — ปิดงานและเบิกของครบ ต่างกันแค่เรื่อง Cost ref อย่างเดียว
-    { wo_id: 1005, woc_qty: 500, woc_count: 1, woc_in_range: 1,
+    { wo_id: 1005, woc_qty: 500, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '21/07/2026', woc_last_iso: '2026-07-21' },
-    { wo_id: 1006, woc_qty: 500, woc_count: 1, woc_in_range: 1,
+    { wo_id: 1006, woc_qty: 500, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '21/07/2026', woc_last_iso: '2026-07-21' },
-    { wo_id: 1007, woc_qty: 500, woc_count: 1, woc_in_range: 1,
+    { wo_id: 1007, woc_qty: 500, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '21/07/2026', woc_last_iso: '2026-07-21' },
-    { wo_id: 1008, woc_qty: 500, woc_count: 1, woc_in_range: 1,
+    { wo_id: 1008, woc_qty: 500, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
       woc_last: '21/07/2026', woc_last_iso: '2026-07-21' },
-    { wo_id: 1009, woc_qty: 500, woc_count: 1, woc_in_range: 1,
-      woc_last: '21/07/2026', woc_last_iso: '2026-07-21' }
+    { wo_id: 1009, woc_qty: 500, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
+      woc_last: '21/07/2026', woc_last_iso: '2026-07-21' },
+    // 1010 ค่าจริงจาก SB1: WOC 30 ใบ แต่มีปริมาณ 10 ใบ (10 batch) ผูกใบ summary cost ครบ 10 ใบ
+    { wo_id: 1010, woc_qty: 165600, woc_count: 30, woc_fg_count: 10, woc_sc_linked: 10, woc_in_range: 30,
+      woc_last: '31/07/2026', woc_last_iso: '2026-07-31' },
+    { wo_id: 1011, woc_qty: 54000, woc_count: 9, woc_fg_count: 3, woc_sc_linked: 2, woc_in_range: 9,
+      woc_last: '31/07/2026', woc_last_iso: '2026-07-31' }
   ],
   'ภาพรวม — วัตถุดิบและบรรจุภัณฑ์': [
     { wo_id: 1001, rm_cost: 347651.01, doc_count: 1, item_count: 30 },
@@ -89,12 +107,16 @@ const FX = {
     { wo_id: 1006, rm_cost: 1000, doc_count: 1, item_count: 2 },
     { wo_id: 1007, rm_cost: 1000, doc_count: 1, item_count: 2 },
     { wo_id: 1008, rm_cost: 1000, doc_count: 1, item_count: 2 },
-    { wo_id: 1009, rm_cost: 1000, doc_count: 1, item_count: 2 }
+    { wo_id: 1009, rm_cost: 1000, doc_count: 1, item_count: 2 },
+    { wo_id: 1010, rm_cost: 1000, doc_count: 10, item_count: 5 },
+    { wo_id: 1011, rm_cost: 1000, doc_count: 3, item_count: 5 }
   ],
   'ภาพรวม — ต้นทุนแปรสภาพ': [
     { wo_id: 1001, dl_oh_std: 70298.58, dl_oh_act: 70298.58, ca_docs: 1 },
     { wo_id: 1003, dl_oh_std: 100, dl_oh_act: 100, ca_docs: 1 },
-    { wo_id: 1004, dl_oh_std: 21754, dl_oh_act: 21754, ca_docs: 1 }
+    { wo_id: 1004, dl_oh_std: 21754, dl_oh_act: 21754, ca_docs: 1 },
+    { wo_id: 1010, dl_oh_std: 500, dl_oh_act: 500, ca_docs: 10 },
+    { wo_id: 1011, dl_oh_std: 300, dl_oh_act: 300, ca_docs: 3 }
   ],
   // Cost ref — ค่าจริงของ record 17 บน SB1 คือ option 2 (Using Cost from Record)
   // ช่องต้นทุนเป็น 0 สองช่อง ที่เหลือว่าง (null) · header ครอบทั้งปี 2026 บริษัท 2
@@ -134,16 +156,21 @@ const FX = {
       setup_id: 0, setup_name: 'FS - Cost Reference Y2025', sub_id: 2,
       start_iso: '2025-01-01', end_iso: '2025-12-31' }
   ],
+  // sc_docs_orphan = ใบมีมูลค่าที่ไม่มีใบปิดงานอ้างถึง = ตีราคาซ้ำจริง (ไม่ใช่ "เกิน 1 ใบ")
   'ภาพรวม — Summary Cost Item': [
-    { wo_id: 1001, sc_value: 1020186.59, sc_docs: 1, sc_docs_valued: 1 },
-    // 3 ใบ แต่มีมูลค่าจริง 2 ใบ = ตีราคาซ้ำ (bad) · อีกใบมูลค่า 0 = เอกสารเปล่า
-    { wo_id: 1003, sc_value: 1100, sc_docs: 3, sc_docs_valued: 2 },
-    { wo_id: 1004, sc_value: 21754, sc_docs: 1, sc_docs_valued: 1 },
-    { wo_id: 1005, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1 },
-    { wo_id: 1006, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1 },
-    { wo_id: 1007, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1 },
-    { wo_id: 1008, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1 },
-    { wo_id: 1009, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1 }
+    { wo_id: 1001, sc_value: 1020186.59, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    // 3 ใบ มีมูลค่า 2 ใบ แต่ปิดงานรอบเดียว → ใบเกินไม่มีใบปิดงานอ้างถึง = ตีราคาซ้ำ (bad)
+    { wo_id: 1003, sc_value: 1100, sc_docs: 3, sc_docs_valued: 2, sc_docs_orphan: 1 },
+    { wo_id: 1004, sc_value: 21754, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    { wo_id: 1005, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    { wo_id: 1006, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    { wo_id: 1007, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    { wo_id: 1008, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    { wo_id: 1009, sc_value: 1000, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+    // 10 ใบมีมูลค่า ผูกครบทั้ง 10 รอบปิดงาน = ถูกต้อง (นี่คือเคสที่ระบบเดิมรายงานผิดว่า "ตีราคาซ้ำ")
+    { wo_id: 1010, sc_value: 1500, sc_docs: 10, sc_docs_valued: 10, sc_docs_orphan: 0 },
+    // ปิดงาน 3 รอบ มีใบ summary cost 2 ใบ ผูกครบทั้งสองใบ = ไม่ซ้ำ แต่ขาดไป 1 รอบ
+    { wo_id: 1011, sc_value: 1300, sc_docs: 2, sc_docs_valued: 2, sc_docs_orphan: 0 }
   ]
 };
 
@@ -177,7 +204,7 @@ global.__setLabel = (l) => { CURRENT_LABEL = l; };
 
 // ดึงฟังก์ชันภายในออกมาทดสอบ: เติม export ชั่วคราวก่อน return ของ define
 const patched = src.replace('return { onRequest: onRequest };',
-  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, renderSummaryGrid } };');
+  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, renderSummaryGrid, summaryLink } };');
 
 eval(patched);
 
@@ -219,10 +246,34 @@ const r3 = sm.rows.filter(x => x.wo_no === 'WOFSC00000480')[0];
 eq('cost_per_unit หารด้วย WOC ทุกใบ', r3.cost_per_unit, 1100 / 900, 1e-12);
 eq('cost_per_carton เป็น null', r3.cost_per_carton, null);
 eq('ตีราคาซ้ำเป็น bad', r3.notes.filter(n => n.cls === 'bad').length, 1);
-eq('ข้อความบอกจำนวนใบที่มีมูลค่า', r3.notes.some(n => n.text.indexOf('มีมูลค่า 2 ใบ') >= 0), true);
+// ข้อความต้องบอกฐานที่ใช้ตัดสิน (ใบ orphan / ใบมีมูลค่า / รอบปิดงาน) ไม่ใช่จำนวนใบเทียบกติกาที่มองไม่เห็น
+eq('ข้อความบอกจำนวนใบที่ไม่มีใบปิดงานอ้างถึง',
+  r3.notes.some(n => n.text.indexOf('ไม่มีใบปิดงานอ้างถึง 1 ใบ') >= 0), true);
+eq('ข้อความบอกฐาน: ใบมีมูลค่าและรอบปิดงาน',
+  r3.notes.some(n => n.text.indexOf('มีมูลค่าทั้งหมด 2 ใบ · ปิดงานผลิต 1 รอบ') >= 0), true);
 eq('เตือนปิดงานคร่อมช่วง', r3.notes.some(n => n.text.indexOf('คร่อมช่วง') >= 0), true);
 eq('ไม่เตือนคร่อมช่วงกับใบที่อยู่ในช่วงทั้งหมด',
   r.notes.some(n => n.text.indexOf('คร่อมช่วง') >= 0), false);
+
+// ── บั๊ก issue #3: WO ที่แตกหลาย batch ต้องมีใบ summary cost ได้ใบต่อ batch ที่ปิดงานเสร็จ ──
+console.log('\n── WO แตก 10 batch (WO-FSC-00000227) ต้องไม่ขึ้นธง "ตีราคาซ้ำ" ──');
+const rb = sm.rows.filter(x => x.wo_no === 'WOFSC00000227')[0];
+eq('ใบ summary cost 10 ใบ', rb.sc_docs, 10);
+eq('มีมูลค่าทั้ง 10 ใบ', rb.sc_docs_valued, 10);
+eq('ไม่มีใบที่ไม่ถูกอ้างถึง', rb.sc_docs_orphan, 0);
+eq('ใบปิดงาน 30 ใบ แต่รอบที่มีปริมาณ 10 รอบ', rb.woc_fg_count, 10);
+eq('ผูกครบ 10 ใบ', rb.woc_sc_linked, 10);
+eq('ไม่มีหมายเหตุ bad เลย', rb.notes.filter(n => n.cls === 'bad').length, 0);
+eq('ห้ามพูดคำว่าตีราคาซ้ำ', rb.notes.some(n => n.text.indexOf('ตีราคาซ้ำ') >= 0), false);
+eq('ห้ามอ้างกติกา 1 ใบ', rb.notes.some(n => n.text.indexOf('กติกาคือ 1 ใบ') >= 0), false);
+
+console.log('\n── ปิดงาน 3 รอบ แต่ผูกใบ summary cost แค่ 2 ใบ = ต้นทุนบางรอบยังไม่ถูกสรุป ──');
+const ru = sm.rows.filter(x => x.wo_no === 'WOFSC00000228')[0];
+eq('ไม่ใช่เคสตีราคาซ้ำ', ru.sc_docs_orphan, 0);
+eq('ขึ้น bad 1 ข้อ', ru.notes.filter(n => n.cls === 'bad').length, 1);
+eq('บอกว่าขาดไป 1 รอบ',
+  ru.notes.some(n => n.text.indexOf('ปิดงานผลิต 3 รอบ แต่มีใบ MFG Summary Cost ผูกแค่ 2 ใบ') >= 0), true);
+eq('ห้ามกล่าวหาว่าซ้ำ', ru.notes.some(n => n.text.indexOf('ตีราคาซ้ำ') >= 0), false);
 
 console.log('\n── ปันส่วนแปรสภาพแล้วแต่ยังไม่เบิกวัตถุดิบ (เคสที่พบมากใน SB1) ──');
 const r4 = sm.rows.filter(x => x.wo_no === 'WOFSC00000496')[0];
@@ -291,12 +342,12 @@ const fdef = T.readFilters({});
 eq('ไม่ส่งอะไรมา = เดือนปัจจุบันทั้งเดือน', fdef.from, fdef.month + '-01');
 
 console.log('\n── โครงผลลัพธ์ (บรรทัด mainline ซ้ำต้องถูกตัด) ──');
-eq('shown', sm.shown, 9);
-eq('total', sm.total, 9);
+eq('shown', sm.shown, 11);
+eq('total', sm.total, 11);
 eq('truncated', sm.truncated, false);
 eq('WOFSC00000470 โผล่ครั้งเดียว', sm.rows.filter(x => x.wo_no === 'WOFSC00000470').length, 1);
 let sumRm = 0; sm.rows.forEach(x => { sumRm += x.rm_cost; });
-eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 6, 1e-8);
+eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 8, 1e-8);
 
 console.log('\n── render ต้องไม่ throw และมีลิงก์เจาะลึก ──');
 const html = T.renderSummaryPage(sm);
@@ -324,14 +375,36 @@ eq('มี title อธิบายว่าเป็นแปรสภาพล
 
 // ใบ MFG Summary Cost ซ้ำแบบมูลค่า 0 ต้องเป็น warn ไม่ใช่ bad (SB1 มีแบบนี้เยอะ ถ้าเป็น bad จะกลายเป็น noise)
 console.log('\n── ใบ summary cost ซ้ำแบบมูลค่า 0 = warn ไม่ใช่ bad ──');
+const FX_SC = FX['ภาพรวม — Summary Cost Item'];
 FX['ภาพรวม — Summary Cost Item'] = [
-  { wo_id: 1001, sc_value: 1020186.59, sc_docs: 1, sc_docs_valued: 1 },
-  { wo_id: 1003, sc_value: 1100, sc_docs: 3, sc_docs_valued: 1 }
+  { wo_id: 1001, sc_value: 1020186.59, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
+  { wo_id: 1003, sc_value: 1100, sc_docs: 3, sc_docs_valued: 1, sc_docs_orphan: 0 }
 ];
 const smZ = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
 const rz = smZ.rows.filter(x => x.wo_no === 'WOFSC00000480')[0];
 eq('ไม่ขึ้น bad', rz.notes.filter(n => n.cls === 'bad').length, 0);
 eq('ขึ้น warn เอกสารเปล่า 2 ใบ', rz.notes.some(n => n.text.indexOf('มูลค่า 0 ค้างอยู่ 2 ใบ') >= 0), true);
+FX['ภาพรวม — Summary Cost Item'] = FX_SC;
+
+// query พังคืนแถวว่าง = อ่านเป็นเลข 0 ทุกช่อง ถ้าธงไม่มีการ์ดจะขึ้นแดงพร้อมกันทุกใบ
+console.log('\n── อ่านจำนวนใบปิดงานไม่สำเร็จ ต้องไม่กล่าวหาว่าซ้ำ/ผูกไม่ครบ ──');
+const FX_PROD = FX['ภาพรวม — ผลิตได้จริง'];
+FX['ภาพรวม — ผลิตได้จริง'] = 'THROW';
+const smNoWoc = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
+const rn = smNoWoc.rows.filter(x => x.wo_no === 'WOFSC00000227')[0];
+eq('ขึ้นว่ายังไม่มีใบปิดงานผลิต',
+  rn.notes.some(n => n.text.indexOf('ยังไม่มีใบปิดงานผลิต') >= 0), true);
+eq('ไม่กล่าวหาว่าผูกไม่ครบ', rn.notes.some(n => n.text.indexOf('ยังไม่ถูกสรุป') >= 0), false);
+eq('ทุกใบต้องไม่มีธงเรื่องการผูก',
+  smNoWoc.rows.some(x => x.notes.some(n => n.text.indexOf('ผูกแค่') >= 0)), false);
+FX['ภาพรวม — ผลิตได้จริง'] = FX_PROD;
+
+console.log('\n── อ่านใบ summary cost ไม่สำเร็จ ต้องไม่กล่าวหาว่าตีราคาซ้ำ ──');
+FX['ภาพรวม — Summary Cost Item'] = 'THROW';
+const smNoSc = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
+eq('ไม่มีใบใดขึ้นตีราคาซ้ำ',
+  smNoSc.rows.some(x => x.notes.some(n => n.text.indexOf('ตีราคาซ้ำ') >= 0)), false);
+FX['ภาพรวม — Summary Cost Item'] = FX_SC;
 
 // query พังคืนแถวว่าง ซึ่งอ่านเป็น "ไม่มี Cost ref" ได้ง่าย ๆ → จะกลายเป็นคำเตือนผิดทุกใบพร้อมกัน
 console.log('\n── อ่าน Cost ref ไม่สำเร็จ ต้องไม่สรุปว่า "จับคู่ไม่ได้" ──');
@@ -350,9 +423,48 @@ FX['Cost ref ของสินค้าที่ผลิต'] = FX_CR;
 console.log('\n── ตัด max แล้วต้องบอกว่าตัด ──');
 const sm2 = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31', max: '1' }));
 eq('shown', sm2.shown, 1);
-eq('total', sm2.total, 9);
+eq('total', sm2.total, 11);
 eq('truncated', sm2.truncated, true);
 eq('html แจ้งการตัด', T.renderSummaryPage(sm2).indexOf('แต่แสดงเพียง') > 0, true);
+
+// ── ชั้นเจาะลึก: summaryLink คือฟังก์ชันที่ตัดสินซ้ำ/ครบ ต้องคิดเหมือนชั้นภาพรวมทุกกรณี ──
+console.log('\n── summaryLink (ชั้นเจาะลึก) ──');
+const scLine = (tran, amt) => ({ tran_id: tran, amount: amt, doc_no: 'IA-' + tran,
+  recordtype: 'inventoryadjustment' });
+const wocLine = (id, qty, ia) => ({ woc_id: id, woc_no: 'WOC-' + id, fg_qty: qty, sc_ia: ia });
+
+// เคส WO-FSC-00000227 ย่อส่วน: 3 batch · ใบขั้นตอนกลางปริมาณ 0 · ใบ summary cost ผูกครบ
+const lkOk = T.summaryLink(
+  [scLine(9001, -100), scLine(9002, -100), scLine(9003, -100)],
+  [wocLine(1, 0, null), wocLine(2, 0, null),
+   wocLine(3, 50, 9001), wocLine(4, 50, 9002), wocLine(5, 50, 9003)]);
+eq('รอบที่ตีราคา = ใบที่มีปริมาณ', lkOk.fgWocs, 3);
+eq('ผูกครบ 3 ใบ', lkOk.linkedDocs, 3);
+eq('ไม่มีใบ orphan', lkOk.orphanDocs.length, 0);
+eq('ไม่มีใบปิดงานที่ยังไม่ผูก', lkOk.unlinkedWocs.length, 0);
+
+// ตีราคาซ้ำ: ใบมีมูลค่า 2 ใบ แต่มีใบปิดงานอ้างถึงใบเดียว
+const lkDup = T.summaryLink([scLine(9001, -100), scLine(9002, -100)], [wocLine(3, 50, 9001)]);
+eq('ชี้ใบที่ไม่ถูกอ้างถึงได้', lkDup.orphanDocs.join(','), '9002');
+eq('ไม่ปนกับเคสผูกไม่ครบ', lkDup.unlinkedWocs.length, 0);
+
+// ใบเปล่ามูลค่า 0 ที่ไม่มีใครอ้าง ไม่ใช่ orphan — ไม่กระทบยอด
+const lkEmpty = T.summaryLink([scLine(9001, -100), scLine(9002, 0)], [wocLine(3, 50, 9001)]);
+eq('ใบมูลค่า 0 ไม่นับเป็นตีราคาซ้ำ', lkEmpty.orphanDocs.length, 0);
+eq('นับใบทั้งหมดถูก', lkEmpty.docs, 2);
+eq('นับใบที่มีมูลค่าถูก', lkEmpty.valuedDocs, 1);
+
+// ปิดงานแล้วแต่ยังไม่มีใบ summary cost ผูก
+const lkMiss = T.summaryLink([scLine(9001, -100)], [wocLine(3, 50, 9001), wocLine(4, 50, null)]);
+eq('ชี้ใบปิดงานที่ยังไม่ผูก', lkMiss.unlinkedWocs.length, 1);
+eq('ชี้เลขใบปิดงานได้', lkMiss.unlinkedWocs[0].woc_no, 'WOC-4');
+
+// field custbody_mfg_adjsummarycost ถูก engine ใช้ปั๊ม move adjustment ด้วย
+// ค่าที่ไม่ว่างแต่ไม่ใช่ใบ summary cost ต้องไม่ถูกนับว่า "ผูกแล้ว"
+const lkMove = T.summaryLink([scLine(9001, -100)], [wocLine(3, 50, 8888)]);
+eq('id ที่ไม่ใช่ใบ summary cost ไม่นับว่าผูก', lkMove.linkedDocs, 0);
+eq('ใบ summary cost จึงกลายเป็น orphan', lkMove.orphanDocs.join(','), '9001');
+eq('และใบปิดงานนับว่ายังไม่ผูก', lkMove.unlinkedWocs.length, 1);
 
 console.log('\n' + (fail ? fail + ' FAILED' : 'ผ่านทั้งหมด'));
 process.exit(fail ? 1 : 0);
