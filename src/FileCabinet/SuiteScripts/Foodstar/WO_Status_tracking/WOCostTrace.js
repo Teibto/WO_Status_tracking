@@ -722,8 +722,21 @@ define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
              -- ใบที่มีปริมาณจึงเท่ากับจำนวน batch ที่ปิดงานเสร็จ = ฐานของจำนวนใบ summary cost
              -- (WO-FSC-00000227: WOC 30 ใบ · มีปริมาณ 10 ใบ · batch 10 batch)
              COUNT(DISTINCT CASE WHEN NVL(TLM.quantity, 0) <> 0 THEN WOC.id END) AS woc_fg_count,
-             -- ใบ summary cost ที่ใบปิดงานอ้างถึง (custbody_mfg_adjsummarycost)
-             COUNT(DISTINCT WOC.custbody_mfg_adjsummarycost) AS woc_sc_linked,
+             -- ใบ summary cost ที่ใบปิดงานอ้างถึง — เงื่อนไขต้องตรงกับ summaryLink() ของชั้นเจาะลึกทุกข้อ
+             -- นับเฉพาะใบปิดงานที่มีปริมาณ และ id ที่ปั๊มไว้ต้องเป็นใบ summary cost จริง
+             -- (engine ใช้ field เดียวกันปั๊ม move adjustment ด้วย · เงื่อนไข "เป็นใบ summary cost"
+             --  ต้องเป็นชุดเดียวกับ qSummarySummaryCost คือประเภทเอกสาร หรือ ตัวสินค้า)
+             -- วัดบน SB1: เดือน 07/2026 236 ใบ ใช้ 831 ms — ราคาไม่แพงพอที่จะยอมให้สองชั้นต่างกัน
+             COUNT(DISTINCT CASE WHEN NVL(TLM.quantity, 0) <> 0
+                                  AND EXISTS (SELECT 1 FROM transaction SCT
+                                              LEFT JOIN transactionline SCL ON SCL.transaction = SCT.id
+                                              LEFT JOIN item SCI ON SCI.id = SCL.item
+                                              LEFT JOIN customrecord_thl_adjustmenttype SCA
+                                                ON SCA.id = SCT.custbody_thl_adjustmenttype
+                                              WHERE SCT.id = WOC.custbody_mfg_adjsummarycost
+                                                AND (NVL(SCA.custrecord_adjt_mfgsummarycost, 'F') = 'T'
+                                                     OR NVL(SCI.custitem_mfg_summarycostitem, 'F') = 'T'))
+                                 THEN WOC.custbody_mfg_adjsummarycost END) AS woc_sc_linked,
              ${inRangeCol}                          AS woc_in_range,
              TO_CHAR(MAX(WOC.trandate), 'DD/MM/YYYY') AS woc_last,
              TO_CHAR(MAX(WOC.trandate), 'YYYY-MM-DD') AS woc_last_iso
