@@ -9,7 +9,8 @@ Suitelet สำหรับ UAT · แทนงานเจาะมือที
 | Deployment | `customdeploy_fs_wo_cost_trace` |
 | ไฟล์ | `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js` |
 | Object | `src/Objects/customscript_fs_wo_cost_trace.xml` |
-| Deploy แล้วที่ | 9751184_SB1 (sandbox) |
+| Deploy แล้วที่ | 9751184_SB1 (sandbox) · **9751184 (production) 2026-09-03** |
+| payload ที่ใช้ขึ้น prod | `Foodstar/.deploy-staging/wo-trace-prod/` (ไฟล์เดียว + object เดียว) |
 | เทสเลขแบบไม่ต้อง deploy | `node test/test_summary_math.js` |
 | เทสไฟล์ Excel ของชั้นภาพรวม | `node test/test_summary_export.js` |
 
@@ -694,5 +695,43 @@ node test/test_ready_master.js
 
 ## หมายเหตุเรื่อง deploy
 
-`project.json` เดิมชี้ `defaultAuthId` ไว้ที่ `9751184` (production) ตอนทำงานนี้เปลี่ยนเป็น
-`9751184_SB1` เพื่อ deploy ลง sandbox **ถ้าจะ deploy ของเดิมขึ้น production ต้องเปลี่ยนกลับก่อน**
+`project.json` ของ repo ชี้ `defaultAuthId` ไว้ที่ `9751184_SB1` (sandbox) **และให้คงไว้แบบนั้น**
+การขึ้น production ไม่ได้แก้ไฟล์นี้ แต่ใช้ payload แยกที่ `Foodstar/.deploy-staging/wo-trace-prod/`
+ซึ่งมี `project.json` ของตัวเองชี้ `9751184` — วิธีเดียวกับที่ `fs-cogs-prod` และ `bom-prod` ใช้
+เพื่อไม่ให้ repo ค้างสภาพชี้ prod แล้วมีคนเผลอ `project:deploy` ลงบัญชีจริง
+
+### ขึ้น production แล้ว (2026-09-03)
+
+`Installation COMPLETE (3s)` · commit `43081fe` · log `.deploy-staging/wo-trace-prod/deploy-prod-20260903.log`
+payload มี **1 ไฟล์ + 1 object เท่านั้น** (`WOCostTrace.js` + `customscript_fs_wo_cost_trace.xml`)
+`deploy.xml` ระบุ path ตรงตัวไม่ใช้ `*` เพราะของ repo ทั้งก้อนจะลาก `WOStatusTracking*.js`
+4 ไฟล์ที่มีบน prod อยู่แล้วไปทับด้วย — dry-run ยืนยันว่าได้ `Create` 2 รายการ ไม่มี `Update` เลย
+
+**ค่า deployment บน prod ต่างจาก repo หนึ่งช่อง** — `loglevel` เป็น `ERROR` (repo/SB1 เป็น `DEBUG`)
+เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง ระดับ DEBUG จะกินแถว log ของบัญชีจริงไปเปล่า ๆ
+`allroles=T` คงเดิมตามที่ผู้ใช้ยืนยัน · ⚠ **deploy จาก repo ตรง ๆ จะดัน `DEBUG` กลับไป**
+ต้องแก้ผ่าน staging payload เท่านั้น
+
+### สภาพข้อมูลบน production ณ วันที่ deploy
+
+| ตรวจ | ผลบน prod |
+|---|---|
+| ใบสั่งผลิต (`recordtype='workorder'`) | **0 ใบ** ทั้งบัญชี |
+| ใบปิดงานผลิต (`workordercompletion`) | **0 ใบ** |
+| BOM (`assemblyitembom`) | 973 แถว |
+| Cost reference ของสินค้าที่ลองตรวจ | 0 แถว |
+
+ชั้นภาพรวมและชั้นเจาะลึกจึงยัง **ไม่มีอะไรให้แสดงบน prod** จนกว่าจะเริ่มเปิดใบสั่งผลิตจริง —
+ตารางว่างที่เห็นเป็นสภาพข้อมูล ไม่ใช่ query พัง (ยืนยันด้วย `qlog` ที่ `error` ว่างทุกแถว
+และด้วย SuiteQL นับตรงบน prod) ส่วนที่ใช้งานได้เลยวันนี้คือ **ชั้นความพร้อม master `&ready=<รหัสสินค้า>`**
+ซึ่งเป็นชั้นที่ออกแบบมาสำหรับช่วงก่อนเปิดใบสั่งผลิตอยู่แล้ว
+
+### ผล smoke test บน prod (2026-09-03)
+
+- `&ready=10010300601` → 15 query รันครบ **error 0** · เจอ BOM 1 ใบ · component 16 รายการ ·
+  BOM ลูก 9 ใบ · routing 8 แถว 10 ขั้นตอน · work center 4 · คลัง 413 · อัตราแปลงหน่วย 1,509
+- **Cost ref = 0 แถว** และ **ยอดคงเหลือ = 0 แถว** (ไม่ได้ส่ง `&loc=`) — เป็นช่องว่างของ master
+  บนบัญชีจริง ไม่ใช่บั๊ก แต่เป็นรายการที่ต้องตั้งก่อน go-live
+- หน้าภาพรวมเรนเดอร์ปกติ แถบ export ขึ้นสถานะ "ไม่มีรายการให้ export ตามเงื่อนไขนี้" ตามที่ควรเป็น
+- **โหลด `xlsx-js-style@1.2.0` จาก jsdelivr บนหน้า prod ได้จริง** (`typeof XLSX === "object"`)
+  → ข้อกังวลเรื่อง CDN ปิดกั้นบนบัญชีจริงตกไป (ยังเหลือกรณีเครื่องผู้ใช้ที่ปิดทางออกเน็ตเอง)
