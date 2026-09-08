@@ -7,9 +7,8 @@
  *
  * repo นี้ไม่มี CI ให้แขวน hook จึงทำเป็นเทส — `npm test` กลายเป็นด่านเดียวที่ทุกคนวิ่งผ่าน
  *
- * ⚠ ตอนนี้เป็น **ratchet ไม่ใช่ศูนย์** — 4 ไฟล์เดิมยังอยู่ใน `PENDING_REMOVAL` เพราะการลบ
- * เป็นงานของ issue #9 (ต้องแนบบันทึกว่าทิ้งอะไรใน PR นั้น) · เทสนี้กัน**ไฟล์ใหม่**ได้ทันที
- * **issue #9 ต้องล้าง `PENDING_REMOVAL` ให้เหลือ `[]`** แล้วเทสจะบังคับศูนย์เอง
+ * issue #9 ลบ 4 ไฟล์สำเนาที่ราก `src/` ออกแล้ว (2026-09-08) `PENDING_REMOVAL` จึงว่าง
+ * เทสนี้บังคับ**ศูนย์** — ไฟล์ `.js` ที่ราก `src/` โผล่มาอีกเมื่อไหร่เทสตกทันที
  */
 const fs = require('fs');
 const path = require('path');
@@ -21,12 +20,7 @@ const SRC = path.join(__dirname, '../src');
 const DEPLOY_DIR = path.join(SRC, 'FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking');
 
 // ไฟล์ที่รู้ตัวว่ายังค้าง — issue #9 จะลบออกแล้วทำ list นี้ให้ว่าง
-const PENDING_REMOVAL = [
-  'WOStatusTracking.js',
-  'WOStatusTracking_Drilldown.js',
-  'WOStatusTracking_Labels.js',
-  'WOStatusTracking_Queries.js'
-];
+const PENDING_REMOVAL = [];   // issue #9 ลบครบแล้ว 2026-09-08 — ต่อจากนี้เทสนี้บังคับศูนย์
 
 const rootJs = fs.readdirSync(SRC)
   .filter((f) => f.toLowerCase().endsWith('.js'))
