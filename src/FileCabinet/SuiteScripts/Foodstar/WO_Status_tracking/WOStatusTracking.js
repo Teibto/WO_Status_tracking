@@ -1350,7 +1350,12 @@ function _resolveEntityFilter() {
   var raw = entityEl ? entityEl.value.trim().toUpperCase() : '';
   var woNum = '', batchNum = '', osNum = '';
   if (raw) {
-    if (/-B\d+$/i.test(raw)) {
+    // ต้องเขียน backslash สองตัวใน source เพราะก้อนนี้อยู่ใน template literal ของเซิร์ฟเวอร์
+    // escape ที่ JS ไม่รู้จักจะถูกกลืน backslash ทิ้ง — regex ที่ render ออกไปเคยกลายเป็น
+    // -B ตามด้วยตัว d ล้วน ซึ่งไม่ตรงกับเลข batch เลย ทำให้ค้นด้วยเลข Batch ไม่เจอ
+    // โดยไม่มี error ที่ไหน (issue #35 · ตัวแปลงวันที่ข้างล่างก็โดนเรื่องเดียวกัน)
+    // และห้ามใส่ backtick ในคอมเมนต์แถวนี้ มันจะปิด template literal กลางทาง
+    if (/-B\\d+$/i.test(raw)) {
       batchNum = raw;           // e.g. WOFSC00000092-B0001
     } else if (/^O[^W]/i.test(raw)) {
       osNum = raw;              // e.g. OS-001
@@ -1374,12 +1379,12 @@ function _resolveEntityFilter() {
 function _isoFromDateInput(el) {
   var raw = (el && el.value ? el.value : '').trim();
   if (!raw) return '';
-  var mt = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  var mt = raw.match(/^(\\d{1,2})[/.-](\\d{1,2})[/.-](\\d{4})$/);
   var y, m, d;
   if (mt) {
     d = +mt[1]; m = +mt[2]; y = +mt[3];
   } else {
-    mt = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    mt = raw.match(/^(\\d{4})-(\\d{1,2})-(\\d{1,2})$/);
     if (!mt) return null;                      // null = อ่านไม่ออก (ต่างจาก '' = ว่าง)
     y = +mt[1]; m = +mt[2]; d = +mt[3];
   }
