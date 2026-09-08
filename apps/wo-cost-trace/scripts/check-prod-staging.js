@@ -19,9 +19,9 @@
 const fs = require('fs');
 const path = require('path');
 const { execFileSync } = require('child_process');
-const P = require('./lib/sdf_payload');
+const P = require('../../../shared/lib/sdf_payload');
 
-const REPO = path.join(__dirname, '..');
+const REPO = path.join(__dirname, '../../..');   // apps/wo-cost-trace/scripts → ราก repo (#40)
 
 // ── args ────────────────────────────────────────────────────────────────────
 const argv = process.argv.slice(2);
@@ -201,7 +201,7 @@ check(7, 'project.json — staging ชี้ production และ repo ยัง
     catch (e) { return '(อ่านไม่ได้: ' + e.message + ')'; }
   };
   const s = read(path.join(STAGING, 'project.json'));
-  const r = read(path.join(REPO, 'apps/wo-cost-trace/project.json'));   // ย้ายตามโครง apps/ (#38)
+  const r = read(path.join(REPO, 'apps/wo-cost-trace/project.json'));
   if (s !== PROD_ACCOUNT) out.push('staging defaultAuthId = ' + s + ' คาดว่า ' + PROD_ACCOUNT);
   if (/_SB\d*$/i.test(String(s))) out.push('staging ชี้บัญชี sandbox (' + s + ') — payload นี้ต้องชี้ production');
   if (r !== REPO_ACCOUNT) {

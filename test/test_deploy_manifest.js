@@ -10,8 +10,8 @@
  *   · <scriptfile> เทียบตัวพิมพ์ — Windows/macOS มองชื่อไฟล์ไม่สนตัวพิมพ์ แต่ File Cabinet สน
  */
 const path = require('path');
-const H = require('./_harness');
-const P = require('../scripts/lib/sdf_payload');
+const H = require('./lib/_harness');
+const P = require('../shared/lib/sdf_payload');
 
 const eq = H.makeEq({ json: true });
 // epic #37 — สองแอปมี deploy.xml คนละใบ เทสนี้ต้องตรวจทุกแอป ไม่ใช่ชุดเดียว
@@ -40,6 +40,21 @@ if (ghost.length) console.log('     อยู่ใน deploy.xml แต่ไ�
 eq('ไม่มีไฟล์ที่ตกจาก list', missing.join(' '), '');
 eq('ไม่มี path ที่ชี้ไฟล์ไม่มีจริง', ghost.join(' '), '');
 eq('จำนวนไฟล์ที่ระบุ = จำนวนไฟล์ .js ที่มีจริง', d.files.length, onDisk.length);
+
+// สองแอปใช้โฟลเดอร์เดียวกันบนบัญชี (คำตัดสิน #37) — deploy.xml ที่ระบุไฟล์ของอีกแอป
+// จะทับของเขาโดยที่ dry-run ของแอปนั้นไม่เห็นอะไรผิดปกติเลย ด่านนี้จึงอ่านจากชื่อไฟล์ว่าใครเป็นเจ้าของ
+// WOReportTheme.js เป็นก๊อปที่ทั้งสองแอปถือของตัวเอง (#39) จึงไม่นับว่าข้ามแอป
+console.log('\n── deploy.xml ห้ามระบุไฟล์ของแอปอื่น ──');
+const OWNER_RE = { 'wo-cost-trace': /^WOCostTrace/, 'wo-status': /^WOStatusTracking/ };
+const crossApp = d.files
+  .map((f) => f.split('/').pop())
+  .filter((base) => base !== 'WOReportTheme.js')
+  .filter((base) => !(OWNER_RE[A.app] || /$^/).test(base));
+if (crossApp.length) console.log('     ไฟล์ที่ไม่ใช่ของ ' + A.app + ': ' + crossApp.join(' '));
+eq('ไม่มีไฟล์ของแอปอื่นใน deploy.xml', crossApp.join(' '), '');
+
+const objBases = d.objects.map((o) => o.split('/').pop());
+eq('ระบุ object แค่ใบเดียว (ของแอปตัวเอง)', objBases.length, 1);
 
 console.log('\n── object ทุกใบต้องอยู่ใน list ──');
 const objDisk = P.listObjectXml(SRC);

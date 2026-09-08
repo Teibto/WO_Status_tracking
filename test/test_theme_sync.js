@@ -13,7 +13,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const H = require('./_harness');
+const H = require('./lib/_harness');
 
 const eq = H.makeEq({ json: true });
 

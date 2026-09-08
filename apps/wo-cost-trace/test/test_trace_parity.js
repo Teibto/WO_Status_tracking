@@ -11,8 +11,8 @@
  *
  * รัน: node test/test_trace_parity.js
  */
-const H = require('./_harness');
-const FX = require('./fixtures_parity');
+const H = require('../../../test/lib/_harness');
+const FX = require('../../../test/lib/fixtures_parity');
 
 const eq = H.makeEq({ tol: 1e-9 });
 

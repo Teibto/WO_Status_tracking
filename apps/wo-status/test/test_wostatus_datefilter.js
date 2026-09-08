@@ -13,7 +13,7 @@
  * เป็นเทสพฤติกรรมตัวแรกของ Suitelet 1 — ก่อนหน้านี้มีแต่ `test_deploy_manifest`
  * (นับ dependency) กับ `test_theme` (สแกน source)
  */
-const H = require('./_harness');
+const H = require('../../../test/lib/_harness');
 
 const eq = H.makeEq();
 

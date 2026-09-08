@@ -9,7 +9,7 @@
  *
  * รัน: node test/test_ready_master.js
  */
-const H = require('./_harness');
+const H = require('../../../test/lib/_harness');
 
 // ── fixture ────────────────────────────────────────────────────────────────
 // โครงที่ใช้ทดสอบ (ล้อของจริงแต่ย่อให้อ่านออก)

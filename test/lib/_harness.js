@@ -25,7 +25,7 @@ const fs = require('fs');
 const path = require('path');
 
 // โครง apps/ (epic #37 · ก้อน S1) — สองแอปมี source คนละชุด แต่ path บนบัญชีเป็นโฟลเดอร์เดียวกัน
-const APPS_DIR = path.join(__dirname, '../apps');
+const APPS_DIR = path.join(__dirname, '../../apps');
 const FC_SUB = path.join('src', 'FileCabinet', 'SuiteScripts', 'Foodstar', 'WO_Status_tracking');
 
 /** โฟลเดอร์ source ของแต่ละแอป — คีย์คือชื่อโฟลเดอร์ใต้ apps/ */

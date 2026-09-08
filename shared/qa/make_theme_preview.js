@@ -11,8 +11,8 @@
  */
 const fs = require('fs');
 const path = require('path');
-const H = require('../test/_harness');
-const FX = require('../test/fixtures_parity');
+const H = require('../../test/lib/_harness');
+const FX = require('../../test/lib/fixtures_parity');
 
 const { T } = H.load({
   libs: ['WOReportTheme.js'],

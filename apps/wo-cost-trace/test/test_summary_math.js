@@ -2,7 +2,7 @@
  * Harness — ตรวจเลขของ buildSummary ด้วย fixture ที่ล็อกกับตัวเลขที่ verify แล้วใน WO_COST_TRACE.md
  * ไม่แตะ NetSuite · stub N/query ให้คืนแถวตาม label ของ query
  */
-const H = require('./_harness');
+const H = require('../../../test/lib/_harness');
 
 // ── fixture: WOFSC00000470 (ตัวเลขจาก WO_COST_TRACE.md) + WO ที่ยังไม่ปิดงาน ──
 const FX = {

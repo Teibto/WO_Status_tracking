@@ -17,7 +17,7 @@
  */
 const fs = require('fs');
 const path = require('path');
-const H = require('./_harness');
+const H = require('./lib/_harness');
 
 const eq = H.makeEq({ json: true });
 
@@ -79,7 +79,7 @@ apps.forEach((app) => {
 
 // ── 3. หน้าที่ render จริงต้องมี token + คลาสของ template ───────────────────
 console.log('\n── หน้าภาพรวมที่ render จริง (wo-cost-trace) ──');
-const FX = require('./fixtures_parity');
+const FX = require('./lib/fixtures_parity');
 const { T } = H.load({
   libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX.summary(),

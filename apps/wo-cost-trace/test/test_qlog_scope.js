@@ -9,8 +9,8 @@
  * วิธีเทส: ยิง `onRequest` **สองครั้งติดกันบน module instance เดียวกัน**
  * แล้วดูว่ารอบสองไม่มีของรอบแรกติดมา — ทั้งชั้นภาพรวมและชั้นเจาะลึก
  */
-const H = require('./_harness');
-const FX = require('./fixtures_parity');
+const H = require('../../../test/lib/_harness');
+const FX = require('../../../test/lib/fixtures_parity');
 
 const eq = H.makeEq({ json: true });
 
