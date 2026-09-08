@@ -152,6 +152,8 @@ define(
       + 'border-bottom:1px solid var(--pj-border)}'
       + '.filterbar .fld{display:flex;flex-direction:column;gap:var(--sp-1)}'
       + '.filterbar select,.filterbar input{min-width:150px}'
+      // ช่องวันที่เป็นช่องข้อความ (dd/mm/yyyy) — เลขความกว้างเท่ากันเหมือนตารางตัวเลข
+      + '.dateinput{font-variant-numeric:tabular-nums}'
       + '.filterbar button{background:var(--pj-primary);color:#fff;'
       + 'border:1px solid var(--pj-primary);padding:7px var(--sp-4);'
       + 'border-radius:var(--radius-md);font-family:inherit;font-weight:600;'
@@ -321,8 +323,10 @@ define(
       const lang         = p.lang || 'th';
       const subsidiaryId = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
-      const dateFrom     = p.dateFrom     || '';
-      const dateTo       = p.dateTo       || '';
+      const dateFromRaw  = p.dateFrom     || '';
+      const dateToRaw    = p.dateTo       || '';
+      const dateFrom     = parseFilterDate(dateFromRaw);
+      const dateTo       = parseFilterDate(dateToRaw);
       const page         = Math.max(1, parseInt(p.page, 10) || 1);
       const scriptId     = p.script || '';
       const deployId     = p.deploy || '';
@@ -331,6 +335,18 @@ define(
       const osNumber     = (p.osNumber     || '').trim().toUpperCase();
       const embed        = p.embed === '1';
       const hasEntityFilter = !!(woNumber || batchNumber || osNumber);
+
+      // ── Server-side date format guard ───────────────────────────
+      // ช่องกรองเป็น text แล้ว (dd/mm/yyyy) ค่าที่ส่งมาจึงอาจอ่านไม่ออก
+      // ต้องบอกตรง ๆ ไม่ปล่อยให้ TO_DATE พังแล้วผู้ใช้เห็นเป็น "ไม่พบข้อมูล"
+      if (!hasEntityFilter && ((dateFromRaw && !dateFrom) || (dateToRaw && !dateTo))) {
+        const fmtErr = lang === 'en'
+          ? 'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026.'
+          : 'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026';
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write(buildErrorPage(fmtErr));
+        return;
+      }
 
       // Load filter dropdown data (need to repopulate on results page)
       let subRows = [];
@@ -457,13 +473,26 @@ define(
       const lang         = p.lang || 'th';
       const subsidiaryId = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
-      const dateFrom     = p.dateFrom     || '';
-      const dateTo       = p.dateTo       || '';
+      const dateFromRaw  = p.dateFrom     || '';
+      const dateToRaw    = p.dateTo       || '';
+      const dateFrom     = parseFilterDate(dateFromRaw);
+      const dateTo       = parseFilterDate(dateToRaw);
       const page         = Math.max(1, parseInt(p.page, 10) || 1);
       const woNumber     = (p.woNumber    || '').trim().toUpperCase();
       const batchNumber  = (p.batchNumber || '').trim().toUpperCase();
       const osNumber     = (p.osNumber    || '').trim().toUpperCase();
       const embed        = p.embed === '1';
+
+      // ชั้น fragment ไม่มี shell ให้แสดงหน้า error จึงตอบเป็นแถบแจ้งใน results-zone
+      if (!woNumber && !batchNumber && !osNumber
+          && ((dateFromRaw && !dateFrom) || (dateToRaw && !dateTo))) {
+        const fmtErr = lang === 'en'
+          ? 'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026.'
+          : 'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026';
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write('<div class="schema-notice">' + escapeHtml(fmtErr) + '</div>');
+        return;
+      }
 
       const searchParams = { subsidiaryId, locationId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       let cp1Rows = [];
@@ -1228,11 +1257,17 @@ ${embed ? '' : theme.topbar({
     </div>
     <div class="fld" id="date-fld-from">
       <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;" data-i18n="fFrom">${escapeHtml(t.fFrom)} <span id="date-opt-hint" style="color:var(--pj-text-muted);font-weight:400;text-transform:none;font-size:10px;">(ถ้าไม่ระบุ WO/Batch)</span></label>
-      <input type="date" name="dateFrom" id="dateFrom" value="${escapeAttr(selectedFrom)}" />
+      <input type="text" name="dateFrom" id="dateFrom" class="dateinput"
+             value="${escapeAttr(fmtDate(selectedFrom))}"
+             placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
+             autocomplete="off" spellcheck="false" />
     </div>
     <div class="fld" id="date-fld-to">
       <label data-i18n="fTo">${escapeHtml(t.fTo)}</label>
-      <input type="date" name="dateTo" id="dateTo" value="${escapeAttr(selectedTo)}" />
+      <input type="text" name="dateTo" id="dateTo" class="dateinput"
+             value="${escapeAttr(fmtDate(selectedTo))}"
+             placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
+             autocomplete="off" spellcheck="false" />
     </div>
     <button type="button" id="btnSearch" data-i18n="go">${escapeHtml(t.go)}</button>
   </div>
@@ -1308,16 +1343,40 @@ function _resolveEntityFilter() {
   return { woNumber: woNum, batchNumber: batchNum, osNumber: osNum };
 }
 
+// ── วันที่ในช่องกรองเป็น dd/mm/yyyy · URL กับ SQL เป็น ISO ────────────
+// ตัวแปลงตัวเดียวที่ทุกทางต้องผ่าน (ปุ่มค้นหา · Enter · ตรวจช่วงวัน)
+// ตรรกะเดียวกับ parseFilterDate ฝั่งเซิร์ฟเวอร์ — แก้ที่ไหนต้องแก้อีกที่ด้วย
+function _isoFromDateInput(el) {
+  var raw = (el && el.value ? el.value : '').trim();
+  if (!raw) return '';
+  var mt = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+  var y, m, d;
+  if (mt) {
+    d = +mt[1]; m = +mt[2]; y = +mt[3];
+  } else {
+    mt = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+    if (!mt) return null;                      // null = อ่านไม่ออก (ต่างจาก '' = ว่าง)
+    y = +mt[1]; m = +mt[2]; d = +mt[3];
+  }
+  var dt = new Date(y, m - 1, d);
+  if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return null;
+  return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
+}
+
 // ── Search button — validate then AJAX fetch (no form submit / no reload) ─
 document.getElementById('btnSearch').addEventListener('click', function() {
   try {
     var entity = _resolveEntityFilter();
     var woNum = entity.woNumber, batchNum = entity.batchNumber, osNum = entity.osNumber;
-    var from = (document.getElementById('dateFrom') || {}).value || '';
-    var to   = (document.getElementById('dateTo')   || {}).value || '';
+    var from = _isoFromDateInput(document.getElementById('dateFrom'));
+    var to   = _isoFromDateInput(document.getElementById('dateTo'));
     var t    = I18N[LANG] || {};
     var hasEntity = !!(woNum || batchNum || osNum);
     if (!hasEntity) {
+      if (from === null || to === null) {
+        alert(t.errDateFormat || 'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy');
+        return;
+      }
       if (!from || !to) { alert(t.errDateRequired || 'กรุณาเลือกวันที่'); return; }
       var d1 = new Date(from), d2 = new Date(to);
       if (d2 < d1) { alert(t.errDateOrder || '"ถึง" ต้องมาหลัง "ตั้งแต่"'); return; }
@@ -1355,6 +1414,19 @@ document.getElementById('btnSearch').addEventListener('click', function() {
   ef.addEventListener('input',   _updateDateHint);
   ef.addEventListener('keydown', function(e) {
     if (e.key === 'Enter') document.getElementById('btnSearch').click();
+  });
+
+  // ช่องวันที่เป็น text แล้ว — Enter จะ submit ฟอร์มดิบ ๆ พา dd/mm/yyyy ไปทาง URL
+  // ดักให้ไปทางเดียวกับปุ่มค้นหา (เซิร์ฟเวอร์ยังรับสองรูปแบบไว้เป็นตาข่ายอีกชั้น)
+  ['dateFrom', 'dateTo'].forEach(function(id) {
+    var el = document.getElementById(id);
+    if (!el) return;
+    el.addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        document.getElementById('btnSearch').click();
+      }
+    });
   });
 
   // Run once on load to reflect pre-filled value
@@ -1566,6 +1638,7 @@ window.addEventListener('resize', fixStickyHeader);
           errDateRequired: 'กรุณาเลือกวันที่ทั้งคู่ / Please select both dates',
           errDateOrder:    '"ถึง" ต้องมาหลัง "ตั้งแต่" / "To" must be after "From"',
           errDateRange:    'กรุณาเลือกช่วงไม่เกิน 7 วัน / Date range must be ≤ 7 days',
+          errDateFormat:   'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026 / Invalid date format',
         },
         en: {
           title: 'Work Order Status Tracking',
@@ -1609,6 +1682,7 @@ window.addEventListener('resize', fixStickyHeader);
           errDateRequired: 'Please select both dates / กรุณาเลือกวันที่ทั้งคู่',
           errDateOrder:    '"To" must be after "From" / "ถึง" ต้องมาหลัง "ตั้งแต่"',
           errDateRange:    'Date range must be ≤ 7 days / กรุณาเลือกช่วงไม่เกิน 7 วัน',
+          errDateFormat:   'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026 / รูปแบบวันที่ไม่ถูกต้อง',
         },
       };
       return labels[lang] || labels.th;
@@ -1705,6 +1779,35 @@ window.addEventListener('resize', fixStickyHeader);
       const parts = String(s).split('-');
       if (parts.length !== 3) return s;
       return `${parts[2]}/${parts[1]}/${parts[0]}`;
+    }
+
+    /** อ่านวันที่จากตัวกรอง → 'YYYY-MM-DD' · คืน '' ถ้าไม่ใช่วันที่จริง
+     *
+     * ช่องกรองแสดง dd/mm/yyyy แต่**สายที่วิ่งต่อยังเป็น ISO ทั้งเส้น** —
+     * URL ของ pagination/fragment, bookmark เดิม และชั้น query ที่ผูกกับ
+     * `TO_DATE(?, 'YYYY-MM-DD')` (`WOStatusTracking_Queries.js:179-181`)
+     * ฟังก์ชันนี้จึงเป็นด่านเดียวที่แปลง ห้ามให้ dd/mm/yyyy หลุดเลยจุดนี้ไป
+     *
+     * รับ dd/mm/yyyy (รวม - และ . เป็นตัวคั่น) และ yyyy-mm-dd เพื่อให้ลิงก์เก่าใช้ได้
+     * คืน '' เมื่อวันที่ไม่มีจริง เช่น 31/02/2026 — ผู้เรียกเป็นคนตัดสินว่าจะเตือนอย่างไร
+     */
+    function parseFilterDate(s) {
+      const raw = String(s || '').trim();
+      if (!raw) return '';
+      let y, m, d;
+      let mt = raw.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
+      if (mt) {
+        y = +mt[1]; m = +mt[2]; d = +mt[3];
+      } else {
+        mt = raw.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/);
+        if (!mt) return '';
+        d = +mt[1]; m = +mt[2]; y = +mt[3];
+      }
+      // ต้องเป็นวันที่ที่มีอยู่จริง — `new Date(2026, 1, 31)` เลื่อนตัวเองไปเป็น 3 มี.ค.
+      // ถ้าไม่เทียบกลับ 31/02/2026 จะกลายเป็น 2026-03-03 แบบเงียบ ๆ
+      const dt = new Date(y, m - 1, d);
+      if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return '';
+      return `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
     }
 
     /** Format number with thousands separator */

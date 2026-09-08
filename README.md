@@ -229,6 +229,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_repo_guard.js` | ไฟล์สำเนากลับเข้ามาที่ราก `src/` |
 | `test_deploy_manifest.js` | `deploy.xml` ตกไฟล์ · wildcard · dependency closure · `<scriptfile>` |
 | `test_theme.js` | token เพี้ยนจาก `builder.css` ต้นทาง · hex หลุดเข้าโค้ด |
+| `test_wostatus_datefilter.js` | ช่องกรองวันที่ — dd/mm/yyyy หลุดลงไปถึง SQL · JS ฝั่งเบราว์เซอร์ parse ไม่ผ่าน |
 | `test_qlog_scope.js` | query log สะสมข้าม request |
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |

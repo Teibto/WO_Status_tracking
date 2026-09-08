@@ -69,18 +69,37 @@ function rowsFor(label) {
   return rows;
 }
 
-function makeStubs(quietLog) {
+/**
+ * stub ของโมดูล NetSuite
+ *
+ * `sqlRows` มีไว้ให้ Suitelet ที่**ไม่ได้ยิง query ผ่าน `runSQL`** ใช้ได้ด้วย
+ * (WO Status Tracking เรียก `query.runSuiteQL` ตรง ๆ จึงไม่มี label ให้ fixture เกาะ)
+ * เทสที่ส่ง `sqlRows` เข้ามาเป็นคนตัดสินเองว่า SQL ไหนคืนแถวอะไร — จะโยน error
+ * เมื่อเจอ SQL ที่ไม่ได้เตรียมไว้ก็ได้ ถ้าอยากได้พฤติกรรมดังเหมือน fixture ที่ขาด label
+ */
+function makeStubs(quietLog, sqlRows) {
+  const q = {
+    runSuiteQLPaged(o) {
+      const sql = (o && o.query) || '';
+      const rows = sqlRows ? sqlRows(sql) : rowsFor(currentLabel);
+      calls.push({ label: currentLabel, sql: sql, params: (o && o.params) || [] });
+      return {
+        pageRanges: rows.length ? [{ index: 0 }] : [],
+        fetch: () => ({ data: { asMappedResults: () => rows } })
+      };
+    }
+  };
+  if (sqlRows) {
+    q.runSuiteQL = (o) => {
+      const sql = (o && o.query) || '';
+      const rows = sqlRows(sql);
+      calls.push({ label: currentLabel, sql: sql, params: (o && o.params) || [] });
+      return { asMappedResults: () => rows };
+    };
+  }
   return {
-    'N/query': {
-      runSuiteQLPaged(o) {
-        const rows = rowsFor(currentLabel);
-        calls.push({ label: currentLabel, sql: (o && o.query) || '', params: (o && o.params) || [] });
-        return {
-          pageRanges: rows.length ? [{ index: 0 }] : [],
-          fetch: () => ({ data: { asMappedResults: () => rows } })
-        };
-      }
-    },
+    'N/query': q,
+    'N/ui/serverWidget': {},
     'N/log': quietLog
       ? { error: () => {}, debug: () => {} }
       : { error: (o) => console.error('LOG.error', o.title, o.details), debug: () => {} },
@@ -112,6 +131,8 @@ function mustReplace(src, anchor, replacement, what) {
  * opts.dir      โฟลเดอร์ source (ใช้ override เฉพาะเทสที่พิสูจน์การโหลดหลายไฟล์)
  * opts.file     ชื่อไฟล์ entry
  * opts.quietLog เงียบ `N/log.error` (ready_master ใช้แบบเงียบ)
+ * opts.sqlRows  fn(sql) → rows · ใช้กับ Suitelet ที่ยิง `query.runSuiteQL` เองไม่ผ่าน runSQL
+ * opts.requireRunSQL  false = ไม่ต้องมี runSQL ในไฟล์ (คู่กับ sqlRows)
  */
 function load(opts) {
   const o = opts || {};
@@ -119,7 +140,7 @@ function load(opts) {
   const file = o.file || 'WOCostTrace.js';
   setFixtures(o.fixtures);
 
-  const MOD = makeStubs(!!o.quietLog);
+  const MOD = makeStubs(!!o.quietLog, o.sqlRows);
   let captured = null;
   global.define = (deps, factory) => { captured = factory.apply(null, deps.map(d => MOD[d])); };
   global.__setLabel = (l) => { currentLabel = l; };
@@ -180,13 +201,18 @@ function load(opts) {
     src = mustReplace(src, RUNSQL_ANCHOR, RUNSQL_HOOKED, 'hook label ของ runSQL');
     hookedAt = file;
   }
-  if (!hookedAt) {
-    throw new Error('harness: หา runSQL ไม่เจอทั้งใน lib และ entry — fixture จะหา label ไม่เจอทั้งหมด');
+  if (!hookedAt && o.requireRunSQL !== false) {
+    throw new Error('harness: หา runSQL ไม่เจอทั้งใน lib และ entry — fixture จะหา label ไม่เจอทั้งหมด'
+      + '\n  ถ้าเป็น Suitelet ที่ยิง query เอง ให้ส่ง requireRunSQL:false + sqlRows มาด้วย');
   }
   // transitional #2 — เปิดฟังก์ชันภายในให้เทสเรียก
   if ((o.exports || []).length) {
-    src = mustReplace(src,
-      'return { onRequest: onRequest };',
+    // WOCostTrace เขียน `return { onRequest: onRequest };` · WOStatusTracking เขียน
+    // `return { onRequest };` — รับทั้งสองแบบ ไม่ไปแก้ source ให้เหมือนกันเพื่อเทส
+    const RET_LONG  = 'return { onRequest: onRequest };';
+    const RET_SHORT = 'return { onRequest };';
+    const anchor = src.indexOf(RET_LONG) >= 0 ? RET_LONG : RET_SHORT;
+    src = mustReplace(src, anchor,
       'return { onRequest: onRequest, __t: { ' + o.exports.join(', ') + ' } };',
       'เติม __t ให้เทสเรียกฟังก์ชันภายใน');
   }
