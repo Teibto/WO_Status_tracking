@@ -201,7 +201,7 @@ let FX = BASE;
 
 // ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
 const { T } = H.load({
-  libs: ['WOReportTheme.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
   fixtures: () => FX,
   quietLog: true,
   exports: ['buildReady', 'readReadyParams', 'renderReadyPage', 'bomVerdictText', 'revVerdictText', 'routingVerdictText', 'costRefVerdictText', 'stockVerdictText', 'compVerdictText']

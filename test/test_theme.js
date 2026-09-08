@@ -71,7 +71,7 @@ STYLED.forEach((f) => {
 console.log('\n── หน้าภาพรวมที่ render จริง ──');
 const FX = require('./fixtures_parity');
 const { T } = H.load({
-  libs: ['WOReportTheme.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
   fixtures: FX.summary(),
   quietLog: true,
   exports: ['buildSummary', 'readFilters', 'renderSummaryPage']

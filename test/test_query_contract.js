@@ -78,9 +78,9 @@ eq('บอกว่าช่องไหนไม่ใช่ตัวเลข'
 eq('null ไม่ถูกฟ้องว่าไม่ใช่ตัวเลข', found.some((p) => p.indexOf('fg_qty') >= 0), false);
 
 // ── 2. รันสองชั้นเพื่อเก็บ SQL ที่ยิงจริง ──────────────────────────────────
-const dd = H.load({ libs: ['WOReportTheme.js'], fixtures: ddFx, quietLog: true, exports: ['buildModel'] });
+const dd = H.load({ libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'], fixtures: ddFx, quietLog: true, exports: ['buildModel'] });
 dd.T.buildModel(FX.WO_HEADER.wo_no);
-const sum = H.load({ libs: ['WOReportTheme.js'], fixtures: smFx, quietLog: true, exports: ['buildSummary', 'readFilters'] });
+const sum = H.load({ libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'], fixtures: smFx, quietLog: true, exports: ['buildSummary', 'readFilters'] });
 sum.T.buildSummary(sum.T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
 
 console.log('\n── clause ที่แบกน้ำหนักต้องยังอยู่ใน SQL ──');

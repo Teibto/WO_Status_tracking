@@ -49,7 +49,7 @@ const FX = {
 
 // ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
 const { T } = H.load({
-  libs: ['WOReportTheme.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
   fixtures: FX,
   exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryExportData', 'renderSummaryExport', 'excelDate', 'summaryExportName']
 });

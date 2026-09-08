@@ -121,9 +121,22 @@ function load(opts) {
   global.define = (deps, factory) => { captured = factory.apply(null, deps.map(d => MOD[d])); };
   global.__setLabel = (l) => { currentLabel = l; };
 
+  // transitional #1 — รู้ว่ากำลังยิง query ของ label ไหน
+  //
+  // patch ตัวเดิมตัวเดียว แต่ต้องติดที่ไฟล์ที่นิยาม runSQL อยู่จริง
+  // ก่อน issue #13 มันอยู่ใน entry · ตอนนี้อยู่ใน WOCostTrace_Common.js
+  // ถ้าไม่เจอที่ไหนเลย ต้องโวยตรงนี้ ไม่ใช่ปล่อยให้ fixture หา label ไม่เจอทั้งหมด
+  const RUNSQL_ANCHOR = 'function runSQL(label, sql, params) {';
+  const RUNSQL_HOOKED = 'function runSQL(label, sql, params) { global.__setLabel(label);';
+  let hookedAt = null;
+
   // lib ต้องโหลดก่อน entry เสมอ — ลำดับเดียวกับกฎ deploy ของจริง (dependency-first)
   (o.libs || []).forEach((libFile) => {
-    const libSrc = fs.readFileSync(path.join(dir, libFile), 'utf8');
+    let libSrc = fs.readFileSync(path.join(dir, libFile), 'utf8');
+    if (libSrc.indexOf(RUNSQL_ANCHOR) >= 0) {
+      libSrc = mustReplace(libSrc, RUNSQL_ANCHOR, RUNSQL_HOOKED, 'hook label ของ runSQL (' + libFile + ')');
+      hookedAt = libFile;
+    }
     captured = null;
     eval(libSrc);
     if (!captured) throw new Error('harness: lib ' + libFile + ' ไม่ได้ return อะไรจาก define');
@@ -131,11 +144,17 @@ function load(opts) {
   });
 
   let src = fs.readFileSync(path.join(dir, file), 'utf8');
-  // transitional #1 — รู้ว่ากำลังยิง query ของ label ไหน
-  src = mustReplace(src,
-    'function runSQL(label, sql, params) {',
-    'function runSQL(label, sql, params) { global.__setLabel(label);',
-    'hook label ของ runSQL');
+  if (src.indexOf(RUNSQL_ANCHOR) >= 0) {
+    if (hookedAt) {
+      throw new Error('harness: เจอ runSQL ทั้งใน ' + hookedAt + ' และใน ' + file
+        + ' — ต้องมีที่เดียว ไม่งั้น label ที่ fixture เห็นจะขึ้นกับว่าตัวไหนถูกเรียก');
+    }
+    src = mustReplace(src, RUNSQL_ANCHOR, RUNSQL_HOOKED, 'hook label ของ runSQL');
+    hookedAt = file;
+  }
+  if (!hookedAt) {
+    throw new Error('harness: หา runSQL ไม่เจอทั้งใน lib และ entry — fixture จะหา label ไม่เจอทั้งหมด');
+  }
   // transitional #2 — เปิดฟังก์ชันภายในให้เทสเรียก
   if ((o.exports || []).length) {
     src = mustReplace(src,
