@@ -29,58 +29,82 @@
 | ความพร้อม master | `&ready=<เลขที่ WO หรือรหัสสินค้า>` | ก่อนเริ่มทดสอบ — master ที่ต้องใช้ตั้งครบหรือยัง |
 
 ทั้งสองใบรับ `&embed=1` = ไม่วาดแถบหัวเรื่องของตัวเอง สำหรับฝังในหน้าอื่น ·
-ที่มาของตัวเลขทุกช่องอยู่ใน [`WO_COST_TRACE.md`](./WO_COST_TRACE.md) ·
-กติกาเรื่องหน้าตาและ style อยู่ใน [`REPORT_STYLE.md`](./REPORT_STYLE.md)
+ที่มาของตัวเลขทุกช่องอยู่ใน [`apps/wo-cost-trace/WO_COST_TRACE.md`](./apps/wo-cost-trace/WO_COST_TRACE.md) ·
+กติกาเรื่องหน้าตาและ style อยู่ใน [`shared/REPORT_STYLE.md`](./shared/REPORT_STYLE.md)
 
 ## โครงสร้างไฟล์
 
+**สองรายงาน = สอง SDF project แยกกัน · deploy คนละชุด** (epic #37) ·
+ของที่ใช้ร่วมกันมีอย่างเดียวคือ CSS/theme ซึ่งมีต้นฉบับที่ `shared/`
+
 ```
 WO_Status_tracking/
-├── project.json                    SDF — ชี้บัญชี 9751184_SB1 (sandbox) และให้คงไว้แบบนั้น
 ├── package.json                    ไม่มี dependency — มีแค่ scripts
-├── src/
-│   ├── deploy.xml                  รายการที่ deploy — ระบุตรงตัว ไม่ใช้ wildcard
-│   ├── manifest.xml
-│   ├── Objects/
-│   │   ├── customscript_fs_wo_cost_trace.xml
-│   │   └── customscript_wo_status_tracking.xml
-│   └── FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/     ← source ที่ deploy จริง
-│       ├── WOReportTheme.js                lib · design token + คลาสของ report-builder
-│       ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
-│       ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
-│       ├── WOCostTrace.js                  entry · WO Cost Trace (ภาพรวม + เจาะลึก)
-│       ├── WOStatusTracking.js             entry · WO Status Tracking
-│       ├── WOStatusTracking_Queries.js     lib · SuiteQL ของ CP1–CP9
-│       ├── WOStatusTracking_Labels.js      lib · ข้อความและ i18n
-│       ├── WOStatusTracking_Drilldown.js   lib · แถว batch และ task
-│       └── .attributes/
-├── scripts/
-│   ├── check-prod-staging.js       ตรวจ payload production 8 ข้อ (`npm run check:prod`)
-│   └── lib/sdf_payload.js          ตัวอ่านโครง SDF ที่เทสและตัวตรวจใช้ร่วมกัน
-├── test/                           node ล้วน ไม่มี framework — `npm test`
-├── qa/make_theme_preview.js        สร้างหน้าตัวอย่าง style ดูเทียบสายตาโดยไม่ต้อง deploy
-├── prototype/                      SuiteQL ที่ใช้พิสูจน์ + ไฟล์เจาะมือของผู้ใช้
-├── WO_COST_TRACE.md                ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
-├── REPORT_STYLE.md                 style ยึดจากไหน + แผนฝังเข้าเมนู report-builder
-├── IMPLEMENTATION_PLAN.md          แผนที่ส่งมอบให้ dev รอบแรก (เก็บไว้เป็นประวัติ)
-└── wo-status-tracking-mockup.html  mockup ที่ผู้ใช้อนุมัติ (reference หน้าตา)
+├── apps/
+│   ├── wo-cost-trace/                          ← SDF project ของ WO Cost Trace
+│   │   ├── project.json                        ชี้บัญชี 9751184_SB1 (sandbox) และให้คงไว้แบบนั้น
+│   │   ├── suitecloud.config.js
+│   │   ├── src/deploy.xml                      ชุดที่ deploy — ระบุตรงตัว ไม่ใช้ wildcard
+│   │   ├── src/manifest.xml
+│   │   ├── src/Objects/customscript_fs_wo_cost_trace.xml
+│   │   ├── src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/
+│   │   │   ├── WOReportTheme.js                ก๊อปจาก shared/ — ห้ามแก้ที่นี่
+│   │   │   ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
+│   │   │   ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
+│   │   │   └── WOCostTrace.js                  entry · ภาพรวม + เจาะลึก + ความพร้อม
+│   │   ├── test/                               6 ไฟล์ — `npm run test:trace`
+│   │   ├── scripts/check-prod-staging.js       ตรวจ payload production 8 ข้อ
+│   │   ├── WO_COST_TRACE.md                    ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
+│   │   └── prototype/                          ไฟล์เจาะมือของผู้ใช้ (ต้นเรื่องของรายงานนี้)
+│   └── wo-status/                              ← SDF project ของ WO Status Tracking
+│       ├── project.json · suitecloud.config.js · src/{deploy,manifest}.xml
+│       ├── src/Objects/customscript_wo_status_tracking.xml
+│       ├── src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/
+│       │   ├── WOReportTheme.js                ก๊อปจาก shared/ — ห้ามแก้ที่นี่
+│       │   ├── WOStatusTracking.js             entry
+│       │   ├── WOStatusTracking_Queries.js     lib · SuiteQL ของ CP1–CP9
+│       │   ├── WOStatusTracking_Labels.js      lib · ข้อความและ i18n
+│       │   └── WOStatusTracking_Drilldown.js   lib · แถว batch และ task
+│       ├── test/                               2 ไฟล์ — `npm run test:status`
+│       ├── IMPLEMENTATION_PLAN.md              แผนที่ส่งมอบให้ dev รอบแรก (ประวัติ)
+│       ├── wo-status-tracking-mockup.html      mockup ที่ผู้ใช้อนุมัติ (reference หน้าตา)
+│       └── prototype/                          SuiteQL ที่ใช้พิสูจน์ CP3 · CP7
+├── shared/
+│   ├── WOReportTheme.js            **ต้นฉบับ** design token + คลาสของ report-builder
+│   ├── sync-theme.js               ก๊อปต้นฉบับลงทั้งสองแอป (`npm run sync:theme`)
+│   ├── REPORT_STYLE.md             style ยึดจากไหน + แผนฝังเข้าเมนู report-builder
+│   ├── lib/sdf_payload.js          ตัวอ่านโครง SDF ที่เทสและตัวตรวจใช้ร่วมกัน
+│   └── qa/make_theme_preview.js    หน้าตัวอย่าง style ดูเทียบสายตาโดยไม่ต้อง deploy (พัง — #43)
+└── test/                           ชุดข้ามแอป — `npm run test:shared`
+    ├── lib/                        harness + fixture ที่ทั้งสองแอปใช้
+    ├── test_repo_guard.js · test_deploy_manifest.js
+    └── test_theme.js · test_theme_sync.js
 ```
 
-เอกสารทั้งหมดอยู่ที่ราก **ไม่ย้ายเข้า `docs/`** (คำตัดสิน D5 ของ epic #7) เพราะ
-`WO_COST_TRACE.md` ถูกล็อกห้ามแตะไว้ตั้งแต่ต้นแผน · ย้ายบางไฟล์แล้วทิ้งไฟล์ใหญ่สุดไว้ที่ราก
-อ่านยากกว่าเดิม และรากมีเอกสารแค่ 4 ไฟล์ซึ่งยังหาเจอง่าย
+**ที่อยู่บน File Cabinet ยังเป็นโฟลเดอร์เดียวกันทั้งสองแอป**
+(`/SuiteScripts/Foodstar/WO_Status_tracking/`) โดยตั้งใจ — แยกแค่ในฝั่ง repo ทำให้ไม่ต้องย้าย
+ไฟล์บนบัญชี ไม่ต้องแก้ `<scriptfile>` และไม่กระทบ production ที่ใช้งานอยู่ตั้งแต่ 2026-09-03 ·
+โฟลเดอร์ร่วมกันได้เพราะ `deploy.xml` ของแต่ละแอประบุไฟล์ตรงตัว และ `npm test` มีด่านห้ามระบุข้ามแอป
+
+**CSS/theme แก้ที่ `shared/WOReportTheme.js` ที่เดียว** แล้วรัน `npm run sync:theme` ·
+ไฟล์ชื่อเดียวกันในสองแอปเป็นก๊อปที่เครื่องมือสร้าง เพื่อให้ deploy ของสองแอปไม่ผูกกัน ·
+แก้ก๊อปด้วยมือแล้ว `npm test` แดงทันที (`test_theme_sync.js`)
 
 ## แก้โค้ดแล้วขึ้น SB1
 
-> **source ที่ deploy จริงมีที่เดียว: `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/`**
+> **source ที่ deploy จริงอยู่ใน `apps/<แอป>/src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/`**
 > อย่าอัปโหลดไฟล์ผ่านหน้า UI ของ NetSuite และอย่าคัดลอกไฟล์ไปไว้ที่อื่นใน repo ·
 > สำเนาที่ราก `src/` เคยมีอยู่และทำให้คนอัปโหลดชุดเก่าทับของที่รันอยู่ (ลบแล้วที่ issue #9) ·
-> `npm test` มีด่านกันไฟล์สำเนากลับเข้ามา
+> `npm test` มีด่านกันสำเนากลับเข้ามาและกันไฟล์หลงข้ามแอป
+
+**คำสั่ง `suitecloud` ต้องรันจากไดเรกทอรีของแอป** — รากไม่มี `project.json` แล้วโดยตั้งใจ
+เพื่อบังคับให้เลือกก่อนว่ากำลังทำงานกับแอปไหน
 
 ```bash
-npm test                              # ต้องผ่านก่อนทุกครั้ง
-suitecloud project:validate           # local validation — warning เดิม 2 ข้อต่อ object
-suitecloud project:deploy --dryrun    # อ่านรายชื่อที่จะขึ้น ต้องตรงกับที่ตั้งใจ
+npm test                                   # ทุกด่าน ต้องผ่านก่อนทุกครั้ง
+cd apps/wo-cost-trace                      # หรือ apps/wo-status
+suitecloud project:validate                # local validation — warning เดิม 2 ข้อต่อ object
+suitecloud project:deploy --dryrun         # อ่านรายชื่อที่จะขึ้น ต้องตรงกับที่ตั้งใจ
 ```
 
 ### ⚠ อย่าใช้ `project:deploy` กับ SB1 ตอนนี้
@@ -114,7 +138,7 @@ suitecloud file:upload \
 suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js"
 ```
 
-`src/deploy.xml` เรียง `<files>` ตามลำดับนี้ไว้แล้ว · `npm test` มีด่านตรวจ
+`apps/<แอป>/src/deploy.xml` เรียง `<files>` ตามลำดับนี้ไว้แล้ว · `npm test` มีด่านตรวจ
 **dependency closure** — ไฟล์ที่ entry เรียกแต่ไม่อยู่ใน `deploy.xml` ทำให้เทสตกทันที
 
 ### วิธีอ่านผล dry-run ให้ถูก
@@ -159,7 +183,7 @@ object เทียบ tag ต่างได้เฉพาะ `loglevel` · `l
 
 `customscript_wo_status_tracking` — **สองบัญชีไม่ตรงกันเอง และ repo ไม่ตรงกับทั้งคู่**
 
-| ช่อง | repo (`src/Objects`) | SB1 | production |
+| ช่อง | repo (`apps/wo-status/src/Objects`) | SB1 | production |
 |---|---|---|---|
 | `runasrole` | ไม่มีในไฟล์ | `ADMINISTRATOR` | ว่าง |
 | `audslctrole` | ไม่มีในไฟล์ | `ONLINE_FORM_USER` | ว่าง |
@@ -221,6 +245,9 @@ production** โดยตั้งใจ เพราะรายงานยิ
 
 ```bash
 npm test              # ทุกด่าน — ต้อง exit 0
+npm run test:shared   # ชุดข้ามแอป (โครง · deploy.xml · theme)
+npm run test:trace    # เฉพาะ WO Cost Trace
+npm run test:status   # เฉพาะ WO Status Tracking
 npm run check:prod    # ตรวจ payload production (อ่านอย่างเดียว)
 ```
 
@@ -229,9 +256,10 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 
 | ไฟล์ | กันอะไร |
 |---|---|
-| `test_repo_guard.js` | ไฟล์สำเนากลับเข้ามาที่ราก `src/` |
-| `test_deploy_manifest.js` | `deploy.xml` ตกไฟล์ · wildcard · dependency closure · `<scriptfile>` |
-| `test_theme.js` | token เพี้ยนจาก `builder.css` ต้นทาง · hex หลุดเข้าโค้ด |
+| `test_repo_guard.js` | สำเนากลับเข้ามาที่ราก `src/` ของแอป · โครงเก่ากลับมา · ไฟล์หลงข้ามแอป |
+| `test_deploy_manifest.js` | `deploy.xml` ตกไฟล์ · wildcard · dependency closure · `<scriptfile>` · **ระบุไฟล์ข้ามแอป** |
+| `test_theme.js` | token เพี้ยนจาก `builder.css` ต้นทาง · hex หลุดเข้าโค้ด (ตรวจทั้งสองแอป) |
+| `test_theme_sync.js` | ก๊อป theme ในแอปไม่ตรง `shared/WOReportTheme.js` |
 | `test_wostatus_datefilter.js` | ช่องกรองวันที่ — dd/mm/yyyy หลุดลงไปถึง SQL · JS ฝั่งเบราว์เซอร์ parse ไม่ผ่าน · ตัวแปลงสองฝั่งเพี้ยนกัน · **escape ที่หลุด backslash ใน template literal** |
 | `test_wostatus_subitemtype.js` | ตัวกรองประเภทย่อย — เงื่อนไขไม่ถึง SQL · ค่าหลุดตอนเปลี่ยนหน้า · ทางถอยของรายการค่า |
 | `test_qlog_scope.js` | query log สะสมข้าม request |
@@ -248,9 +276,10 @@ fixture ที่ไม่ได้ประกาศ label = **เทสตก*
 |---|---|
 | `WOStatusTracking*.js` 4 ไฟล์บน production | **ยังไม่ reconcile** · `WOStatusTracking.js` ตรงกับ repo ทุกไบต์ (ตรวจ 2026-09-08) เหลืออีก 3 ไฟล์ที่ยังไม่เทียบ |
 | `runasrole` / `audslctrole` / `isonline` | สองบัญชีไม่ตรงกันเอง ยังไม่ตัดสินว่ายึดค่าไหน — issue #24 |
-| ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `REPORT_STYLE.md` |
+| ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `shared/REPORT_STYLE.md` |
 | แยก Summary/Trace ออกจาก entry | **ไม่ทำ** โดยตั้งใจ · โค้ดล็อก parity ไว้ แยกแล้วต้องดูแลสำเนา SQL สองชุดที่ต้องเท่ากันตลอด |
-| re-test SuiteQL ด้วย volume จริง | `prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |
+| re-test SuiteQL ด้วย volume จริง | `apps/wo-status/prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |
+| `shared/qa/make_theme_preview.js` | พังตั้งแต่ #13 ย้าย `runSQL` — โหลด lib ไม่ครบ ดู issue #43 |
 
 ข้อจำกัดของตัวรายงานที่ยังจริง: WO Status ไม่มี expand-all (drilldown เป็น lazy-load
 ทีละใบ) · ไม่มีการ flag WO ที่ค้างโดยไม่มี activity · ไม่มี filter "เฉพาะที่มีปัญหา"

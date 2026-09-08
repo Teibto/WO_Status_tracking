@@ -7,8 +7,8 @@ Suitelet สำหรับ UAT · แทนงานเจาะมือที
 |---|---|
 | Script ID | `customscript_fs_wo_cost_trace` |
 | Deployment | `customdeploy_fs_wo_cost_trace` |
-| ไฟล์ | `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js` |
-| Object | `src/Objects/customscript_fs_wo_cost_trace.xml` |
+| ไฟล์ | `apps/wo-cost-trace/src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js` |
+| Object | `apps/wo-cost-trace/src/Objects/customscript_fs_wo_cost_trace.xml` |
 | Deploy แล้วที่ | 9751184_SB1 (sandbox) · **9751184 (production) 2026-09-03** |
 | payload ที่ใช้ขึ้น prod | `Foodstar/.deploy-staging/wo-trace-prod/` (ไฟล์เดียว + object เดียว) |
 | เทสเลขแบบไม่ต้อง deploy | `node test/test_summary_math.js` |

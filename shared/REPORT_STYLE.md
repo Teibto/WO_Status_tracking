@@ -19,7 +19,7 @@ repo นั้นคือ AdvanceReportBuilder (UI brand *Teibto · Universal R
 ที่ repo นี้ token ถูกยกมาไว้ที่ **ไฟล์เดียว**
 
 ```
-src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js
+shared/WOReportTheme.js
 ```
 
 `npm test` มีด่านเทียบค่าทุก token กับ `builder.css` ให้ · ถ้า clone repo ต้นทางไว้ที่ path ข้างบน
