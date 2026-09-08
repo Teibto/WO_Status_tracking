@@ -192,8 +192,62 @@ define(['N/query', 'N/log'], (query, log) => {
       whereClauses.push(`tl_main.subsidiary = ?`);
       queryParams.push(params.subsidiaryId);
     }
+    // Sub Item Type ของสินค้าที่ผลิต (issue #27)
+    //
+    // เติมที่นี่ที่เดียวพอ ไม่ต้องแตะ CP2–CP9 เลย — มีแค่ getCP1_Approve ที่เรียก
+    // buildWoFilter และ CP อื่นรับ `woids` ที่ CP1 คืนมา (ดูคอมเมนต์ของ runSQLPaged
+    // ใน CP1 ว่าเป็นรายการ WO ตัวจริง) · `item` ถูก join ไว้แล้วใน CP1
+    if (params.subItemTypeId) {
+      whereClauses.push(`item.cseg_subitemtype = ?`);
+      queryParams.push(params.subItemTypeId);
+    }
 
     return { whereClauses, queryParams };
+  }
+
+  /**
+   * รายการค่า Sub Item Type สำหรับ dropdown ตัวกรอง (issue #27)
+   *
+   * `cseg_subitemtype` เป็น **custom segment บน item** ไม่ใช่ custom field (`custitem_*`)
+   * ที่ยืนยันว่าใช้ได้จริงบน production คือ `BUILTIN.DF(itm.cseg_subitemtype)`
+   * ซึ่งรายงาน FS COGS Reconcile ใช้อยู่
+   *
+   * ⚠ ยังไม่มีใครยืนยันชื่อตารางรายการค่าของ segment ตัวนี้ จึงลองสองทางเรียงกัน
+   *   1. ตาราง master `customrecord_cseg_subitemtype` — แถวน้อย เร็ว แต่ชื่อยังเป็นการเดา
+   *   2. ค่าที่ item ใช้อยู่จริง — ไม่ต้องเดาชื่อตาราง แต่กวาดทั้ง item และเสี่ยงกับ
+   *      กับดักที่จดไว้ว่า `BUILTIN.DF` ในคำสั่งที่มี `GROUP BY` แล้วพัง
+   *      (`DISTINCT` ไม่ใช่ `GROUP BY` แต่ยังไม่ได้ยิงจริงบนบัญชีนี้)
+   *
+   * `log.audit` บอกว่าทางไหนได้ผล — พอรู้คำตอบให้ลบอีกทางออกและจดไว้ใน #27
+   * ถ้าพังทั้งสองทางจะคืนรายการว่าง ซึ่งทำให้ dropdown มีแต่ตัวเลือก "ทุกประเภทย่อย"
+   * (แบบเดียวกับที่ subsidiary/location ทำอยู่) — ไม่ทำให้หน้าพัง แต่ต้องดู log
+   *
+   * @returns {Array} [{id, name}]
+   */
+  function getSubItemTypes() {
+    try {
+      const rows = runSQL(`SELECT id, name FROM customrecord_cseg_subitemtype ORDER BY name`);
+      if (rows.length) {
+        log.audit({ title: 'Sub item type list', details: 'จากตาราง master · ' + rows.length + ' ค่า' });
+        return rows.map(r => ({ id: asStr(r.id), name: asStr(r.name) }));
+      }
+    } catch (e) {
+      log.debug({ title: 'Sub item type master ใช้ไม่ได้ — ถอยไปดึงจาก item', details: String(e) });
+    }
+
+    try {
+      const rows = runSQL(`
+        SELECT DISTINCT cseg_subitemtype AS id, BUILTIN.DF(cseg_subitemtype) AS name
+        FROM item
+        WHERE cseg_subitemtype IS NOT NULL
+        ORDER BY 2
+      `);
+      log.audit({ title: 'Sub item type list', details: 'จากค่าที่ item ใช้ · ' + rows.length + ' ค่า' });
+      return rows.map(r => ({ id: asStr(r.id), name: asStr(r.name) }));
+    } catch (e) {
+      log.error({ title: 'Sub item type list failed ทั้งสองทาง', details: String(e) });
+      return [];
+    }
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════
@@ -808,6 +862,7 @@ define(['N/query', 'N/log'], (query, log) => {
 
   // ─── Public API ───────────────────────────────────────────────────────────────
   return {
+    getSubItemTypes,
     getCP1_Approve,
     getCP2_Release,
     getCP3a_BomComponents,
