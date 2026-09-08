@@ -1827,6 +1827,12 @@ ${costCols}
   /* เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
      กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ↗ ตัวเดียวติดท้ายเลขที่ตัดบรรทัด) */
   a.drill{font-weight:600;white-space:nowrap}
+  /* แถบ export อยู่เหนือตาราง — ปุ่มรองเป็นสีจางกว่าปุ่มค้นหา ไม่ให้แย่งสายตาจากปุ่ม "ดูภาพรวม" */
+  .xbar{display:flex;align-items:center;gap:10px;margin:0 0 7px}
+  .xbar button{background:#fff;color:#1f6feb}
+  .xbar button:hover:enabled{background:#ddf4ff}
+  .xbar button:disabled{background:#f6f8fa;color:#8c959f;border-color:#d0d7de;cursor:default}
+  .xnote{font-size:11px;color:#57606a}
   .nsrec{margin-top:2px}
   .nsrec a{font-size:10px;color:#57606a;text-decoration:none}
   .nsrec a:hover{color:#0550ae;text-decoration:underline}
@@ -2047,6 +2053,134 @@ ${costCols}
     return h + '</tbody></table></div>';
   }
 
+  // ═══ export Excel — ชั้นภาพรวม ═════════════════════════════════════════════
+
+  /**
+   * คอลัมน์ของไฟล์ Excel — หัวและลำดับต้องตรงกับตารางในหน้าภาพรวม (renderSummaryGrid)
+   * ทุกช่องที่เป็นตัวเลขต้องส่งค่าดิบ ไม่ใช่ข้อความที่จัดรูปแบบแล้ว ไม่งั้น Excel เอาไปบวกต่อไม่ได้
+   * วันที่ส่งเป็นเลขวันที่ของ Excel (serial) ให้ sort และลบกันได้จริง ไม่ใช่ข้อความ d/m/yyyy
+   * ไฟล์นี้ไม่มีแถวรวมกลุ่มและแถวรวมท้ายตารางโดยตั้งใจ — แถวรวมแทรกกลางทำให้ sort/filter ใน Excel พัง
+   */
+  const SUMMARY_EXPORT_COLS = [
+    { head: 'ใบสั่งผลิต', w: 16, get: r => asStr(r.wo_no) },
+    { head: 'วันที่ WO', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.wo_date_iso) },
+    { head: 'ปิดงานผลิต', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.woc_last_iso) },
+    { head: 'รหัสสินค้า', w: 15, get: r => asStr(r.item_code) },
+    { head: 'ชื่อสินค้า', w: 34, get: r => asStr(r.item_name) },
+    { head: 'สั่งผลิต', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.wo_qty) },
+    { head: 'ผลิตได้ (WOC)', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.woc_qty) },
+    { head: 'วัตถุดิบ', w: 14, fmt: '#,##0.00', get: r => xlNum(r.rm_cost) },
+    { head: 'แปรสภาพ (DL+OH)', w: 16, fmt: '#,##0.00', get: r => xlNum(r.dl_oh_cost) },
+    { head: 'รวมต้นทุน', w: 14, fmt: '#,##0.00', get: r => xlNum(r.cost) },
+    { head: 'ต้นทุน/หน่วย', w: 14, fmt: '#,##0.00000000', get: r => xlNum(r.cost_per_unit) },
+    { head: 'ต้นทุน/ลัง', w: 14, fmt: '#,##0.00000000', get: r => xlNum(r.cost_per_carton) },
+    { head: 'Summary Cost Item', w: 16, fmt: '#,##0.00', get: r => xlNum(r.sc_value) },
+    { head: 'ผลต่าง', w: 14, fmt: '#,##0.00', get: r => xlNum(r.sc_gap) },
+    { head: 'หมายเหตุ', w: 60, get: r => (r.notes || []).map(n => asStr(n && n.text)).filter(Boolean).join(' · ') }
+  ];
+
+  /** วันที่ ISO → เลขวันที่ของ Excel (นับจาก 1899-12-30) · ไม่มีวันที่คืนช่องว่าง ไม่ใช่ศูนย์ */
+  function excelDate(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(asStr(iso));
+    if (!m) return '';
+    return (Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3])) - Date.UTC(1899, 11, 30)) / 86400000;
+  }
+
+  /**
+   * ค่าที่จะเขียนลงช่องตัวเลข
+   * null (ยังไม่ปิดงานผลิต) และ Infinity/NaN (ไม่ได้ตั้ง basepercarton → หารด้วยศูนย์)
+   * ต้องกลายเป็นช่องว่าง — เขียนลงไปตรง ๆ จะได้ไฟล์ที่ Excel เปิดแล้วฟ้องว่าเสีย
+   */
+  function xlNum(v) {
+    return (v == null || typeof v !== 'number' || !isFinite(v)) ? '' : v;
+  }
+
+  /**
+   * ชื่อไฟล์ต้องบอกได้ว่ามาจากรายงานไหนและกรองช่วงไหน · เวลาที่ export ต่อท้ายฝั่งเบราว์เซอร์
+   * ตั้งใจใช้ ASCII ล้วน — ไฟล์พวกนี้ถูกส่งอีเมลและอัปโหลดต่อ ชื่อไทยเพี้ยนได้ตามระบบปลายทาง
+   */
+  function summaryExportName(f) {
+    const k = f || {};
+    const scope = k.wono ? 'WO-' + asStr(k.wono).replace(/[^0-9A-Za-z_-]/g, '')
+      : (k.month ? asStr(k.month) : asStr(k.from) + '_to_' + asStr(k.to));
+    return 'WOCostTrace_Summary_' + scope;
+  }
+
+  /**
+   * ข้อมูลสำหรับสร้างไฟล์ Excel — ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM ไม่แตะ NetSuite
+   * รับ model ตัวเดียวกับที่ตารางบนหน้าจอใช้ จึงได้ผลลัพธ์ตามตัวกรอง ณ ขณะที่หน้าถูกสร้างเสมอ
+   */
+  function summaryExportData(sm) {
+    const rows = (sm.rows || []).map(r => SUMMARY_EXPORT_COLS.map(c => c.get(r)));
+    return {
+      filebase: summaryExportName(sm.filters),
+      sheet: 'ภาพรวมต้นทุน',
+      headers: SUMMARY_EXPORT_COLS.map(c => c.head),
+      cols: SUMMARY_EXPORT_COLS.map(c => ({ w: c.w, fmt: c.fmt || '' })),
+      rows: rows
+    };
+  }
+
+  /** ตัวสร้าง xlsx ฝั่งเบราว์เซอร์ — ตัวเดียวกับที่รายงาน MFG WO GL ใช้อยู่บนบัญชีนี้ */
+  const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
+
+  /**
+   * ปุ่ม export + ข้อมูลของตารางฝังมากับหน้า
+   * ฝังข้อมูลแทนการยิง mode=json ใหม่ตอนกด เพราะการยิงใหม่รันคำสั่งรวมยอดอีกรอบ
+   * และอาจได้แถวไม่เท่ากับที่ผู้ใช้เห็นอยู่ตรงหน้า
+   */
+  function renderSummaryExport(sm) {
+    if (!sm.rows.length) {
+      return '<div class="xbar"><button type="button" disabled>⬇ Export Excel</button>'
+        + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span></div>';
+    }
+    const d = summaryExportData(sm);
+    // ข้อมูลฝังเป็น object literal ในหน้า — ต้องกัน "<" ไม่ให้ปิดแท็ก script กลางคัน
+    const json = JSON.stringify(d).replace(/</g, '\\u003c');
+    const note = sm.truncated
+      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
+      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
+    return '<div class="xbar"><button type="button" id="btnXlsx">⬇ Export Excel</button>'
+      + '<span class="xnote">' + esc(note) + ' · หัวและลำดับคอลัมน์ตรงกับตาราง · '
+      + 'ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้</span></div>'
+      + '<script src="' + XLSX_CDN + '"><\/script>'
+      + '<script>(function(){\n'
+      + 'var D=' + json + ';\n'
+      + 'var btn=document.getElementById("btnXlsx");\n'
+      + 'function p2(n){return n<10?"0"+n:""+n;}\n'
+      + 'function stamp(){var d=new Date();return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes());}\n'
+      + 'btn.onclick=function(){\n'
+      + '  if(!window.XLSX){alert("โหลดตัวสร้างไฟล์ Excel ไม่สำเร็จ — ตรวจการเชื่อมต่ออินเทอร์เน็ตแล้วรีเฟรชหน้านี้อีกครั้ง");return;}\n'
+      + '  btn.disabled=true;\n'
+      + '  try{\n'
+      + '    var aoa=[D.headers].concat(D.rows);\n'
+      + '    var ws=XLSX.utils.aoa_to_sheet(aoa);\n'
+      + '    ws["!cols"]=D.cols.map(function(c){return {wch:c.w};});\n'
+      + '    var last=XLSX.utils.encode_cell({r:aoa.length-1,c:D.headers.length-1});\n'
+      + '    ws["!autofilter"]={ref:"A1:"+last};\n'
+      + '    var head={font:{bold:true,color:{rgb:"FFFFFF"}},fill:{fgColor:{rgb:"1F2937"}},'
+      + 'alignment:{horizontal:"center",wrapText:true}};\n'
+      + '    for(var c=0;c<D.headers.length;c++){\n'
+      + '      var ha=XLSX.utils.encode_cell({r:0,c:c});\n'
+      + '      if(ws[ha])ws[ha].s=head;\n'
+      + '    }\n'
+      + '    for(var r=1;r<aoa.length;r++){\n'
+      + '      for(var c2=0;c2<D.cols.length;c2++){\n'
+      + '        var fmt=D.cols[c2].fmt;if(!fmt)continue;\n'
+      + '        var ad=XLSX.utils.encode_cell({r:r,c:c2});\n'
+      + '        var cell=ws[ad];if(!cell||cell.t!=="n")continue;\n'
+      + '        cell.z=fmt;cell.s={numFmt:fmt};\n'
+      + '      }\n'
+      + '    }\n'
+      + '    var wb=XLSX.utils.book_new();\n'
+      + '    XLSX.utils.book_append_sheet(wb,ws,D.sheet);\n'
+      + '    XLSX.writeFile(wb,D.filebase+"_"+stamp()+".xlsx");\n'
+      + '  }catch(e){alert("สร้างไฟล์ Excel ไม่สำเร็จ: "+e.message);}\n'
+      + '  btn.disabled=false;\n'
+      + '};\n'
+      + '})();<\/script>';
+  }
+
   function renderSummaryPage(sm) {
     const f = sm.filters;
     let h = CSS + '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
@@ -2069,6 +2203,7 @@ ${costCols}
         + ' ใบแรก (เรียงตามรหัสสินค้าและวันที่) — ยอดรวมและ KPI ด้านบนนับแค่ที่แสดง '
         + 'ให้แคบช่วงวันที่ลง หรือเพิ่มค่าในช่อง "ไม่เกิน" (สูงสุด ' + MAX_ROWS_HARD + ')</div>';
     }
+    h += renderSummaryExport(sm);
     h += renderSummaryGrid(sm);
 
     h += '<h2>อ่านตารางนี้อย่างไร</h2><div class="card"><table class="kv">'
