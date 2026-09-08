@@ -13,10 +13,13 @@
  *   3. เก็บ `{label, sql, params}` ทุกครั้งที่ยิง query ให้เทสตรวจ clause ที่แบกน้ำหนักได้
  *   4. โหลด lib หลายไฟล์ผ่าน `libs:` แล้ว register เป็น `./ชื่อไฟล์` ให้ entry `define` ถึง
  *
- * ⚠ ส่วนที่ยังเป็น transitional (patch ข้อความ source) มีสองจุดเท่านั้น คือ hook ของ `runSQL`
- * และการเติม `__t` ก่อน `return` ของ define · **ถอดออกได้เมื่อ issue #13 แยก `WOCostTrace_Common.js`**
- * เพราะตอนนั้น `runSQL` จะเป็น export ของ Common ให้ harness ครอบได้ตรง ๆ และแต่ละโมดูล
- * จะ export ฟังก์ชันของตัวเองตามปกติ ไม่ต้องแทรก `__t`
+ * ⚠ ส่วนที่ยังเป็น transitional (patch ข้อความ source) มีสองอย่าง คือ hook ของ `runSQL`
+ * และการเติม `__t` ก่อน `return` ของ define (ใช้กับ entry ผ่าน `exports` และกับ lib ผ่าน `libExports`)
+ *
+ * เคยจดไว้ว่าจะถอดออกได้เมื่อ #13 แยก Common — **ไม่จริง** · #13/#14 แยกแล้วแต่ patch
+ * ยังจำเป็นอยู่ เพราะ `runSQL` เป็น export จริงแล้วแต่เทสต้องรู้ **label** ของ query ที่กำลังยิง
+ * เพื่อเลือก fixture — ข้อนี้ต้องแทรกตัวเอง ครอบจากนอกไม่ได้
+ * ส่วน `__t` ต้องมีเพราะโมดูล production ไม่ควร export ฟังก์ชันที่มีอยู่เพื่อเทสเท่านั้น
  */
 const fs = require('fs');
 const path = require('path');
@@ -131,15 +134,40 @@ function load(opts) {
   let hookedAt = null;
 
   // lib ต้องโหลดก่อน entry เสมอ — ลำดับเดียวกับกฎ deploy ของจริง (dependency-first)
+  const libT = {};
   (o.libs || []).forEach((libFile) => {
     let libSrc = fs.readFileSync(path.join(dir, libFile), 'utf8');
     if (libSrc.indexOf(RUNSQL_ANCHOR) >= 0) {
       libSrc = mustReplace(libSrc, RUNSQL_ANCHOR, RUNSQL_HOOKED, 'hook label ของ runSQL (' + libFile + ')');
       hookedAt = libFile;
     }
+    // transitional #2 ฉบับ lib — เปิดฟังก์ชันภายในของ lib ให้เทสเรียก
+    //
+    // ใช้กลไกเดียวกับที่ทำกับ entry มาตั้งแต่ #11 ไม่ใช่ hack ชนิดใหม่ · ที่ต้องมีเพราะ
+    // ก้อน E2 ย้ายชั้นความพร้อมไปเป็น lib ที่ entry เรียกผ่าน interface แค่ 4 ตัว
+    // ทางเลือกอีกทางคือให้ lib export ฟังก์ชันภายในออกมาจริง ๆ ซึ่งจะกลายเป็น
+    // API ถาวรที่มีอยู่เพื่อเทสเท่านั้น — แพงกว่าการ patch เฉพาะตอนเทส
+    const want = (o.libExports || {})[libFile];
+    if (want && want.length) {
+      const anchor = libSrc.match(/\n  return \{\n/) ? '\n  return {\n' : null;
+      if (!anchor) {
+        throw new Error('harness: หา return {…} ของ lib ' + libFile + ' ไม่เจอ — เปิด __t ให้ไม่ได้');
+      }
+      libSrc = libSrc.replace(anchor,
+        '\n  return {\n    __t: { ' + want.join(', ') + ' },\n');
+    }
     captured = null;
     eval(libSrc);
     if (!captured) throw new Error('harness: lib ' + libFile + ' ไม่ได้ return อะไรจาก define');
+    if (want && want.length) {
+      if (!captured.__t) throw new Error('harness: lib ' + libFile + ' ไม่ได้ return __t');
+      want.forEach((name) => {
+        if (typeof captured.__t[name] === 'undefined') {
+          throw new Error('harness: lib ' + libFile + ' ไม่มี ' + name + ' ให้เปิด');
+        }
+      });
+      libT[libFile] = captured.__t;
+    }
     MOD['./' + libFile.replace(/\.js$/, '')] = captured;
   });
 
@@ -166,7 +194,7 @@ function load(opts) {
   captured = null;
   eval(src);
   if (!captured) throw new Error('harness: entry ' + file + ' ไม่ได้เรียก define');
-  return { module: captured, T: captured.__t, stubs: MOD };
+  return { module: captured, T: captured.__t, libT: libT, stubs: MOD };
 }
 
 /**

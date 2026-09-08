@@ -28,7 +28,7 @@ function makeCtx(params) {
 }
 
 const { module: mod } = H.load({
-  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX.summary(),
   quietLog: true
 });

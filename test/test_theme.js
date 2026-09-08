@@ -71,7 +71,7 @@ STYLED.forEach((f) => {
 console.log('\n── หน้าภาพรวมที่ render จริง ──');
 const FX = require('./fixtures_parity');
 const { T } = H.load({
-  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX.summary(),
   quietLog: true,
   exports: ['buildSummary', 'readFilters', 'renderSummaryPage']
@@ -96,9 +96,11 @@ ENTRIES.forEach((f) => {
   const s = fs.readFileSync(path.join(SRC, f), 'utf8');
   eq(f + ' อ่านพารามิเตอร์ embed', /embed/.test(s), true);
 });
-const traceSrc = fs.readFileSync(path.join(SRC, 'WOCostTrace.js'), 'utf8');
-eq('WOCostTrace ผูก EMBED กับ &embed=1', traceSrc.indexOf("EMBED = asStr(p.embed) === '1'") > 0, true);
-eq('WOCostTrace ข้ามแถบหัวเรื่องเมื่อ embed', traceSrc.indexOf('if (EMBED) return \'\'') > 0, true);
+// ตรวจข้ามทุกไฟล์ ไม่ผูกกับว่าโค้ดอยู่ไฟล์ไหน — ก้อน E1/E2 ย้ายของพวกนี้ไป
+// WOCostTrace_Common.js แล้ว และจะย้ายอีกได้ · ที่ต้องคงไว้คือ "มีกลไกนี้อยู่"
+const allSrc = STYLED.map((f) => fs.readFileSync(path.join(SRC, f), 'utf8')).join('\n');
+eq('มีที่ผูก EMBED กับ &embed=1', allSrc.indexOf("asStr(p.embed) === '1'") > 0, true);
+eq('มีที่ข้ามแถบหัวเรื่องเมื่อ embed', allSrc.indexOf('if (EMBED) return \'\'') > 0, true);
 
 // ── 4. เทียบค่า token กับ builder.css ของ repo ต้นทาง ───────────────────────
 // ต้นทางอยู่นอก repo นี้ (repo คนละใบ) จึงเป็นการตรวจแบบมีก็ตรวจ ไม่มีก็บอก
