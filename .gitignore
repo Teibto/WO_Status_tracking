@@ -16,3 +16,6 @@ node_modules/
 
 # npm — โปรเจกต์นี้ไม่มี dependency จึงไม่ต้อง commit lockfile (issue #11 · D4)
 package-lock.json
+
+# หน้าตัวอย่าง style ที่ generate ได้เอง (qa/make_theme_preview.js) — issue #18
+qa/theme-preview.html

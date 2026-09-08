@@ -115,11 +115,115 @@
 define(
   ['N/ui/serverWidget', 'N/query', 'N/log',
    './WOStatusTracking_Queries', './WOStatusTracking_Labels',
-   './WOStatusTracking_Drilldown'],
-  (serverWidget, query, log, Q, Labels, Drilldown) => {
+   './WOStatusTracking_Drilldown', './WOReportTheme'],
+  (serverWidget, query, log, Q, Labels, Drilldown, theme) => {
 
     // ─── Constants ────────────────────────────────────────────────
     const PAGE_SIZE = 100;
+
+    /**
+     * CSS เฉพาะรายงานนี้ - token กลางอยู่ที่ WOReportTheme.js
+     *
+     * บล็อก `:root` ที่นี่ไม่ประกาศค่าสีของตัวเองอีก เป็นแค่ **ชื่อเรียกสั้น**
+     * ที่ชี้กลับไปที่ token ของ template ทำให้ markup และกฎ CSS เดิมทั้งไฟล์
+     * ยังใช้ `var(--ok)` `var(--line)` ได้เหมือนเดิมโดยไม่ต้องแก้ทีละจุด
+     * แต่สีที่ออกมาเป็นสีเดียวกับ report-builder แล้ว
+     * (เดิม `--accent:#2563eb` ขณะที่ template ใช้ `#185FA5`)
+     */
+    const REPORT_CSS = ':root{'
+      + '--bg:var(--pj-bg);--panel:var(--pj-surface);--panel2:var(--pj-surface-alt);'
+      + '--line:var(--pj-border);--txt:var(--pj-text);--muted:var(--pj-text-muted);'
+      + '--accent:var(--pj-primary);'
+      + '--ok:var(--pj-success);--ok-bg:var(--pj-success-bg);'
+      + '--wait:var(--pj-warning);--wait-bg:var(--pj-warning-bg);'
+      + '--err:var(--pj-error);--err-bg:var(--pj-error-bg);'
+      + '--na:var(--pj-muted);--na-bg:var(--pj-muted-bg)'
+      + '}'
+      // แถบหัวเรื่องใช้ .topbar ของ template ทั้งชุด เหลือเฉพาะปุ่มสลับภาษาที่เป็นของหน้านี้เอง
+      + '.langtog{display:flex;border:1px solid var(--pj-border-strong);'
+      + 'border-radius:var(--radius-md);overflow:hidden;flex-shrink:0}'
+      + '.langtog button{background:var(--pj-surface);border:0;padding:6px var(--sp-4);'
+      + 'cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;'
+      + 'color:var(--pj-text-muted)}'
+      + '.langtog button.on{background:var(--pj-primary);color:#fff}'
+      // แถบตัวกรอง = .toolbar ของ template (พื้นเทาอ่อน เส้นล่างเส้นเดียว)
+      + '.filterbar{display:flex;gap:var(--sp-4);align-items:flex-end;flex-wrap:wrap;'
+      + 'padding:var(--sp-3) var(--sp-5);background:var(--pj-surface-alt);'
+      + 'border-bottom:1px solid var(--pj-border)}'
+      + '.filterbar .fld{display:flex;flex-direction:column;gap:var(--sp-1)}'
+      + '.filterbar select,.filterbar input{min-width:150px}'
+      + '.filterbar button{background:var(--pj-primary);color:#fff;'
+      + 'border:1px solid var(--pj-primary);padding:7px var(--sp-4);'
+      + 'border-radius:var(--radius-md);font-family:inherit;font-weight:600;'
+      + 'cursor:pointer;font-size:var(--fs-sm)}'
+      + '.filterbar button:hover{background:var(--pj-primary-dark)}'
+      // KPI - คงคลาส .kpi เดิมไว้เพราะ markup มี data-i18n ผูกอยู่ แต่หน้าตาตาม .kpi-card
+      // ต่างจาก template จุดเดียว: ค่าตัวใหญ่กว่า เพราะหน้านี้มี 4 การ์ด ไม่ใช่ 10
+      + '.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));'
+      + 'gap:var(--sp-2);padding:var(--sp-3) var(--sp-5)}'
+      + '.kpi{background:var(--pj-surface);border:1px solid var(--pj-border);'
+      + 'border-left:3px solid var(--pj-primary);border-radius:var(--radius-md);'
+      + 'padding:var(--sp-2) var(--sp-3);min-width:0;transition:box-shadow .15s}'
+      + '.kpi:hover{box-shadow:var(--shadow-md)}'
+      + '.kpi .n{font-size:var(--fs-xxl);font-weight:700;letter-spacing:-.4px;line-height:1.2}'
+      + '.kpi .l{font-size:10px;color:var(--pj-text-label);font-weight:600;'
+      + 'text-transform:uppercase;letter-spacing:.4px;margin-top:2px}'
+      + '.kpi.err{border-left-color:var(--pj-error)}.kpi.err .n{color:var(--pj-error)}'
+      + '.kpi.wait{border-left-color:var(--pj-warning)}.kpi.wait .n{color:var(--pj-warning)}'
+      + '.kpi.ok{border-left-color:var(--pj-success)}.kpi.ok .n{color:var(--pj-success)}'
+      + '.wrap{padding:0 var(--sp-5) 40px}'
+      + '.tscroll{overflow-x:auto}'
+      // ตารางหลักไม่ใช้เส้นรอบทุกช่องแบบ template เพราะกว้างเกิน 1,240px
+      // เส้นแนวตั้งทุกคอลัมน์จะกลายเป็นลายทาง - คงเส้นล่างเส้นเดียวเหมือนของเดิม
+      + 'table{margin-top:6px;min-width:1240px}'
+      + 'th,td{border:0;border-bottom:1px solid var(--pj-border);padding:9px 10px;'
+      + 'white-space:nowrap;vertical-align:middle}'
+      + 'th{position:sticky;top:0;z-index:2;background:var(--pj-surface-alt)}'
+      + 'th.cp,td.cp{text-align:center;width:74px}'
+      + 'tr.wo{cursor:pointer}'
+      + 'tr.wo:hover{background:var(--pj-surface-alt)}'
+      + 'tr.wo>td:first-child{font-weight:600}'
+      + '.twist{display:inline-block;width:14px;color:var(--pj-text-muted);'
+      + 'transition:transform .15s}'
+      + 'tr.open .twist{transform:rotate(90deg)}'
+      + 'tr.batch{background:var(--pj-surface)}'
+      + 'tr.batch td:first-child{padding-left:34px;color:var(--pj-text)}'
+      + 'tr.batch:hover{background:var(--pj-surface-alt)}'
+      + 'tr.task{background:var(--pj-surface-alt)}'
+      + 'tr.task td:first-child{padding-left:58px;color:var(--pj-text-muted)}'
+      + '.pill{display:inline-flex;align-items:center;justify-content:center;'
+      + 'width:30px;height:30px;border-radius:var(--radius-md);'
+      + 'font-size:var(--fs-lg);line-height:1;position:relative}'
+      + '.pill.ok{background:var(--pj-success-bg);color:var(--pj-success)}'
+      + '.pill.wait{background:var(--pj-warning-bg);color:var(--pj-warning)}'
+      + '.pill.err{background:var(--pj-error-bg);color:var(--pj-error)}'
+      + '.pill.na{background:var(--pj-muted-bg);color:var(--pj-muted)}'
+      + '.note-icon{display:inline-flex;align-items:center;justify-content:center;'
+      + 'width:24px;height:24px;border-radius:var(--radius-sm);font-size:var(--fs-md);'
+      + 'cursor:default;line-height:1}'
+      + '.note-icon.err{background:var(--pj-error-bg);color:var(--pj-error)}'
+      + '.note-icon.wait{background:var(--pj-warning-bg);color:var(--pj-warning)}'
+      + '.legend{display:flex;gap:var(--sp-5);flex-wrap:wrap;'
+      + 'padding:var(--sp-3) var(--sp-5);color:var(--pj-text-muted);font-size:var(--fs-sm);'
+      + 'border-top:1px solid var(--pj-border);margin-top:var(--sp-2)}'
+      + '.legend span{display:inline-flex;align-items:center;gap:6px}'
+      + '.legend-icon{font-size:var(--fs-md);line-height:1}'
+      + '.drilldown-loading td{padding:10px 34px;color:var(--pj-text-muted);font-style:italic}'
+      + '.pagination{display:flex;gap:6px;align-items:center;'
+      + 'padding:var(--sp-3) var(--sp-5);flex-wrap:wrap}'
+      + '.pglink,.pgcur{padding:5px 10px;border-radius:var(--radius-sm);'
+      + 'border:1px solid var(--pj-border-strong);text-decoration:none;'
+      + 'font-size:var(--fs-sm);color:var(--pj-primary);background:var(--pj-surface)}'
+      + '.pgcur{background:var(--pj-primary);color:#fff;'
+      + 'border-color:var(--pj-primary);font-weight:700}'
+      + '.pglink:hover{background:var(--pj-surface-alt)}'
+      + '.pgellipsis{color:var(--pj-text-muted);padding:0 4px}'
+      + '#tip{position:fixed;z-index:50;background:var(--pj-text);'
+      + 'border:1px solid var(--pj-text);color:#fff;padding:8px 10px;'
+      + 'border-radius:var(--radius-md);font-size:11.5px;max-width:320px;'
+      + 'pointer-events:none;display:none;white-space:normal;line-height:1.45;'
+      + 'box-shadow:var(--shadow-lg)}'
+      + '.error-page{padding:40px var(--sp-5);color:var(--pj-error)}';
     const STATUS_RANK = { na: 0, ok: 1, wait: 2, err: 3 };
     const STATUS_INV  = ['na', 'ok', 'wait', 'err'];
 
@@ -421,7 +525,7 @@ define(
         html = Drilldown.getDrilldownHtml({ woid, lang });
       } catch (e) {
         log.error({ title: 'Drilldown failed', details: JSON.stringify(e) });
-        html = `<tr><td colspan="15" style="color:#dc2626;padding:12px 34px">
+        html = `<tr><td colspan="15" style="color:var(--pj-error);padding:12px 34px">
                   Error loading detail: ${escapeHtml(e.message || String(e))}
                 </td></tr>`;
       }
@@ -897,10 +1001,10 @@ define(
       const t = getI18nLabels(lang);
       return `
 <div class="legend" id="legend">
-  <span><span class="badge" style="color:var(--ok)">✓</span> ${escapeHtml(t.legend[0])}</span>
-  <span><span class="badge" style="color:var(--wait)">◷</span> ${escapeHtml(t.legend[1])}</span>
-  <span><span class="badge" style="color:var(--err)">✕</span> ${escapeHtml(t.legend[2])}</span>
-  <span><span class="badge" style="color:var(--na)">–</span> ${escapeHtml(t.legend[3])}</span>
+  <span><span class="legend-icon" style="color:var(--ok)">✓</span> ${escapeHtml(t.legend[0])}</span>
+  <span><span class="legend-icon" style="color:var(--wait)">◷</span> ${escapeHtml(t.legend[1])}</span>
+  <span><span class="legend-icon" style="color:var(--err)">✕</span> ${escapeHtml(t.legend[2])}</span>
+  <span><span class="legend-icon" style="color:var(--na)">–</span> ${escapeHtml(t.legend[3])}</span>
   <span style="margin-left:auto">${escapeHtml(t.rollup)}</span>
 </div>`;
     }
@@ -1074,99 +1178,21 @@ ${thead}
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>${escapeHtml(t.title)}</title>
-<style>
-  :root{
-    --bg:#f5f7fa; --panel:#ffffff; --panel2:#eef2f6; --line:#d7dee6;
-    --txt:#1f2933; --muted:#64748b; --accent:#2563eb;
-    --ok:#15803d; --ok-bg:#dcfce7;
-    --wait:#b45309; --wait-bg:#fef3c7;
-    --err:#dc2626; --err-bg:#fee2e2;
-    --na:#94a3b8; --na-bg:#eef2f6;
-  }
-  *{box-sizing:border-box}
-  body{margin:0;font-family:"Segoe UI",system-ui,sans-serif;background:var(--bg);color:var(--txt);font-size:13px}
-  header{padding:16px 22px;border-bottom:1px solid var(--line);background:var(--panel);display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-  header h1{margin:0;font-size:17px;font-weight:600}
-  header .tag{color:var(--muted);font-weight:400}
-  header .sub{color:var(--muted);font-size:12px;margin-top:3px}
-
-  .langtog{display:flex;border:1px solid var(--line);border-radius:7px;overflow:hidden;flex-shrink:0}
-  .langtog button{background:var(--panel);border:0;padding:6px 14px;cursor:pointer;font-size:12px;font-weight:600;color:var(--muted)}
-  .langtog button.on{background:var(--accent);color:#fff}
-
-  .filterbar{display:flex;gap:14px;align-items:flex-end;flex-wrap:wrap;padding:14px 22px;background:var(--panel2);border-bottom:1px solid var(--line)}
-  .filterbar .fld{display:flex;flex-direction:column;gap:4px}
-  .filterbar label{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
-  .filterbar select,.filterbar input{background:var(--panel);border:1px solid var(--line);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;min-width:150px}
-  .filterbar button{background:var(--accent);color:#fff;border:0;padding:8px 18px;border-radius:6px;font-weight:600;cursor:pointer;font-size:13px}
-
-  .kpis{display:flex;gap:12px;padding:14px 22px}
-  .kpi{flex:1;background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
-  .kpi .n{font-size:24px;font-weight:700}
-  .kpi .l{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;margin-top:2px}
-  .kpi.err .n{color:var(--err)} .kpi.wait .n{color:var(--wait)} .kpi.ok .n{color:var(--ok)}
-
-  .wrap{padding:0 22px 40px}
-  .tscroll{overflow-x:auto}
-  table{width:100%;border-collapse:collapse;margin-top:6px;min-width:1240px}
-  th,td{text-align:left;padding:9px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
-  th{font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;position:sticky;top:0;z-index:2;background:var(--bg)}
-  th.cp,td.cp{text-align:center;width:74px}
-  tr.wo{cursor:pointer}
-  tr.wo:hover{background:var(--panel)}
-  tr.wo>td:first-child{font-weight:600}
-  .twist{display:inline-block;width:14px;color:var(--muted);transition:transform .15s}
-  tr.open .twist{transform:rotate(90deg)}
-
-  tr.batch{background:var(--panel)}
-  tr.batch td:first-child{padding-left:34px;color:var(--txt)}
-  tr.batch:hover{background:var(--panel2)}
-  tr.task{background:var(--panel2)}
-  tr.task td:first-child{padding-left:58px;color:var(--muted)}
-
-  .pill{display:inline-flex;align-items:center;justify-content:center;width:30px;height:30px;border-radius:7px;font-size:15px;line-height:1;position:relative}
-  .pill.ok{background:var(--ok-bg);color:var(--ok)}
-  .pill.wait{background:var(--wait-bg);color:var(--wait)}
-  .pill.err{background:var(--err-bg);color:var(--err)}
-  .pill.na{background:var(--na-bg);color:var(--na)}
-
-  .note-icon{display:inline-flex;align-items:center;justify-content:center;width:24px;height:24px;border-radius:5px;font-size:13px;cursor:default;line-height:1}
-  .note-icon.err{background:var(--err-bg);color:var(--err)}
-  .note-icon.wait{background:var(--wait-bg);color:var(--wait)}
-  .hidden{display:none}
-
-  .legend{display:flex;gap:20px;flex-wrap:wrap;padding:14px 22px;color:var(--muted);font-size:12px;border-top:1px solid var(--line);margin-top:8px}
-  .legend span{display:inline-flex;align-items:center;gap:6px}
-  .badge{font-size:14px}
-
-  .drilldown-loading td{padding:10px 34px;color:var(--muted);font-style:italic}
-
-  .pagination{display:flex;gap:6px;align-items:center;padding:12px 22px;flex-wrap:wrap}
-  .pglink,.pgcur{padding:5px 10px;border-radius:5px;border:1px solid var(--line);text-decoration:none;font-size:12px;color:var(--accent);background:var(--panel)}
-  .pgcur{background:var(--accent);color:#fff;border-color:var(--accent);font-weight:700}
-  .pglink:hover{background:var(--panel2)}
-  .pgellipsis{color:var(--muted);padding:0 4px}
-
-  #tip{position:fixed;z-index:50;background:#1f2933;border:1px solid #1f2933;color:#fff;padding:8px 10px;border-radius:6px;font-size:11.5px;max-width:320px;pointer-events:none;display:none;white-space:normal;line-height:1.45;box-shadow:0 4px 14px rgba(0,0,0,.18)}
-
-  .error-page{padding:40px 22px;color:var(--err)}
-</style>
+${theme.css(REPORT_CSS)}
 </head>
 <body>
 
-${embed ? '' : `<header>
-  <div>
-    <h1>
-      <span data-i18n="title">${escapeHtml(t.title)}</span>
-      <span class="tag" data-i18n="tag">${escapeHtml(t.tag)}</span>
-    </h1>
-    <div class="sub" data-i18n="sub">${escapeHtml(t.sub)}</div>
-  </div>
-  <div class="langtog">
+${embed ? '' : theme.topbar({
+  crumbs: ['Foodstar', 'รายงานการผลิต'],
+  title: `<span data-i18n="title">${escapeHtml(t.title)}</span>`,
+  badge: 'WO Status',
+  right: `<div class="langtog">
     <button id="lang-th" class="${lang === 'th' ? 'on' : ''}" onclick="setLang('th')">ไทย</button>
     <button id="lang-en" class="${lang === 'en' ? 'on' : ''}" onclick="setLang('en')">ENG</button>
-  </div>
-</header>`}
+  </div>`
+}) + `<div class="record-count">
+  <b data-i18n="tag">${escapeHtml(t.tag)}</b> · <span data-i18n="sub">${escapeHtml(t.sub)}</span>
+</div>`}
 
 <form id="filterForm" method="GET" action="">
   <input type="hidden" name="script" value="${escapeHtml(scriptId || '')}" />
@@ -1201,7 +1227,7 @@ ${embed ? '' : `<header>
       </select>
     </div>
     <div class="fld" id="date-fld-from">
-      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;" data-i18n="fFrom">${escapeHtml(t.fFrom)} <span id="date-opt-hint" style="color:#94a3b8;font-weight:400;text-transform:none;font-size:10px;">(ถ้าไม่ระบุ WO/Batch)</span></label>
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;" data-i18n="fFrom">${escapeHtml(t.fFrom)} <span id="date-opt-hint" style="color:var(--pj-text-muted);font-weight:400;text-transform:none;font-size:10px;">(ถ้าไม่ระบุ WO/Batch)</span></label>
       <input type="date" name="dateFrom" id="dateFrom" value="${escapeAttr(selectedFrom)}" />
     </div>
     <div class="fld" id="date-fld-to">
@@ -1374,7 +1400,7 @@ function fixStickyHeader() {
 
 function fetchResults(p) {
   const zone = document.getElementById('results-zone');
-  zone.innerHTML = '<p style="padding:24px;color:var(--muted,#888)">กำลังค้นหา… / Searching…</p>';
+  zone.innerHTML = '<p style="padding:24px;color:var(--pj-text-muted)">กำลังค้นหา… / Searching…</p>';
   fetch(buildFragmentUrl(p))
     .then(r => r.text())
     .then(html => {
@@ -1475,7 +1501,7 @@ function bindWoRows() {
             bindTips();
           })
           .catch(err => {
-            placeholder.innerHTML = '<td colspan="15" style="color:#dc2626;padding:10px 34px">Error: ' + err.message + '</td>';
+            placeholder.innerHTML = '<td colspan="15" style="color:var(--pj-error);padding:10px 34px">Error: ' + err.message + '</td>';
             placeholder.classList.remove('hidden');
           });
       }
@@ -1696,11 +1722,18 @@ window.addEventListener('resize', fixStickyHeader);
         .join('&');
     }
 
-    /** Simple error page */
+    /**
+     * Simple error page — กิน theme ด้วย เพราะหน้านี้คู่สะสมอยู่นอก renderForm
+     * หน้า error ที่หน้าตาหลุดออกจากตระกูลทำให้คนสงสัยว่าหลุดมาหน้าของระบบอื่น
+     */
     function buildErrorPage(msg) {
-      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title></head>
-<body style="font-family:sans-serif;padding:40px;color:#dc2626">
-<h2>Error — WO Status Tracking</h2><pre>${escapeHtml(msg)}</pre>
+      return `<!DOCTYPE html><html><head><meta charset="UTF-8"><title>Error</title>
+${theme.css(REPORT_CSS)}</head>
+<body>
+${theme.topbar({ crumbs: ['Foodstar', 'รายงานการผลิต'], title: 'WO Status Tracking', badge: 'WO Status' })}
+<div class="content"><div class="error-page">
+<h2>เกิดข้อผิดพลาด</h2><pre>${escapeHtml(msg)}</pre>
+</div></div>
 </body></html>`;
     }
 
