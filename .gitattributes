@@ -1,0 +1,16 @@
+# ปลายบรรทัดต้องเป็น LF ทุกที่: blob ใน git · working tree · ไฟล์ที่อัปขึ้น File Cabinet
+#
+# ทำไมต้องบังคับ (issue #10/#12): เครื่องที่ core.autocrlf=true จะได้ working tree เป็น CRLF
+# ขณะที่ blob เป็น LF ผลคือ
+#   · `project:deploy --dryrun` ฟ้องว่าไฟล์ต่างจากบัญชีทั้งที่เนื้อหาเหมือนกันทุกบรรทัด
+#   · sha256 / diff ระหว่าง repo กับ payload production ไม่ตรงตลอดกาล
+#     (`WOCostTrace.js` ตัวเดียวกันได้ a7e5b302… ฝั่ง git แต่ 1e7a2743… ฝั่ง staging)
+# แล้วคนจะเลิกเชื่อตัวตรวจ ซึ่งอันตรายกว่าการไม่มีตัวตรวจ
+#
+# ตัวตรวจของ #12 ยัง normalize ก่อนเทียบอยู่ดี เพราะ payload production อยู่นอก repo
+# และไม่ได้อยู่ใต้กฎไฟล์นี้
+*.js    text eol=lf
+*.json  text eol=lf
+*.xml   text eol=lf
+*.md    text eol=lf
+*.sql   text eol=lf
