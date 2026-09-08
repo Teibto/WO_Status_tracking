@@ -18,6 +18,7 @@ const eq = H.makeEq({ tol: 1e-9 });
 
 // ── ชั้นเจาะลึก ─────────────────────────────────────────────────────────────
 const dd = H.load({
+  libs: ['WOReportTheme.js'],
   fixtures: FX.drilldown(),
   quietLog: true,
   exports: ['buildModel', 'summaryLink']
@@ -41,6 +42,7 @@ eq('ไม่มีใบมีมูลค่าที่ไม่มีใบ�
 // ── ชั้นภาพรวม (คนละ process ไม่ได้ จึงโหลดใหม่ในไฟล์เดียวกันแล้วสลับ fixture) ──
 H.setFixtures(FX.summary());
 const sumT = H.load({
+  libs: ['WOReportTheme.js'],
   fixtures: FX.summary(),
   quietLog: true,
   exports: ['buildSummary', 'readFilters']

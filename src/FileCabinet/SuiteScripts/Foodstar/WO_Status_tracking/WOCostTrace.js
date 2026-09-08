@@ -41,7 +41,15 @@
  * @author Jurapa
  * @since 2026-07-30
  */
-define(['N/query', 'N/log', 'N/runtime'], (query, log, runtime) => {
+define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtime, theme) => {
+
+  /**
+   * โหมดฝังในหน้าอื่น (`&embed=1`) — ไม่วาดแถบหัวเรื่องของตัวเอง
+   * มีไว้เพื่อให้รายงานนี้ไปนั่งในหน้าอื่นได้โดยไม่มีหัวเรื่องซ้อนกันสองชั้น
+   * `WOStatusTracking.js` รับพารามิเตอร์ชื่อเดียวกันด้วยความหมายเดียวกัน
+   * ตั้งค่าใหม่ทุกคำขอใน onRequest เพราะ module scope อยู่ข้ามคำขอได้ในบาง execution context
+   */
+  let EMBED = false;
 
   // recordtype ที่นับเป็นความเคลื่อนไหวมูลค่าสินค้าคงคลังจริง (ดูเหตุผลข้อ 6 ด้านบน)
   // ledger ตัดสินจาก "การลงบัญชี" ไม่ใช่ hardcode รายชื่อ recordtype
@@ -1780,63 +1788,75 @@ ${costCols}
 
   // ═══ render ════════════════════════════════════════════════════════════════
 
-  const CSS = `<style>
-  body{font:13px/1.5 Segoe UI,Tahoma,sans-serif;margin:0;padding:18px;background:#f5f6f8;color:#1b1f23}
-  h1{font-size:20px;margin:0 0 4px}
-  h2{font-size:15px;margin:24px 0 8px;padding-bottom:5px;border-bottom:2px solid #d0d7de}
-  h3{font-size:13px;margin:14px 0 5px;color:#24292f}
-  .sub{color:#57606a;font-size:12px;margin-bottom:14px}
-  form{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:11px 13px;margin-bottom:14px}
-  input[type=text]{font:13px Consolas,monospace;padding:6px 8px;border:1px solid #8c959f;border-radius:4px;width:230px}
-  button{font:13px Segoe UI;padding:6px 15px;border:1px solid #1f6feb;background:#1f6feb;color:#fff;border-radius:4px;cursor:pointer}
-  table{border-collapse:collapse;background:#fff;margin:5px 0 10px;font-size:12px;width:100%}
-  th,td{border:1px solid #d8dee4;padding:4px 7px;text-align:left;vertical-align:top}
-  th{background:#eaeef2;font-weight:600}
-  td.n,th.n{text-align:right;font-family:Consolas,monospace;white-space:nowrap}
-  td.z{color:#c9d1d9}
-  tr.tot td{font-weight:700;background:#fff8e1}
-  tr.grand td{font-weight:700;background:#e6f4ea}
-  .card{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:11px 13px;margin-bottom:12px}
-  .kv td:first-child{background:#f6f8fa;font-weight:600;width:150px}
-  details{margin:7px 0}
-  summary{cursor:pointer;padding:6px 9px;background:#eaeef2;border:1px solid #d0d7de;border-radius:4px}
-  summary:hover{background:#dde3e9}
-  .lvl2{margin-left:16px;border-left:3px solid #54aeff;padding-left:12px}
-  .lvl3{margin-left:16px;border-left:3px solid #ffab70;padding-left:12px}
-  .bad{color:#cf222e;font-weight:700}.warn{color:#9a6700}.ok{color:#1a7f37}
-  /* info = ข้อเท็จจริงที่ต้องรู้แต่ไม่ใช่ปัญหา เช่น สินค้าที่ตั้งค่าไว้ว่าไม่มีต้นทุนแปรสภาพ */
-  .info{color:#57606a}
-  .tag{display:inline-block;font-size:10px;padding:1px 6px;border-radius:9px;background:#ddf4ff;color:#0550ae;margin-left:5px}
-  .err{background:#fff5f5;border:1px solid #cf222e;color:#cf222e;padding:7px 9px;border-radius:4px;margin:7px 0;font-size:12px}
-  pre{margin:0;white-space:pre-wrap;font-size:11px;font-family:Consolas,monospace}
-  a{color:#0550ae}
-  select{font:13px Segoe UI;padding:5px 7px;border:1px solid #8c959f;border-radius:4px}
-  label{font-size:12px;color:#57606a}
-  .kpis{display:flex;flex-wrap:wrap;gap:9px;margin:12px 0}
-  .kpi{background:#fff;border:1px solid #d0d7de;border-radius:6px;padding:8px 12px;min-width:132px}
-  .kpi b{display:block;font-size:16px;font-family:Consolas,monospace;white-space:nowrap}
-  .kpi span{font-size:11px;color:#57606a}
-  tr.sub td{background:#f6f8fa;font-weight:600}
-  .note{font-size:11px;line-height:1.35}
-  .crumb{font-size:12px;margin-bottom:10px}
-  .miss{color:#9a6700;font-family:Consolas,monospace}
-  /* ตารางภาพรวมกว้าง 15 คอลัมน์ และยาวได้ถึงหลักร้อยแถว — ให้เลื่อนในกรอบของตัวเองพร้อมหัวตารางติดบน */
-  .scroll{overflow:auto;max-height:76vh;border:1px solid #d0d7de;border-radius:6px;background:#fff}
-  .scroll table{margin:0;border:0}
-  .scroll thead th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px 0 #d0d7de}
-  /* เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
-     กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ↗ ตัวเดียวติดท้ายเลขที่ตัดบรรทัด) */
-  a.drill{font-weight:600;white-space:nowrap}
-  /* แถบ export อยู่เหนือตาราง — ปุ่มรองเป็นสีจางกว่าปุ่มค้นหา ไม่ให้แย่งสายตาจากปุ่ม "ดูภาพรวม" */
-  .xbar{display:flex;align-items:center;gap:10px;margin:0 0 7px}
-  .xbar button{background:#fff;color:#1f6feb}
-  .xbar button:hover:enabled{background:#ddf4ff}
-  .xbar button:disabled{background:#f6f8fa;color:#8c959f;border-color:#d0d7de;cursor:default}
-  .xnote{font-size:11px;color:#57606a}
-  .nsrec{margin-top:2px}
-  .nsrec a{font-size:10px;color:#57606a;text-decoration:none}
-  .nsrec a:hover{color:#0550ae;text-decoration:underline}
-  </style>`;
+  /**
+   * CSS เฉพาะรายงานนี้ — token และคลาสคอมโพเนนต์กลางอยู่ที่ WOReportTheme.js
+   * กฎที่นี่ต้องอ้าง token เท่านั้น ห้ามใส่ค่าสีตรง ๆ อีก (เดิมเป็นโทน GitHub คนละชุดกับ template)
+   */
+  const REPORT_CSS = 'body{padding:0}'
+    + '.content{padding:var(--sp-4) var(--sp-5) var(--sp-8)}'
+    + '.sub{color:var(--pj-text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-3)}'
+    + '.crumb{font-size:var(--fs-sm);margin-bottom:var(--sp-3)}'
+    + 'form{background:var(--pj-surface);border:1px solid var(--pj-border);'
+    + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4)}'
+    // ตัวเลขชิดขวาและไม่ตัดบรรทัด · การเทียบหลักมาจาก font-variant-numeric ของ template
+    // (เดิมสลับไปฟอนต์ Consolas ทั้งคอลัมน์ ซึ่ง template เลิกทำแล้ว)
+    + 'td.n,th.n{text-align:right;white-space:nowrap}'
+    + 'td.z{color:var(--pj-border-strong)}'
+    + 'tr.tot td{font-weight:700;background:var(--pj-warning-bg)}'
+    + 'tr.grand td{font-weight:700;background:var(--pj-success-bg)}'
+    + 'tr.sub td{background:var(--pj-surface-alt);font-weight:600}'
+    + '.card{background:var(--pj-surface);border:1px solid var(--pj-border);'
+    + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-3)}'
+    + '.kv td:first-child{background:var(--pj-surface-alt);font-weight:600;width:150px}'
+    + 'details{margin:var(--sp-2) 0}'
+    + 'summary{cursor:pointer;padding:6px var(--sp-2);background:var(--pj-surface-alt);'
+    + 'border:1px solid var(--pj-border);border-radius:var(--radius-sm)}'
+    + 'summary:hover{background:var(--pj-muted-bg)}'
+    + '.lvl2{margin-left:var(--sp-4);border-left:3px solid var(--pj-info);padding-left:var(--sp-3)}'
+    + '.lvl3{margin-left:var(--sp-4);border-left:3px solid var(--pj-warning);padding-left:var(--sp-3)}'
+    + '.bad{color:var(--pj-error);font-weight:700}'
+    + '.warn{color:var(--pj-warning)}'
+    + '.ok{color:var(--pj-success)}'
+    // info = ข้อเท็จจริงที่ต้องรู้แต่ไม่ใช่ปัญหา เช่น สินค้าที่ตั้งค่าไว้ว่าไม่มีต้นทุนแปรสภาพ
+    + '.info{color:var(--pj-text-muted)}'
+    // .tag คือ .badge.info ของ template — คงชื่อคลาสเดิมไว้เพราะ markup ใช้อยู่ 19 จุด
+    + '.tag{display:inline-block;padding:1px 8px;border-radius:12px;font-size:10px;'
+    + 'font-weight:600;background:var(--pj-info-bg);color:var(--pj-info);margin-left:var(--sp-1)}'
+    + '.err{background:var(--pj-error-bg);border:1px solid var(--pj-error);color:var(--pj-error);'
+    + 'padding:7px var(--sp-2);border-radius:var(--radius-sm);margin:7px 0;font-size:var(--fs-sm)}'
+    + '.miss{color:var(--pj-warning)}'
+    + '.note{font-size:var(--fs-xs);line-height:1.35}'
+    // ตารางภาพรวมกว้าง 15 คอลัมน์ และยาวได้ถึงหลักร้อยแถว — ให้เลื่อนในกรอบของตัวเองพร้อมหัวตารางติดบน
+    + '.scroll{overflow:auto;max-height:76vh;border:1px solid var(--pj-border);'
+    + 'border-radius:var(--radius-md);background:var(--pj-surface)}'
+    + '.scroll table{margin:0;border:0}'
+    + '.scroll thead th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px 0 var(--pj-border)}'
+    // เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
+    // กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ตัวเดียวติดท้ายเลขที่ตัดบรรทัด)
+    + 'a.drill{font-weight:600;white-space:nowrap}'
+    + '.xbar{display:flex;align-items:center;gap:var(--sp-3);margin:0 0 7px}'
+    + '.xnote{font-size:var(--fs-xs);color:var(--pj-text-muted)}'
+    + '.nsrec{margin-top:2px}'
+    + '.nsrec a{font-size:10px;color:var(--pj-text-muted);text-decoration:none}'
+    + '.nsrec a:hover{color:var(--pj-primary);text-decoration:underline}';
+
+  const CSS = theme.css(REPORT_CSS);
+
+  /** แถบหัวเรื่อง — โหมด embed ไม่ใส่ เพราะหน้าที่ฝังเราไว้มีหัวเรื่องของตัวเองแล้ว */
+  function pageTop(title, badge) {
+    if (EMBED) return '';
+    return theme.topbar({
+      crumbs: ['Foodstar', 'รายงานต้นทุนการผลิต'],
+      title: title,
+      badge: badge || 'WO Cost Trace'
+    });
+  }
+
+  /** โครงหน้ามาตรฐาน — style + แถบหัวเรื่อง + เนื้อหาใน .content ของ template */
+  function shell(title, body, extraCss) {
+    return CSS + (extraCss || '') + pageTop(title) + '<div class="content">' + body + '</div>';
+  }
+
 
   /** URL ของ Suitelet ตัวเอง — ใช้ทั้งลิงก์เจาะลึกและลิงก์กลับหน้าภาพรวม */
   function selfUrl(params) {
@@ -1871,7 +1891,7 @@ ${costCols}
       ${hidden}
       เลขที่ใบสั่งผลิต <input type="text" name="wo" value="${esc(woKey)}" placeholder="WOFSC00000470">
       &nbsp; avg cost ณ วันที่ <input type="text" name="asof" value="${esc(asOf)}" placeholder="YYYY-MM-DD" style="width:120px">
-      <button type="submit">ตรวจที่มาของต้นทุน</button>
+      <button type="submit" class="btn primary">ตรวจที่มาของต้นทุน</button>
     </form>`;
   }
 
@@ -1911,12 +1931,26 @@ ${costCols}
       &nbsp;<label>เรียงตาม</label>
       <select name="sort">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
       &nbsp;<label>ไม่เกิน</label> <input type="text" name="max" value="${esc(String(f.max))}" style="width:45px"> ใบ
-      &nbsp;<button type="submit">ดูภาพรวม</button>
-      <div style="font-size:11px;color:#57606a;margin-top:6px">
+      &nbsp;<button type="submit" class="btn primary">ดูภาพรวม</button>
+      <div class="sub" style="margin-top:6px">
         เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
         · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
       </div>
     </form>`;
+  }
+
+  /**
+   * คลาสสถานะของรายงาน → accent ของ template
+   * รายงานนี้ใช้คำว่า bad/warn/ok/info มาตลอด ส่วน template ใช้ error/warning/success/info
+   * แปลที่จุดเดียวแทนการเปลี่ยนคำทั่วไฟล์ (คลาสเดิมยังใช้ระบายสีข้อความในตารางอยู่)
+   */
+  const KPI_ACCENT = { bad: 'error', warn: 'warning', ok: 'success', info: 'info' };
+
+  /** การ์ด KPI ใบเดียวตาม template — ป้ายอยู่บน ค่าอยู่กลาง คำขยายอยู่ล่าง */
+  function kpi(label, value, cls, meta) {
+    return theme.kpiCard({
+      label: label, value: value, meta: meta, accent: KPI_ACCENT[cls] || 'primary'
+    });
   }
 
   function renderSummaryKpis(sm) {
@@ -1937,22 +1971,21 @@ ${costCols}
       if (!r.rm_cost) noIssue++;
       if (r.notes.some(n => n.cls === 'bad')) flagged++;
     });
-    const kpi = (label, val, cls) => `<div class="kpi"><b class="${cls || ''}">${val}</b><span>${label}</span></div>`;
-    return '<div class="kpis">'
-      + kpi('ใบสั่งผลิต', esc(String(sm.shown)) + (sm.truncated ? ' <span class="tag">จาก ' + esc(String(sm.total)) + '</span>' : ''))
+    // ผลต่างสุทธิกับค่าสัมบูรณ์แยกเป็นค่าและคำขยาย ไม่ยัดสองเลขในช่องเดียวแล้วย่อฟอนต์เอง
+    return '<div class="kpi-grid">'
+      + kpi('ใบสั่งผลิต', esc(String(sm.shown)), null,
+        sm.truncated ? 'จาก ' + esc(String(sm.total)) + ' ใบที่เข้าเงื่อนไข' : '')
       + kpi('รวมวัตถุดิบและบรรจุภัณฑ์', esc(fmt(rm, 2)))
       + kpi('รวมต้นทุนแปรสภาพ', esc(fmt(dl, 2)))
       + kpi('รวมต้นทุนการผลิต', esc(fmt(cost, 2)))
-      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)) + ' / ' + esc(String(sm.shown)),
-        gapCount ? 'bad' : 'ok')
-      + kpi('ผลต่างสุทธิ · รวมค่าสัมบูรณ์',
-        '<span style="font-size:13px">' + esc(fmt(gap, 0)) + ' · ' + esc(fmt(gapAbs, 0)) + '</span>',
-        gapCount ? 'bad' : 'ok')
+      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
+        'จาก ' + esc(String(sm.shown)) + ' ใบ')
+      + kpi('ผลต่างสุทธิ', esc(fmt(gap, 0)), gapCount ? 'bad' : 'ok',
+        'รวมค่าสัมบูรณ์ ' + esc(fmt(gapAbs, 0)))
       + kpi('ยังไม่เบิกวัตถุดิบ', esc(String(noIssue)), noIssue ? 'warn' : 'ok')
       + kpi('ยังไม่ปิดงานผลิต', esc(String(noWoc)), noWoc ? 'warn' : 'ok')
-      + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv))
-        + (convByDesign ? ' <span class="tag">ไม่มีตามการตั้งค่าอีก ' + esc(String(convByDesign)) + '</span>' : ''),
-        noConv ? 'warn' : 'ok')
+      + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv)), noConv ? 'warn' : 'ok',
+        convByDesign ? 'ไม่มีตามการตั้งค่าอีก ' + esc(String(convByDesign)) + ' ใบ' : '')
       + kpi('ตีราคาซ้ำ (ต้องแก้)', esc(String(flagged)), flagged ? 'bad' : 'ok')
       + '</div>';
   }
@@ -2131,7 +2164,7 @@ ${costCols}
    */
   function renderSummaryExport(sm) {
     if (!sm.rows.length) {
-      return '<div class="xbar"><button type="button" disabled>⬇ Export Excel</button>'
+      return '<div class="xbar"><button type="button" class="btn" disabled>⬇ Export Excel</button>'
         + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span></div>';
     }
     const d = summaryExportData(sm);
@@ -2140,7 +2173,7 @@ ${costCols}
     const note = sm.truncated
       ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
       : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
-    return '<div class="xbar"><button type="button" id="btnXlsx">⬇ Export Excel</button>'
+    return '<div class="xbar"><button type="button" class="btn" id="btnXlsx">⬇ Export Excel</button>'
       + '<span class="xnote">' + esc(note) + ' · หัวและลำดับคอลัมน์ตรงกับตาราง · '
       + 'ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้</span></div>'
       + '<script src="' + XLSX_CDN + '"><\/script>'
@@ -2183,7 +2216,7 @@ ${costCols}
 
   function renderSummaryPage(sm) {
     const f = sm.filters;
-    let h = CSS + '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
+    let h = '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
       + '<div class="sub">ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน แล้วกดเลขที่ใบสั่งผลิตเพื่อเจาะที่มาของทุกตัวเลข '
       + 'จนถึงเอกสารต้นทาง · ยอดในหน้านี้ใช้แหล่งข้อมูลเดียวกับหน้าเจาะลึกทุกช่อง</div>'
       + renderSummaryForm(f);
@@ -2224,7 +2257,7 @@ ${costCols}
       + '</table></div>';
 
     h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
-    return h;
+    return shell('ภาพรวมต้นทุนใบสั่งผลิต', h);
   }
 
   function renderWOHeader(s) {
@@ -2939,8 +2972,7 @@ ${costCols}
   }
 
   function renderPage(m) {
-    let h = CSS
-      + '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
+    let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
       + '">← ภาพรวมหลายใบสั่งผลิต</a>'
       + (m.woKey ? ' · <a href="' + selfUrl({ ready: m.woKey })
         + '">ตรวจความพร้อม master ของใบนี้</a>' : '')
@@ -2950,8 +2982,9 @@ ${costCols}
       + '→ ใบสั่งผลิตที่ทำกึ่งสำเร็จรูป → เอกสารรับเข้าที่ทำให้ average cost เป็นค่านั้น</div>'
       + renderForm(m.woKey, (m.ctx && m.ctx.asOf) || '', m.filters);
 
-    if (m.notFound) return h + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>' + renderQLog();
-    if (!m.ok) return h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>';
+    const page = (body) => shell('ที่มาของต้นทุนใบสั่งผลิต', body);
+    if (m.notFound) return page(h + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>' + renderQLog());
+    if (!m.ok) return page(h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>');
 
     const s = m.root;
     h += renderErrors() + renderWOHeader(s);
@@ -2979,7 +3012,7 @@ ${costCols}
       + 'ตัวเลขชั้นที่ 3 ของรายการที่ยังไม่ตรง อย่าใช้อ้างอิงจนกว่าจะแก้</div>'
       + renderAudit(m);
     h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
-    return h;
+    return page(h);
   }
 
   // ═══ ชั้นความพร้อม master ก่อน UAT ═════════════════════════════════════════
@@ -3910,8 +3943,8 @@ ${costCols}
       <label>คลังที่ใช้เทียบสต๊อก (กด Ctrl เลือกได้หลายคลัง)</label>
       <select id="rlocsel" multiple size="6" style="min-width:260px;vertical-align:top">
         <option value="all"${p.locAll ? ' selected' : ''}>— ทุกคลัง —</option>${opts}</select>
-      &nbsp;<button type="submit">ตรวจความพร้อม</button>
-      <div style="font-size:11px;color:#57606a;margin-top:6px">
+      &nbsp;<button type="submit" class="btn primary">ตรวจความพร้อม</button>
+      <div class="sub" style="margin-top:6px">
         ใส่เลขที่ใบสั่งผลิต: จำนวน วันที่ และคลัง มาจากใบนั้น · ใส่รหัสสินค้า (ยังไม่มีใบสั่งผลิต):
         จำนวนใช้ขนาด batch ของ revision · วันที่ = วันนี้ · คลังแรกที่เลือกถูกใช้เป็นคลังผลิต
         <br>เลือกคลังป้อน (เช่น RMRD · WRM-NP) เพิ่มด้วย ถ้าของยังรออยู่ที่คลังป้อนแล้วย้ายเข้าด้วย TO
@@ -3932,17 +3965,16 @@ ${costCols}
     const shortItems = rd.need_rows.filter(r => r.short > 0).length;
     const madeCount = rd.nodes.filter(n => n.made && n.bom && n.bom.bom).length;
     const woBad = rd.wo_check.filter(c => !c.match).length;
-    const kpi = (label, val, cls) =>
-      `<div class="kpi"><b class="${cls || ''}">${val}</b><span>${label}</span></div>`;
+
     // ทางเข้าด้วยรหัสสินค้าที่ไม่เลือกคลัง = ข้าม M-02/M-05 ส่วนที่ตัดสินตามคลังไปทั้งดุ้น
     // ต้องไม่สรุปว่า "พร้อม" เพราะคนทดสอบที่ลืมเลือกคลังจะได้หน้าที่เขียวเกินความจริง
     const skipLoc = rd.basis === 'item' && !rd.loc_id;
     const verdict = bad ? 'ยังไม่พร้อม'
       : ((unk || skipLoc) ? 'ตรวจไม่ครบ' : (warn ? 'พร้อมแบบมีข้อสังเกต' : 'พร้อม'));
-    return '<div class="kpis">'
-      + kpi('คำตัดสินรวม', esc(verdict)
-        + (skipLoc ? ' <span class="tag">ยังไม่เลือกคลัง</span>' : ''),
-        bad ? 'bad' : ((unk || skipLoc) ? 'warn' : (warn ? 'warn' : 'ok')))
+    return '<div class="kpi-grid">'
+      + kpi('คำตัดสินรวม', esc(verdict),
+        bad ? 'bad' : ((unk || skipLoc) ? 'warn' : (warn ? 'warn' : 'ok')),
+        skipLoc ? 'ยังไม่เลือกคลัง — ข้ามการตรวจที่ตัดสินตามคลัง' : '')
       + kpi('รายการที่ต้องแก้', esc(String(bad)), bad ? 'bad' : 'ok')
       + kpi('ข้อสังเกต', esc(String(warn)), warn ? 'warn' : 'ok')
       + kpi('ตรวจไม่ได้ (query พัง)', esc(String(unk)), unk ? 'warn' : 'ok')
@@ -4100,7 +4132,7 @@ ${costCols}
   }
 
   function renderReadyPage(rd) {
-    let h = CSS + READY_CSS + '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
+    let h = '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
       + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
       + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
     h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
@@ -4109,8 +4141,9 @@ ${costCols}
         ? ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
       + '</div>';
     h += renderReadyForm(rd);
+    const page = (body) => shell('ความพร้อม master ก่อนเริ่มทดสอบ', body, READY_CSS);
     if (!rd.ok) {
-      return h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>' + renderQLog();
+      return page(h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>' + renderQLog());
     }
     h += renderReadyHeader(rd) + renderReadyKpis(rd) + renderReadyTodo(rd);
     if (rd.struct_failed) {
@@ -4129,23 +4162,24 @@ ${costCols}
         + 'เปิดรายงานนี้ซ้ำด้วยเลขที่ใบสั่งผลิตหลังเปิดใบแล้ว จะได้ตารางยันยอดรายบรรทัด</p>';
     }
     h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
-    return h;
+    return page(h);
   }
 
-  const READY_CSS = `<style>
-  td.rv{font-size:11px;line-height:1.35;max-width:230px}
-  td.rv b{font-family:Consolas,monospace;font-size:12px}
-  td.rv.ok{background:#f0fff4}td.rv.ok b{color:#1a7f37}
-  td.rv.bad{background:#fff5f5}td.rv.bad b{color:#cf222e}
-  td.rv.warn{background:#fffbea}td.rv.warn b{color:#9a6700}
-  td.rv.unk{background:#f6f8fa}td.rv.unk b{color:#57606a}
-  td.rv.info{color:#8c959f}td.rv.info b{color:#c9d1d9}
-  .dim{color:#57606a}
-  ol.todo{margin:7px 0 0 18px;padding:0;font-size:12px;line-height:1.6}
-  ol.todo li.bad{color:#cf222e}
-  ol.todo li.unk{color:#57606a}
-  .card.ok{border-color:#1a7f37;color:#1a7f37}
-  </style>`;
+  /** CSS เฉพาะชั้นความพร้อม — ต่อท้ายบล็อกกลาง เขียนด้วย token เหมือนกัน */
+  const READY_CSS = '<style>'
+    + 'td.rv{font-size:var(--fs-xs);line-height:1.35;max-width:230px}'
+    + 'td.rv b{font-family:var(--pj-mono);font-size:var(--fs-sm)}'
+    + 'td.rv.ok{background:var(--pj-success-bg)}td.rv.ok b{color:var(--pj-success)}'
+    + 'td.rv.bad{background:var(--pj-error-bg)}td.rv.bad b{color:var(--pj-error)}'
+    + 'td.rv.warn{background:var(--pj-warning-bg)}td.rv.warn b{color:var(--pj-warning)}'
+    + 'td.rv.unk{background:var(--pj-muted-bg)}td.rv.unk b{color:var(--pj-text-muted)}'
+    + 'td.rv.info{color:var(--pj-text-muted)}td.rv.info b{color:var(--pj-border-strong)}'
+    + '.dim{color:var(--pj-text-muted)}'
+    + 'ol.todo{margin:7px 0 0 18px;padding:0;font-size:var(--fs-sm);line-height:1.6}'
+    + 'ol.todo li.bad{color:var(--pj-error)}'
+    + 'ol.todo li.unk{color:var(--pj-text-muted)}'
+    + '.card.ok{border-color:var(--pj-success);color:var(--pj-success)}'
+    + '</style>';
 
   // ═══ entry ═════════════════════════════════════════════════════════════════
 
@@ -4160,6 +4194,7 @@ ${costCols}
     const p = ctx.request.parameters || {};
     // module scope อยู่ข้ามคำขอได้ในบาง execution context — ล้างก่อนทุกครั้งไม่ให้ log สะสม
     QLOG.length = 0;
+    EMBED = asStr(p.embed) === '1';
 
     const woKey = asStr(p.wo).trim();
     const filters = readFilters(p);
@@ -4178,9 +4213,10 @@ ${costCols}
         rd.filters = filters;
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(CSS + READY_CSS + '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
+        ctx.response.write(shell('ความพร้อม master ก่อนเริ่มทดสอบ',
+          '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog());
+          + renderQLog(), READY_CSS));
         return;
       }
       if (wantJson) {
@@ -4199,9 +4235,10 @@ ${costCols}
         sm = buildSummary(filters);
       } catch (e) {
         log.error({ title: 'buildSummary', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(CSS + '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>' + renderSummaryForm(filters)
+        ctx.response.write(shell('ภาพรวมต้นทุนใบสั่งผลิต',
+          '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>' + renderSummaryForm(filters)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog());
+          + renderQLog()));
         return;
       }
       if (wantJson) {
@@ -4221,9 +4258,10 @@ ${costCols}
       m.woKey = woKey;
     } catch (e) {
       log.error({ title: 'buildModel', details: e.message + '\n' + (e.stack || '') });
-      ctx.response.write(CSS + renderForm(woKey, '', filters)
+      ctx.response.write(shell('ที่มาของต้นทุนใบสั่งผลิต',
+        renderForm(woKey, '', filters)
         + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-        + renderQLog());
+        + renderQLog()));
       return;
     }
     // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม
