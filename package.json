@@ -5,6 +5,7 @@
   "description": "SuiteScript 2.1 Suitelets — WO Status Tracking + WO Cost Trace (Foodstar NetSuite)",
   "scripts": {
     "check:prod": "node scripts/check-prod-staging.js",
-    "test": "node test/test_repo_guard.js && node test/test_deploy_manifest.js && node test/test_theme.js && node test/test_wostatus_datefilter.js && node test/test_wostatus_subitemtype.js && node test/test_qlog_scope.js && node test/test_query_contract.js && node test/test_trace_parity.js && node test/test_summary_math.js && node test/test_ready_master.js && node test/test_summary_export.js"
+    "sync:theme": "node shared/sync-theme.js",
+    "test": "node test/test_repo_guard.js && node test/test_deploy_manifest.js && node test/test_theme.js && node test/test_theme_sync.js && node test/test_wostatus_datefilter.js && node test/test_wostatus_subitemtype.js && node test/test_qlog_scope.js && node test/test_query_contract.js && node test/test_trace_parity.js && node test/test_summary_math.js && node test/test_ready_master.js && node test/test_summary_export.js"
   }
 }
