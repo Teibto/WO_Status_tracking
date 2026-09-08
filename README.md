@@ -24,15 +24,23 @@ WO_Status_tracking/
 │   │   ├── customscript_fs_wo_cost_trace.xml
 │   │   └── customscript_wo_status_tracking.xml
 │   └── FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/     ← source ที่ deploy จริง
-│       ├── WOCostTrace.js                  WO Cost Trace (3 ชั้นในไฟล์เดียว)
-│       ├── WOStatusTracking.js             WO Status Tracking (entry)
+│       ├── WOReportTheme.js                lib — design token + คลาสของ template (#18)
+│       ├── WOCostTrace_Common.js           lib — helper · SQL runner · query log (#13)
+│       ├── WOCostTrace_Ready.js            lib — ชั้นความพร้อม master (#14)
+│       ├── WOCostTrace.js                  entry — WO Cost Trace (ภาพรวม + เจาะลึก)
+│       ├── WOStatusTracking.js             entry — WO Status Tracking
 │       ├── WOStatusTracking_Queries.js
 │       ├── WOStatusTracking_Labels.js
 │       ├── WOStatusTracking_Drilldown.js
 │       └── .attributes/
+├── scripts/
+│   ├── check-prod-staging.js       ตรวจ payload production 8 ข้อ — `npm run check:prod` (#12)
+│   └── lib/sdf_payload.js          ตัวอ่าน SDF project ใช้ร่วมกับเทส
+├── qa/make_theme_preview.js        สร้างหน้าตัวอย่าง style ดูเทียบสายตา (#18)
 ├── test/                           node ล้วน ไม่มี framework — `npm test`
 ├── prototype/                      ไฟล์ทดสอบ SuiteQL + ไฟล์เจาะมือของผู้ใช้
 ├── WO_COST_TRACE.md                เอกสารของ WO Cost Trace (ที่มาของทุกตัวเลขที่ verify แล้ว)
+├── REPORT_STYLE.md                 style ยึดจากไหน + แผนฝังเข้าเมนู report-builder (#18)
 └── IMPLEMENTATION_PLAN.md
 ```
 
@@ -57,11 +65,28 @@ suitecloud project:deploy --dryrun        # อ่านรายชื่อ pa
 suitecloud project:deploy                 # ลง SB1 ตาม project.json
 ```
 
-แก้ไฟล์เดียวแล้วอยากเห็นผลเร็ว ๆ (ลง SB1):
+### ⚠ กฎอัปทีละไฟล์ — dependency ก่อน entry เสมอ
+
+File Cabinet **ไม่มีการอัปหลายไฟล์แบบ atomic** · อัป entry ที่ `define` ชื่อ lib ไว้
+โดยที่ lib ยังไม่ขึ้น = Suitelet **ตายทุก request** ด้วย `MODULE_DOES_NOT_EXIST`
+จนกว่าจะอัปครบ (repo พี่น้อง `Pre-Work_Order_Completion` เจอมาแล้ว)
+
+ลำดับที่ปลอดภัยของ WO Cost Trace
 
 ```bash
+# 1. lib ก่อน — ยิงพร้อมกันในคำสั่งเดียวได้
+suitecloud file:upload   --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js"           "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js"           "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Ready.js"
+
+# 2. entry ทีหลัง
 suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js"
 ```
+
+แก้เฉพาะไฟล์ lib ตัวเดียวอัปตัวเดียวได้ · แก้ entry ด้วยต้องอัป lib ก่อนทุกครั้ง
+· `project:deploy` ยิงทั้งชุดในรอบเดียวจึงไม่มีปัญหานี้ แต่มันแตะ object ด้วย (ดูข้อถัดไป)
+
+`src/deploy.xml` เรียง `<files>` ตามลำดับนี้ไว้แล้วเพื่อให้อ่านแล้วเห็นลำดับ
+· `npm test` มีด่านตรวจ **dependency closure** — ไฟล์ที่ entry เรียกแต่ไม่อยู่ใน `deploy.xml`
+ทำให้เทสตกทันที
 
 ### ขึ้น production
 

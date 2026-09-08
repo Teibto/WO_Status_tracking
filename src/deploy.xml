@@ -32,6 +32,7 @@
         <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Drilldown.js</path>
         <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking.js</path>
         <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Ready.js</path>
         <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js</path>
     </files>
     <objects>

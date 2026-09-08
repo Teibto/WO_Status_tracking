@@ -200,12 +200,19 @@ const BASE = {
 let FX = BASE;
 
 // ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
-const { T } = H.load({
-  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js'],
+// ก้อน E2 (#14) ย้ายชั้นนี้ไปเป็น lib ของตัวเอง
+// entry เรียกมันผ่าน interface แค่ 4 ตัว จึงต้องเปิดฟังก์ชันภายในที่ lib ไม่ใช่ที่ entry
+const READY_LIB = 'WOCostTrace_Ready.js';
+const T = H.load({
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', READY_LIB],
   fixtures: () => FX,
   quietLog: true,
-  exports: ['buildReady', 'readReadyParams', 'renderReadyPage', 'bomVerdictText', 'revVerdictText', 'routingVerdictText', 'costRefVerdictText', 'stockVerdictText', 'compVerdictText']
-});
+  libExports: {
+    [READY_LIB]: ['buildReady', 'readReadyParams', 'renderReadyPage', 'bomVerdictText',
+      'revVerdictText', 'routingVerdictText', 'costRefVerdictText', 'stockVerdictText',
+      'compVerdictText']
+  }
+}).libT[READY_LIB];
 
 
 // ── ตัวช่วยเทียบผล ──────────────────────────────────────────────────────────
