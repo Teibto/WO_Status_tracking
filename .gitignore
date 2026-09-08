@@ -18,4 +18,4 @@ node_modules/
 package-lock.json
 
 # หน้าตัวอย่าง style ที่ generate ได้เอง (qa/make_theme_preview.js) — issue #18
-qa/theme-preview.html
+shared/qa/theme-preview.html

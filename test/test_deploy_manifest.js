@@ -10,12 +10,21 @@
  *   · <scriptfile> เทียบตัวพิมพ์ — Windows/macOS มองชื่อไฟล์ไม่สนตัวพิมพ์ แต่ File Cabinet สน
  */
 const path = require('path');
-const H = require('./_harness');
-const P = require('../scripts/lib/sdf_payload');
+const H = require('./lib/_harness');
+const P = require('../shared/lib/sdf_payload');
 
 const eq = H.makeEq({ json: true });
-const SRC = path.join(__dirname, '../src');
+// epic #37 — สองแอปมี deploy.xml คนละใบ เทสนี้ต้องตรวจทุกแอป ไม่ใช่ชุดเดียว
+const APPS = require('fs').readdirSync(path.join(__dirname, '../apps')).sort()
+  .map((app) => ({ app: app, src: path.join(__dirname, '../apps', app, 'src') }))
+  .filter((a) => require('fs').existsSync(path.join(a.src, 'deploy.xml')));
+
+APPS.forEach(runApp);
+
+function runApp(A) {
+const SRC = A.src;
 const d = P.readDeployPaths(SRC);
+console.log('\n════ ' + A.app + ' ════');
 
 console.log('\n── ไม่ใช้ wildcard ──');
 if (d.wildcards.length) console.log('     ' + d.wildcards.join(' '));
@@ -32,6 +41,21 @@ eq('ไม่มีไฟล์ที่ตกจาก list', missing.join(' ')
 eq('ไม่มี path ที่ชี้ไฟล์ไม่มีจริง', ghost.join(' '), '');
 eq('จำนวนไฟล์ที่ระบุ = จำนวนไฟล์ .js ที่มีจริง', d.files.length, onDisk.length);
 
+// สองแอปใช้โฟลเดอร์เดียวกันบนบัญชี (คำตัดสิน #37) — deploy.xml ที่ระบุไฟล์ของอีกแอป
+// จะทับของเขาโดยที่ dry-run ของแอปนั้นไม่เห็นอะไรผิดปกติเลย ด่านนี้จึงอ่านจากชื่อไฟล์ว่าใครเป็นเจ้าของ
+// WOReportTheme.js เป็นก๊อปที่ทั้งสองแอปถือของตัวเอง (#39) จึงไม่นับว่าข้ามแอป
+console.log('\n── deploy.xml ห้ามระบุไฟล์ของแอปอื่น ──');
+const OWNER_RE = { 'wo-cost-trace': /^WOCostTrace/, 'wo-status': /^WOStatusTracking/ };
+const crossApp = d.files
+  .map((f) => f.split('/').pop())
+  .filter((base) => base !== 'WOReportTheme.js')
+  .filter((base) => !(OWNER_RE[A.app] || /$^/).test(base));
+if (crossApp.length) console.log('     ไฟล์ที่ไม่ใช่ของ ' + A.app + ': ' + crossApp.join(' '));
+eq('ไม่มีไฟล์ของแอปอื่นใน deploy.xml', crossApp.join(' '), '');
+
+const objBases = d.objects.map((o) => o.split('/').pop());
+eq('ระบุ object แค่ใบเดียว (ของแอปตัวเอง)', objBases.length, 1);
+
 console.log('\n── object ทุกใบต้องอยู่ใน list ──');
 const objDisk = P.listObjectXml(SRC);
 const objMissing = objDisk.filter((o) => d.objects.indexOf(o) < 0);
@@ -46,10 +70,14 @@ eq('ทุก dependency อยู่ใน deploy.xml', dep.join(' | '), '');
 
 // ยันว่าตัวอ่าน dependency เห็นของจริง ไม่ใช่ผ่านเพราะอ่านไม่เจออะไรเลย
 const fs = require('fs');
-const entrySrc = fs.readFileSync(path.join(H.SRC_DIR, 'WOStatusTracking.js'), 'utf8');
-const deps = P.amdRelativeDeps(entrySrc);
-eq('อ่าน dependency ของ WOStatusTracking ได้ครบ 4 ตัว', deps.length, 4);
-eq('เห็น WOReportTheme เป็น dependency', deps.indexOf('WOReportTheme') >= 0, true);
+const ENTRY_DEPS = { 'wo-status': ['WOStatusTracking.js', 4], 'wo-cost-trace': ['WOCostTrace.js', 3] };
+const ed = ENTRY_DEPS[A.app];
+if (ed) {
+  const entrySrc = fs.readFileSync(path.join(H.dirOf(ed[0]), ed[0]), 'utf8');
+  const deps = P.amdRelativeDeps(entrySrc);
+  eq('อ่าน dependency ของ ' + ed[0] + ' ได้ครบ ' + ed[1] + ' ตัว', deps.length, ed[1]);
+  eq('เห็น WOReportTheme เป็น dependency', deps.indexOf('WOReportTheme') >= 0, true);
+}
 
 console.log('\n── <scriptfile> ของ object ชี้ไฟล์จริง (สนตัวพิมพ์) ──');
 const sf = P.scriptFileProblems(SRC, d.objects);
@@ -61,6 +89,10 @@ const deployXml = fs.readFileSync(path.join(SRC, 'deploy.xml'), 'utf8');
 const readme = fs.readFileSync(path.join(__dirname, '../README.md'), 'utf8');
 eq('deploy.xml เขียนกฎกำกับไว้', deployXml.indexOf('ห้าม deploy production จาก repo') > 0, true);
 eq('README เขียนกฎเดียวกัน', readme.indexOf('ห้าม deploy production จาก repo') > 0, true);
+}
+
+console.log('\n── ต้องเจอทั้งสองแอป ไม่ใช่ผ่านเพราะไม่มีอะไรให้ตรวจ ──');
+eq('จำนวนแอปที่ตรวจ', APPS.length, 2);
 
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);

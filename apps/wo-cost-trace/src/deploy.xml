@@ -1,0 +1,37 @@
+<deploy>
+    <!--
+      ชุด deploy ของ **WO Cost Trace เท่านั้น** (epic #37 · ก้อน S1)
+
+      ระบุ path ตรงตัวทุกไฟล์และทุก object โดยตั้งใจ (issue #10)
+      เดิมใช้ wildcard ซึ่งทำให้ scope ของ deploy ขยายตามไฟล์ที่มีอยู่ในโฟลเดอร์
+      ไม่ใช่ตามที่คนตั้งใจ — เพิ่มไฟล์ใหม่แล้วต้องมาเติมที่นี่ด้วย ไม่งั้นไฟล์นั้นจะไม่ขึ้นบัญชี
+
+      ลำดับใน <files> เขียนแบบ dependency-first (lib ก่อน entry) เพื่อให้อ่านแล้วเห็นลำดับ
+      ที่ต้องใช้ตอนอัปทีละไฟล์ด้วย `file:upload` — ตัว SDF เองไม่สนลำดับในไฟล์นี้
+
+      ⚠ WOReportTheme.js ในโฟลเดอร์นี้เป็น **ก๊อปที่เครื่องมือสร้าง** ต้นฉบับอยู่ที่ shared/WOReportTheme.js
+        แก้ที่ต้นฉบับแล้วรัน `npm run sync:theme` — ห้ามแก้ไฟล์ในโฟลเดอร์นี้ด้วยมือ (ก้อน S2)
+        นี่เป็นไฟล์เดียวที่การแก้กระเทือนทั้งสองแอป เพราะทั้งสองแอปมีก๊อปของตัวเอง
+
+      ⚠ path บนบัญชีเป็นโฟลเดอร์เดียวกับ WO Status Tracking โดยตั้งใจ (คำตัดสิน #37)
+        โฟลเดอร์ร่วมกันได้เพราะ deploy.xml ระบุไฟล์ตรงตัว — ชุดนี้ไม่แตะไฟล์ของอีกแอป
+        ห้ามเติม path ของ WOStatusTracking*.js ลงในไฟล์นี้ (เทส deploy manifest จับ)
+
+      ⚠ ข้อค้างที่ยังไม่ปิด — deploy object จาก repo ลง SB1 ยังมีประเด็นสิทธิ์ (issue #24)
+        ระหว่างนี้อัปเฉพาะไฟล์ด้วย `file:upload` อย่าใช้ `project:deploy` กับ SB1
+
+      ⚠ ห้าม deploy production จาก repo นี้ แม้ list นี้จะระบุตรงตัวแล้ว
+        list กันได้แค่ "ยิงกว้างเกิน" ไม่ได้กัน "ยิงผิดบัญชี"
+        production ใช้ payload แยกที่ Foodstar/.deploy-staging/wo-trace-prod/ เท่านั้น
+        (ดู README.md หัวข้อ "ขึ้น production")
+    -->
+    <files>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Ready.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js</path>
+    </files>
+    <objects>
+        <path>~/Objects/customscript_fs_wo_cost_trace.xml</path>
+    </objects>
+</deploy>

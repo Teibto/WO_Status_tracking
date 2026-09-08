@@ -1,63 +1,78 @@
 /**
- * Harness — กันไฟล์ source ซ้ำกลับเข้ามาใน repo (issue #11)
+ * Harness — กันไฟล์ source หลงที่ และกันโครงเก่ากลับมา (issue #11 · ปรับที่ #38)
  *
- * ปัญหาที่กัน: `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/` คือ path เดียว
- * ที่ SDF deploy จริง · ไฟล์ `.js` ที่ราก `src/` เป็นสำเนาที่ไม่ถูก deploy และเคยทำให้
- * `README.md` สอนคนอัปโหลดชุดเก่าทับของที่รันอยู่ (ดู issue #9)
+ * ปัญหาที่กันมาตั้งแต่ #11: ไฟล์ `.js` ที่วางไว้นอก path ที่ SDF deploy จริง เป็นสำเนา
+ * ที่ไม่ถูกอัปขึ้นบัญชี และเคยทำให้ `README.md` สอนคนอัปโหลดชุดเก่าทับของที่รันอยู่ (#9)
  *
- * repo นี้ไม่มี CI ให้แขวน hook จึงทำเป็นเทส — `npm test` กลายเป็นด่านเดียวที่ทุกคนวิ่งผ่าน
+ * epic #37 แยกเป็นสองแอป — กฎเดิมยังต้องอยู่ แต่ต้องตรวจ **ทุกแอป** และเพิ่มสองข้อ
+ *   · โครงเก่า (`src/` ที่รากของ repo) ห้ามกลับมา ไม่งั้นจะมีสองความจริงเรื่องว่า deploy อะไร
+ *   · ไฟล์ของแอปหนึ่งห้ามไปโผล่ในโฟลเดอร์ของอีกแอป — สองแอปใช้โฟลเดอร์เดียวกันบนบัญชี
+ *     ไฟล์ที่หลงข้ามฝั่งจะถูก deploy ทับกันโดยไม่มีใครเห็นใน dry-run ของแอปตัวเอง
  *
- * issue #9 ลบ 4 ไฟล์สำเนาที่ราก `src/` ออกแล้ว (2026-09-08) `PENDING_REMOVAL` จึงว่าง
- * เทสนี้บังคับ**ศูนย์** — ไฟล์ `.js` ที่ราก `src/` โผล่มาอีกเมื่อไหร่เทสตกทันที
+ * repo นี้ไม่มี CI ให้แขวน hook จึงทำเป็นเทส — `npm test` เป็นด่านเดียวที่ทุกคนวิ่งผ่าน
  */
 const fs = require('fs');
 const path = require('path');
-const H = require('./_harness');
+const H = require('./lib/_harness');
 
 const eq = H.makeEq({ json: true });
 
-const SRC = path.join(__dirname, '../src');
-const DEPLOY_DIR = path.join(SRC, 'FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking');
+const ROOT = path.join(__dirname, '..');
+const APPS_DIR = path.join(ROOT, 'apps');
+const FC_SUB = path.join('src', 'FileCabinet', 'SuiteScripts', 'Foodstar', 'WO_Status_tracking');
 
-// ไฟล์ที่รู้ตัวว่ายังค้าง — issue #9 จะลบออกแล้วทำ list นี้ให้ว่าง
-const PENDING_REMOVAL = [];   // issue #9 ลบครบแล้ว 2026-09-08 — ต่อจากนี้เทสนี้บังคับศูนย์
+// ── โครงเก่าห้ามกลับมา ──────────────────────────────────────────────────────
+console.log('\n── โครงเก่าที่ราก repo ──');
+eq('ไม่มี src/ ที่รากของ repo แล้ว', fs.existsSync(path.join(ROOT, 'src')), false);
+eq('ไม่มี project.json ที่ราก (แต่ละแอปถือของตัวเอง)', fs.existsSync(path.join(ROOT, 'project.json')), false);
+eq('ไม่มี suitecloud.config.js ที่ราก', fs.existsSync(path.join(ROOT, 'suitecloud.config.js')), false);
 
-const rootJs = fs.readdirSync(SRC)
-  .filter((f) => f.toLowerCase().endsWith('.js'))
-  .sort();
+const apps = fs.readdirSync(APPS_DIR).sort()
+  .filter((a) => fs.existsSync(path.join(APPS_DIR, a, FC_SUB)));
+eq('เจอแอปครบสองตัว', apps.join(','), 'wo-cost-trace,wo-status');
 
-console.log('\n── ไฟล์ .js ที่ราก src/ ──');
-const unexpected = rootJs.filter((f) => PENDING_REMOVAL.indexOf(f) < 0);
-if (unexpected.length) {
-  console.log('     ไฟล์ที่ไม่ควรมี: ' + unexpected.join(', '));
-  console.log('     source ที่ deploy จริงอยู่ที่ src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/');
-}
-eq('ไม่มีไฟล์ .js ใหม่นอก list ที่รู้ตัว', unexpected.join(','), '');
+// ── แต่ละแอป: ห้ามมี .js หลงนอก path ที่ deploy ─────────────────────────────
+// ไฟล์ที่ราก `apps/<app>/src/` คือที่ที่สำเนาเคยไปโผล่ (ก่อน #9 มี 4 ไฟล์)
+apps.forEach((app) => {
+  const appSrc = path.join(APPS_DIR, app, 'src');
+  const deployDir = path.join(APPS_DIR, app, FC_SUB);
 
-const stillPending = PENDING_REMOVAL.filter((f) => rootJs.indexOf(f) >= 0);
-// ratchet ต้องกินตัวเอง: ไฟล์ที่ถูกลบไปแล้วห้ามค้างใน list ไม่งั้น list จะกลายเป็นข้ออ้างถาวร
-const staleEntries = PENDING_REMOVAL.filter((f) => rootJs.indexOf(f) < 0);
-if (staleEntries.length) {
-  console.log('     ลบไปแล้วแต่ยังค้างใน PENDING_REMOVAL: ' + staleEntries.join(', '));
-}
-eq('PENDING_REMOVAL ไม่มีรายการที่ลบไปแล้ว', staleEntries.join(','), '');
-if (stillPending.length) {
-  console.log('     ยังค้าง ' + stillPending.length + ' ไฟล์ (issue #9) — ลบแล้วให้ล้าง PENDING_REMOVAL ในไฟล์นี้');
-} else {
-  // เมื่อ issue #9 ลบครบแล้ว list ต้องถูกล้างด้วย ไม่งั้น ratchet จะค้างอยู่แบบไร้ความหมาย
-  eq('PENDING_REMOVAL ถูกล้างแล้วเมื่อไม่มีไฟล์ค้าง', PENDING_REMOVAL.join(','), '');
-}
+  console.log('\n════ ' + app + ' ════');
+  const rootJs = fs.readdirSync(appSrc).filter((f) => f.toLowerCase().endsWith('.js')).sort();
+  if (rootJs.length) {
+    console.log('     ไฟล์ที่ไม่ควรมี: ' + rootJs.join(', '));
+    console.log('     source ที่ deploy จริงอยู่ที่ ' + path.join('apps', app, FC_SUB));
+  }
+  eq('ไม่มีไฟล์ .js ที่ราก src/ ของแอป', rootJs.join(','), '');
 
-console.log('\n── source ที่ deploy จริงต้องอยู่ครบ ──');
-const deployed = fs.readdirSync(DEPLOY_DIR).filter((f) => f.endsWith('.js')).sort();
-eq('มีไฟล์ .js ใน path ที่ deploy', deployed.length > 0, true);
-eq('มี WOCostTrace.js', deployed.indexOf('WOCostTrace.js') >= 0, true);
+  const deployed = fs.readdirSync(deployDir).filter((f) => f.endsWith('.js')).sort();
+  eq('มีไฟล์ .js ใน path ที่ deploy', deployed.length > 0, true);
+  eq('มี WOReportTheme.js (ก๊อปของ shared/)', deployed.indexOf('WOReportTheme.js') >= 0, true);
+});
 
-// ทุกไฟล์ที่ราก src/ ที่ชื่อซ้ำกับใน path ที่ deploy = สำเนาที่อ่านผิดตัวได้
-console.log('\n── ชื่อที่ซ้ำกันสองที่ (อ่านผิดตัวได้) ──');
-const dupes = rootJs.filter((f) => deployed.indexOf(f) >= 0);
-if (dupes.length) console.log('     ซ้ำ: ' + dupes.join(', '));
-eq('จำนวนชื่อที่ซ้ำ = จำนวนที่ค้างอยู่ (ไม่มีของใหม่โผล่)', dupes.length, stillPending.length);
+// ── ไฟล์ห้ามหลงข้ามแอป ─────────────────────────────────────────────────────
+// เจ้าของไฟล์อ่านจากชื่อ: WOCostTrace* เป็นของ wo-cost-trace · WOStatusTracking* เป็นของ wo-status
+// WOReportTheme.js เป็นของทั้งสอง (ก๊อปจาก shared/) จึงไม่นับ
+console.log('\n── ไฟล์ของแอปอื่นหลงเข้ามาไหม ──');
+const OWNER = [
+  { app: 'wo-cost-trace', re: /^WOCostTrace/ },
+  { app: 'wo-status', re: /^WOStatusTracking/ }
+];
+apps.forEach((app) => {
+  const deployDir = path.join(APPS_DIR, app, FC_SUB);
+  const files = fs.readdirSync(deployDir).filter((f) => f.endsWith('.js') && f !== 'WOReportTheme.js');
+  const strangers = files.filter((f) => {
+    const owner = OWNER.filter((o) => o.re.test(f))[0];
+    return !owner || owner.app !== app;
+  });
+  if (strangers.length) console.log('     ' + app + ' มีไฟล์ที่ไม่ใช่ของตัวเอง: ' + strangers.join(', '));
+  eq(app + ' มีแต่ไฟล์ของตัวเอง', strangers.join(','), '');
+});
+
+// ── ต้นฉบับ theme ต้องอยู่ที่ shared/ ที่เดียว ───────────────────────────────
+// ก๊อปในแอปสร้างด้วย `npm run sync:theme` (#39) — เทสที่ยันว่า byte ตรงกันอยู่ในก้อนนั้น
+console.log('\n── ต้นฉบับ theme ──');
+eq('shared/WOReportTheme.js มีอยู่', fs.existsSync(path.join(ROOT, 'shared/WOReportTheme.js')), true);
 
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
