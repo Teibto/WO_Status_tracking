@@ -13,3 +13,6 @@
 # ของที่เครื่องมือสร้าง
 node_modules/
 *.log
+
+# npm — โปรเจกต์นี้ไม่มี dependency จึงไม่ต้อง commit lockfile (issue #11 · D4)
+package-lock.json
