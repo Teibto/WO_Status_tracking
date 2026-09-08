@@ -93,6 +93,46 @@ scripts.forEach((block, i) => {
 eq('ทุก block parse ผ่าน', parsed, scripts.length);
 eq('มีตัวแปลงวันที่ฝั่ง client', /_isoFromDateInput/.test(form), true);
 
+// escape ที่หลุด backslash เป็นอาการเงียบที่สุดของโค้ดที่อยู่ใน template literal —
+// regex ยัง parse ผ่าน แต่ไม่ตรงอะไรเลย (issue #35: `/-B\d+$/i` เคย render ออกไป
+// เป็น `/-Bd+$/i` ทำให้ค้นด้วยเลข Batch ไม่เจอมาตลอด โดยไม่มี error ที่ไหน)
+// ตัดบรรทัดคอมเมนต์ออกก่อน — คอมเมนต์ที่อธิบายอาการนี้จะไปตรงกับ pattern ของด่านเอง
+// (แบบเดียวกับที่ test_theme.js ต้องตัดคอมเมนต์ก่อนตรวจ hex)
+const clientJs = scripts.join('\n').split('\n')
+  .filter((l) => !/^\s*(\/\/|\*|\/\*)/.test(l)).join('\n');
+eq('ไม่มี escape ที่หลุด backslash', /\(d\{|-Bd\+|\[d\{/.test(clientJs), false);
+eq('regex เลข batch ยังครบ', clientJs.indexOf('-B\\d+') >= 0, true);
+eq('regex วันที่ฝั่ง client ยังครบ', (clientJs.match(/\\d\{/g) || []).length >= 6, true);
+
+// ── ตัวแปลงฝั่ง client ต้องตอบเหมือนฝั่งเซิร์ฟเวอร์ (issue #33) ─────────
+// ตรรกะเดียวกันอยู่สองที่โดยจำเป็น (เซิร์ฟเวอร์อ่าน param · เบราว์เซอร์อ่านช่องกรอก)
+// คอมเมนต์ในโค้ดกำกับว่าแก้ที่ไหนต้องแก้อีกที่ — บล็อกนี้คือสิ่งที่บังคับให้จริง
+// ดึงฟังก์ชันออกจาก HTML ที่ render แล้วรันด้วยเคสชุดเดียวกัน
+const clientSrc = (form.match(/function _isoFromDateInput\(el\)[\s\S]*?\n\}/) || [])[0];
+eq('ดึงตัวแปลงฝั่ง client ออกมาได้', !!clientSrc, true);
+const clientIso = clientSrc
+  ? new Function(clientSrc + ';\nreturn _isoFromDateInput;')()
+  : () => undefined;
+
+// ฝั่ง client คืน null = อ่านไม่ออก · '' = ว่าง (แยกกันโดยตั้งใจ เพื่อเลือกข้อความเตือน)
+// ฝั่งเซิร์ฟเวอร์รวมสองกรณีเป็น '' แล้วให้ผู้เรียกดู raw เอง
+[
+  ['08/09/2026', '2026-09-08'],
+  ['8/9/2026',   '2026-09-08'],
+  ['08-09-2026', '2026-09-08'],
+  ['2026-09-08', '2026-09-08'],
+  ['2026-9-8',   '2026-09-08'],
+  ['',           ''],
+  ['31/02/2026', null],
+  ['01/13/2026', null],
+  ['พรุ่งนี้',    null],
+  ['08/09/26',   null],
+].forEach(([input, want]) => {
+  const got = clientIso({ value: input });
+  eq('client "' + input + '"', got, want);
+  eq('สองฝั่งตรงกัน "' + input + '"', got === null ? '' : got, T.parseFilterDate(input));
+});
+
 // ── ชั้น 3: param ที่ถึง SQL ต้องเป็น ISO ───────────────────────────────
 console.log('\n── ค้นหาด้วย dd/mm/yyyy ──');
 H.calls.length = 0;
