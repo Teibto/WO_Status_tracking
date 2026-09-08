@@ -35,10 +35,16 @@ ENTRIES.forEach((f) => {
   eq(f + ' require theme', s.indexOf("'./WOReportTheme'") > 0, true);
 });
 
-// ── 2. ห้ามมี hex สีใน entry ────────────────────────────────────────────────
+// ── 2. ห้ามมี hex สีในไฟล์ไหนก็ตาม ยกเว้นไฟล์ theme ─────────────────────────
 // `#fff` ปล่อยผ่านเพราะ builder.css ต้นทางก็เขียน `color:#fff` ตรง ๆ บนพื้นสีเข้ม
-console.log('\n── entry ไม่มี hex สีของตัวเอง ──');
-ENTRIES.forEach((f) => {
+//
+// ตรวจ **ทุกไฟล์** ไม่ใช่แค่ entry — `WOStatusTracking_Drilldown.js` และ `_Labels.js`
+// ก็ประกอบ markup ที่ผู้ใช้เห็น จึงเติมสีของตัวเองได้เหมือนกัน
+const STYLED = fs.readdirSync(SRC)
+  .filter((f) => f.endsWith('.js') && f !== 'WOReportTheme.js')
+  .sort();
+console.log('\n── ไม่มีไฟล์ไหนถือ hex สีของตัวเอง ──');
+STYLED.forEach((f) => {
   const s = fs.readFileSync(path.join(SRC, f), 'utf8');
   // นับเฉพาะ hex ที่อยู่ใน **โค้ด** — คอมเมนต์ที่ยกสีเก่ามาเล่าว่าเปลี่ยนจากอะไรเป็นอะไร
   // คือหลักฐานที่ต้องเก็บไว้ ไม่ใช่สีที่ render ออกมา
@@ -49,6 +55,16 @@ ENTRIES.forEach((f) => {
     .filter((h) => h.toLowerCase() !== '#fff' && h.toLowerCase() !== '#ffffff');
   if (bad.length) console.log('     ' + f + ' เหลือ: ' + bad.join(' '));
   eq(f, bad.join(' '), '');
+});
+
+// `.badge` ของ template เป็นป้ายทรงแคปซูล (มีพื้น มี padding) และ**มาพร้อมตัวบอกชนิดเสมอ**
+// (`info` `success` `warning` `error` `muted`) · `class="badge"` เปล่า ๆ คือร่องรอยของ
+// การยืมชื่อคลาสไปใช้กับอย่างอื่น ซึ่งจะทับกฎของ template แล้วต้องเขียนกฎสวนกลับ
+// (เคสจริง: legend ของ WO Status เคยยืมไปใส่ไอคอน ✓ ◷ ✕ – ตัวเปล่า)
+console.log('\n── ไม่มีใครยืมชื่อคลาส .badge ไปใช้อย่างอื่น ──');
+STYLED.forEach((f) => {
+  const s = fs.readFileSync(path.join(SRC, f), 'utf8');
+  eq(f + ' ไม่มี class="badge" เปล่า', s.indexOf('class="badge"') >= 0, false);
 });
 
 // ── 3. หน้าที่ render จริงต้องมี token + คลาสของ template ───────────────────
