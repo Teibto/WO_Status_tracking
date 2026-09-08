@@ -17,6 +17,9 @@
 (เวลาเครื่องจักรบน WOC เทียบรายละเอียด · ปริมาณแรงงานเทียบ header · วัตถุดิบที่ป้อนเทียบ BOM)
 แล้วเตือนเฉพาะรายการที่ไม่ตรง
 
+กรองได้ด้วย WO/Batch/Order Sheet · บริษัท · สถานที่ผลิต · **ประเภทย่อยสินค้า**
+(`cseg_subitemtype` เป็น custom segment บน item) · ช่วงวันที่ผลิต ซึ่งกรอกเป็น `dd/mm/yyyy`
+
 **WO Cost Trace** มี **3 ชั้น อยู่ใน URL เดียวกัน คนละพารามิเตอร์**
 
 | ชั้น | พารามิเตอร์ | ใช้เมื่อ |
@@ -230,6 +233,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_deploy_manifest.js` | `deploy.xml` ตกไฟล์ · wildcard · dependency closure · `<scriptfile>` |
 | `test_theme.js` | token เพี้ยนจาก `builder.css` ต้นทาง · hex หลุดเข้าโค้ด |
 | `test_wostatus_datefilter.js` | ช่องกรองวันที่ — dd/mm/yyyy หลุดลงไปถึง SQL · JS ฝั่งเบราว์เซอร์ parse ไม่ผ่าน |
+| `test_wostatus_subitemtype.js` | ตัวกรองประเภทย่อย — เงื่อนไขไม่ถึง SQL · ค่าหลุดตอนเปลี่ยนหน้า · ทางถอยของรายการค่า |
 | `test_qlog_scope.js` | query log สะสมข้าม request |
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |

@@ -83,9 +83,15 @@ function makeStubs(quietLog, sqlRows) {
       const sql = (o && o.query) || '';
       const rows = sqlRows ? sqlRows(sql) : rowsFor(currentLabel);
       calls.push({ label: currentLabel, sql: sql, params: (o && o.params) || [] });
+      // สอง Suitelet วนหน้าไม่เหมือนกัน — WO Cost Trace ใช้ `fetch({index}).data`
+      // ส่วน WOStatusTracking_Queries ใช้ `iterator().each(page => page.value.data)`
+      // stub จึงต้องมีทั้งสองทาง ไม่งั้นฝั่งใดฝั่งหนึ่งได้แถวว่างแบบเงียบ ๆ
       return {
         pageRanges: rows.length ? [{ index: 0 }] : [],
-        fetch: () => ({ data: { asMappedResults: () => rows } })
+        fetch: () => ({ data: { asMappedResults: () => rows } }),
+        iterator: () => ({
+          each: (cb) => { if (rows.length) cb({ value: { data: { asMappedResults: () => rows } } }); }
+        })
       };
     }
   };
@@ -101,8 +107,8 @@ function makeStubs(quietLog, sqlRows) {
     'N/query': q,
     'N/ui/serverWidget': {},
     'N/log': quietLog
-      ? { error: () => {}, debug: () => {} }
-      : { error: (o) => console.error('LOG.error', o.title, o.details), debug: () => {} },
+      ? { error: () => {}, debug: () => {}, audit: () => {} }
+      : { error: (o) => console.error('LOG.error', o.title, o.details), debug: () => {}, audit: () => {} },
     'N/runtime': {
       getCurrentScript: () => ({
         id: 'customscript_fs_wo_cost_trace',

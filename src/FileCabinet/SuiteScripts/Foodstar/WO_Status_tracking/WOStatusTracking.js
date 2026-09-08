@@ -282,6 +282,9 @@ define(
         log.error({ title: 'Location query failed', details: JSON.stringify(e) });
       }
 
+      // Sub item type options (issue #27)
+      const sitRows = Q.getSubItemTypes();
+
       // Default date range: today-6 → today (≤7 days)
       const today = new Date();
       const todayStr = formatDate(today);
@@ -293,8 +296,10 @@ define(
         lang,
         subRows,
         locRows,
+        sitRows,
         selectedSub: '',
         selectedLoc: '',
+        selectedSit: '',
         selectedFrom: fromStr,
         selectedTo: todayStr,
         kpiHtml: '',
@@ -334,6 +339,7 @@ define(
       const batchNumber  = (p.batchNumber  || '').trim().toUpperCase();
       const osNumber     = (p.osNumber     || '').trim().toUpperCase();
       const embed        = p.embed === '1';
+      const subItemTypeId = p.subItemTypeId || '';
       const hasEntityFilter = !!(woNumber || batchNumber || osNumber);
 
       // ── Server-side date format guard ───────────────────────────
@@ -367,6 +373,8 @@ define(
         log.error({ title: 'Location query failed (results)', details: JSON.stringify(e) });
       }
 
+      const sitRows = Q.getSubItemTypes();
+
       // ── Server-side date range guard (≤7 days) ──────────────────
       // Skip when a specific-entity filter (WO/Batch/OS) is provided
       if (!hasEntityFilter && dateFrom && dateTo) {
@@ -383,7 +391,7 @@ define(
       }
 
       // ── Step 1: CP1 — get canonical WO list ──────────────────────
-      const searchParams = { subsidiaryId, locationId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       let cp1Rows = [];
       try {
         cp1Rows = Q.getCP1_Approve(searchParams);
@@ -434,7 +442,7 @@ define(
       const kpiHtml       = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
       const gridHtml      = buildGridHtml(pageRows, lang);
       const paginationHtml = buildPaginationHtml({
-        page, totalPages, subsidiaryId, locationId, dateFrom, dateTo, lang,
+        page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang,
         woNumber, batchNumber, osNumber, embed
       });
 
@@ -442,8 +450,10 @@ define(
         lang,
         subRows,
         locRows,
+        sitRows,
         selectedSub: subsidiaryId,
         selectedLoc: locationId,
+        selectedSit: subItemTypeId,
         selectedFrom: dateFrom,
         selectedTo: dateTo,
         kpiHtml,
@@ -482,6 +492,7 @@ define(
       const batchNumber  = (p.batchNumber || '').trim().toUpperCase();
       const osNumber     = (p.osNumber    || '').trim().toUpperCase();
       const embed        = p.embed === '1';
+      const subItemTypeId = p.subItemTypeId || '';
 
       // ชั้น fragment ไม่มี shell ให้แสดงหน้า error จึงตอบเป็นแถบแจ้งใน results-zone
       if (!woNumber && !batchNumber && !osNumber
@@ -494,7 +505,7 @@ define(
         return;
       }
 
-      const searchParams = { subsidiaryId, locationId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       let cp1Rows = [];
       try { cp1Rows = Q.getCP1_Approve(searchParams); } catch (e) { log.error({ title: 'Fragment CP1 failed', details: String(e) }); }
 
@@ -533,7 +544,7 @@ define(
 
       const kpiHtml        = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
       const gridHtml       = buildGridHtml(pageRows, lang);
-      const paginationHtml = buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
+      const paginationHtml = buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
       const legendHtml     = buildLegendHtml(lang);
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
@@ -1143,11 +1154,11 @@ ${thead}
 </div></div>`;
     }
 
-    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
+    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
       if (totalPages <= 1) return '';
 
       const makeLink = (p, label, active) => {
-        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
+        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
         return active
           ? `<span class="pgcur">${label}</span>`
           : `<a href="?${qs}" class="pglink">${label}</a>`;
@@ -1173,8 +1184,8 @@ ${thead}
     // Full page shell — HTML, CSS, inline JS
     // ══════════════════════════════════════════════════════════════
     function buildPageShell({
-      lang, subRows, locRows,
-      selectedSub, selectedLoc, selectedFrom, selectedTo,
+      lang, subRows, locRows, sitRows,
+      selectedSub, selectedLoc, selectedSit, selectedFrom, selectedTo,
       kpiHtml, gridHtml, paginationHtml,
       page, totalPages, totalWO,
       scriptId, deployId,
@@ -1192,6 +1203,13 @@ ${thead}
       // Location options
       const locOptions = locRows.map(r =>
         `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedLoc) ? 'selected' : ''}>
+          ${escapeHtml(r.name)}
+        </option>`
+      ).join('');
+
+      // Sub item type options (issue #27)
+      const sitOptions = (sitRows || []).map(r =>
+        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedSit) ? 'selected' : ''}>
           ${escapeHtml(r.name)}
         </option>`
       ).join('');
@@ -1253,6 +1271,13 @@ ${embed ? '' : theme.topbar({
       <select name="locationId">
         <option value="" data-i18n-placeholder="allLoc">${escapeHtml(t.allLoc)}</option>
         ${locOptions}
+      </select>
+    </div>
+    <div class="fld">
+      <label data-i18n="fSit">${escapeHtml(t.fSit)}</label>
+      <select name="subItemTypeId">
+        <option value="" data-i18n-placeholder="allSit">${escapeHtml(t.allSit)}</option>
+        ${sitOptions}
       </select>
     </div>
     <div class="fld" id="date-fld-from">
@@ -1386,6 +1411,7 @@ document.getElementById('btnSearch').addEventListener('click', function() {
       lang:         (document.getElementById('hidLang') || {}).value || 'th',
       subsidiaryId: (document.querySelector('[name=subsidiaryId]') || {}).value || '',
       locationId:   (document.querySelector('[name=locationId]')   || {}).value || '',
+      subItemTypeId: (document.querySelector('[name=subItemTypeId]') || {}).value || '',
       dateFrom:     from,
       dateTo:       to,
       page:         1,
@@ -1443,6 +1469,7 @@ function buildFragmentUrl(p) {
   params.set('lang',        p.lang        || 'th');
   params.set('subsidiaryId', p.subsidiaryId || '');
   params.set('locationId',   p.locationId   || '');
+  params.set('subItemTypeId', p.subItemTypeId || '');
   params.set('dateFrom',     p.dateFrom     || '');
   params.set('dateTo',       p.dateTo       || '');
   params.set('page',         String(p.page  || 1));
@@ -1604,6 +1631,8 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— ทุกบริษัท —',
           fLoc:  'สถานที่ผลิต',
           allLoc:'— ทุกสถานที่ —',
+          fSit:  'ประเภทย่อยสินค้า',
+          allSit:'— ทุกประเภทย่อย —',
           fFrom: 'วันที่ผลิต — ตั้งแต่',
           fTo:   'ถึง',
           go:    'ค้นหา',
@@ -1648,6 +1677,8 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— All subsidiaries —',
           fLoc:  'Location',
           allLoc:'— All locations —',
+          fSit:  'Sub Item Type',
+          allSit:'— All sub item types —',
           fFrom: 'WO Date — From',
           fTo:   'To',
           go:    'Search',
