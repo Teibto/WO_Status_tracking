@@ -1,106 +1,160 @@
 # WO Status Tracking — Foodstar / TEIBTO NetSuite
 
----
-
-## ภาพรวม (Overview)
-
-- **ติดตามสถานะ Work Order ทีละขั้นตอน** (CP1–CP8) ตั้งแต่ Approval ไปจนถึง Completion โดยแสดงผลเป็นตาราง พร้อม status icon ✓ / ◷ / ✕
-- **Drilldown ระดับ Batch และ Operation Task** — คลิกที่แถว WO เพื่อขยายดูรายละเอียด Batch, Labor, Machine, Material
-- **ตรวจความสม่ำเสมอของข้อมูล (Consistency Check)** — เปรียบเทียบ header กับ child records (WOC machine time vs. detail, labor qty vs. header, feed material vs. BOM) แล้วแจ้งเตือนเฉพาะรายการที่ไม่ตรง
+เอกสารนี้สำหรับคนที่จะแก้โค้ดหรือ deploy รายงานสองใบใน repo นี้
+อ่านแล้วตอบได้ว่า แก้ไฟล์ไหน · ขึ้น sandbox ยังไง · ขึ้น production ยังไง · อะไรห้ามทำ
 
 ---
+
+## รายงานสองใบในนี้
+
+| รายงาน | scriptid | ผู้ใช้หลัก | ตอบคำถามอะไร |
+|---|---|---|---|
+| WO Status Tracking | `customscript_wo_status_tracking` | Operation | ใบสั่งผลิตเดินไปถึงขั้นไหน · ขั้นไหนข้อมูลไม่ตรงกัน |
+| WO Cost Trace | `customscript_fs_wo_cost_trace` | Costing | ต้นทุนใบสั่งผลิตมาจากไหน · อ้างเอกสารใบไหน |
+
+**WO Status Tracking** ติดตาม CP1–CP8 เป็นตารางพร้อม status icon ✓ / ◷ / ✕ ·
+กดขยายดูราย batch และ operation task · เทียบ header กับ child record
+(เวลาเครื่องจักรบน WOC เทียบรายละเอียด · ปริมาณแรงงานเทียบ header · วัตถุดิบที่ป้อนเทียบ BOM)
+แล้วเตือนเฉพาะรายการที่ไม่ตรง
+
+**WO Cost Trace** มี **3 ชั้น อยู่ใน URL เดียวกัน คนละพารามิเตอร์**
+
+| ชั้น | พารามิเตอร์ | ใช้เมื่อ |
+|---|---|---|
+| ภาพรวม | ไม่ต้องส่งอะไร | ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน · export Excel เอาไป pivot ต่อได้ |
+| เจาะลึก | `&wo=WOFSC00000470` | ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง (19 query) |
+| ความพร้อม master | `&ready=<เลขที่ WO หรือรหัสสินค้า>` | ก่อนเริ่มทดสอบ — master ที่ต้องใช้ตั้งครบหรือยัง |
+
+ทั้งสองใบรับ `&embed=1` = ไม่วาดแถบหัวเรื่องของตัวเอง สำหรับฝังในหน้าอื่น ·
+ที่มาของตัวเลขทุกช่องอยู่ใน [`WO_COST_TRACE.md`](./WO_COST_TRACE.md) ·
+กติกาเรื่องหน้าตาและ style อยู่ใน [`REPORT_STYLE.md`](./REPORT_STYLE.md)
 
 ## โครงสร้างไฟล์
 
 ```
 WO_Status_tracking/
 ├── project.json                    SDF — ชี้บัญชี 9751184_SB1 (sandbox) และให้คงไว้แบบนั้น
-├── suitecloud.config.js
-├── package.json                    มีแค่ scripts.test ไม่มี dependency
+├── package.json                    ไม่มี dependency — มีแค่ scripts
 ├── src/
-│   ├── deploy.xml                  รายการที่ deploy
+│   ├── deploy.xml                  รายการที่ deploy — ระบุตรงตัว ไม่ใช้ wildcard
 │   ├── manifest.xml
 │   ├── Objects/
 │   │   ├── customscript_fs_wo_cost_trace.xml
 │   │   └── customscript_wo_status_tracking.xml
 │   └── FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/     ← source ที่ deploy จริง
-│       ├── WOReportTheme.js                lib — design token + คลาสของ template (#18)
-│       ├── WOCostTrace_Common.js           lib — helper · SQL runner · query log (#13)
-│       ├── WOCostTrace_Ready.js            lib — ชั้นความพร้อม master (#14)
-│       ├── WOCostTrace.js                  entry — WO Cost Trace (ภาพรวม + เจาะลึก)
-│       ├── WOStatusTracking.js             entry — WO Status Tracking
-│       ├── WOStatusTracking_Queries.js
-│       ├── WOStatusTracking_Labels.js
-│       ├── WOStatusTracking_Drilldown.js
+│       ├── WOReportTheme.js                lib · design token + คลาสของ report-builder
+│       ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
+│       ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
+│       ├── WOCostTrace.js                  entry · WO Cost Trace (ภาพรวม + เจาะลึก)
+│       ├── WOStatusTracking.js             entry · WO Status Tracking
+│       ├── WOStatusTracking_Queries.js     lib · SuiteQL ของ CP1–CP9
+│       ├── WOStatusTracking_Labels.js      lib · ข้อความและ i18n
+│       ├── WOStatusTracking_Drilldown.js   lib · แถว batch และ task
 │       └── .attributes/
 ├── scripts/
-│   ├── check-prod-staging.js       ตรวจ payload production 8 ข้อ — `npm run check:prod` (#12)
-│   └── lib/sdf_payload.js          ตัวอ่าน SDF project ใช้ร่วมกับเทส
-├── qa/make_theme_preview.js        สร้างหน้าตัวอย่าง style ดูเทียบสายตา (#18)
+│   ├── check-prod-staging.js       ตรวจ payload production 8 ข้อ (`npm run check:prod`)
+│   └── lib/sdf_payload.js          ตัวอ่านโครง SDF ที่เทสและตัวตรวจใช้ร่วมกัน
 ├── test/                           node ล้วน ไม่มี framework — `npm test`
-├── prototype/                      ไฟล์ทดสอบ SuiteQL + ไฟล์เจาะมือของผู้ใช้
-├── WO_COST_TRACE.md                เอกสารของ WO Cost Trace (ที่มาของทุกตัวเลขที่ verify แล้ว)
-├── REPORT_STYLE.md                 style ยึดจากไหน + แผนฝังเข้าเมนู report-builder (#18)
-└── IMPLEMENTATION_PLAN.md
+├── qa/make_theme_preview.js        สร้างหน้าตัวอย่าง style ดูเทียบสายตาโดยไม่ต้อง deploy
+├── prototype/                      SuiteQL ที่ใช้พิสูจน์ + ไฟล์เจาะมือของผู้ใช้
+├── WO_COST_TRACE.md                ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
+├── REPORT_STYLE.md                 style ยึดจากไหน + แผนฝังเข้าเมนู report-builder
+├── IMPLEMENTATION_PLAN.md          แผนที่ส่งมอบให้ dev รอบแรก (เก็บไว้เป็นประวัติ)
+└── wo-status-tracking-mockup.html  mockup ที่ผู้ใช้อนุมัติ (reference หน้าตา)
 ```
 
-repo นี้มี **2 Suitelet**
+เอกสารทั้งหมดอยู่ที่ราก **ไม่ย้ายเข้า `docs/`** (คำตัดสิน D5 ของ epic #7) เพราะ
+`WO_COST_TRACE.md` ถูกล็อกห้ามแตะไว้ตั้งแต่ต้นแผน · ย้ายบางไฟล์แล้วทิ้งไฟล์ใหญ่สุดไว้ที่ราก
+อ่านยากกว่าเดิม และรากมีเอกสารแค่ 4 ไฟล์ซึ่งยังหาเจอง่าย
 
-| Suitelet | scriptid | ผู้ใช้หลัก |
-|---|---|---|
-| WO Status Tracking | `customscript_wo_status_tracking` | Operation — ติดตามว่าใบสั่งผลิตไปถึงขั้นไหน |
-| WO Cost Trace | `customscript_fs_wo_cost_trace` | Costing — พิสูจน์ที่มาของต้นทุน · ดู `WO_COST_TRACE.md` |
-
-## การแก้โค้ดและ deploy
+## แก้โค้ดแล้วขึ้น SB1
 
 > **source ที่ deploy จริงมีที่เดียว: `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/`**
-> อย่าอัปโหลดไฟล์ผ่านหน้า UI ของ NetSuite และอย่าคัดลอกไฟล์ไปไว้ที่อื่นใน repo —
-> สำเนาที่ราก `src/` เคยมีอยู่และทำให้คนอัปโหลดชุดเก่าทับของที่รันอยู่ (issue #9 ลบออกแล้ว)
-> · `npm test` มีด่านกันไฟล์สำเนากลับเข้ามา
+> อย่าอัปโหลดไฟล์ผ่านหน้า UI ของ NetSuite และอย่าคัดลอกไฟล์ไปไว้ที่อื่นใน repo ·
+> สำเนาที่ราก `src/` เคยมีอยู่และทำให้คนอัปโหลดชุดเก่าทับของที่รันอยู่ (ลบแล้วที่ issue #9) ·
+> `npm test` มีด่านกันไฟล์สำเนากลับเข้ามา
 
 ```bash
-npm test                                  # ต้องผ่านก่อนทุกครั้ง
-suitecloud project:validate               # ทุกหมวดต้อง Success
-suitecloud project:deploy --dryrun        # อ่านรายชื่อ path ที่จะอัป ต้องตรงกับที่ตั้งใจ
-suitecloud project:deploy                 # ลง SB1 ตาม project.json
+npm test                              # ต้องผ่านก่อนทุกครั้ง
+suitecloud project:validate           # local validation — warning เดิม 2 ข้อต่อ object
+suitecloud project:deploy --dryrun    # อ่านรายชื่อที่จะขึ้น ต้องตรงกับที่ตั้งใจ
 ```
 
-### ⚠ กฎอัปทีละไฟล์ — dependency ก่อน entry เสมอ
+### ⚠ อย่าใช้ `project:deploy` กับ SB1 ตอนนี้
 
-File Cabinet **ไม่มีการอัปหลายไฟล์แบบ atomic** · อัป entry ที่ `define` ชื่อ lib ไว้
-โดยที่ lib ยังไม่ขึ้น = Suitelet **ตายทุก request** ด้วย `MODULE_DOES_NOT_EXIST`
-จนกว่าจะอัปครบ (repo พี่น้อง `Pre-Work_Order_Completion` เจอมาแล้ว)
+`project:deploy` แตะ **object** ด้วย และ object `customscript_wo_status_tracking` ของ repo
+**ไม่มี `runasrole`** ขณะที่บน SB1 ตั้งเป็น `ADMINISTRATOR` ไว้ · deploy จาก repo
+จะถอดค่านั้นทิ้ง = Suitelet เลิกรันเป็น administrator (ยังไม่ตัดสินว่าจะยึดค่าไหน — issue #24)
 
-ลำดับที่ปลอดภัยของ WO Cost Trace
+ระหว่างนี้อัปเฉพาะไฟล์
 
 ```bash
-# 1. lib ก่อน — ยิงพร้อมกันในคำสั่งเดียวได้
-suitecloud file:upload   --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js"           "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js"           "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Ready.js"
+suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js"
+```
+
+### กฎ dependency-first / entry-last
+
+File Cabinet **ไม่มีการอัปหลายไฟล์แบบ atomic** · อัป entry ที่ `define` ชื่อ lib ไว้
+โดยที่ lib ยังไม่ขึ้น = Suitelet **ตายทุก request** ด้วย `MODULE_DOES_NOT_EXIST` จนกว่าจะอัปครบ
+(repo พี่น้อง `Pre-Work_Order_Completion` เจอมาแล้วจนต้องตั้งกฎห้าม single-file upload)
+
+แก้ entry ด้วย ต้องอัป lib ให้ครบก่อน
+
+```bash
+# 1. lib ก่อน — ใส่ได้หลาย path ในคำสั่งเดียว
+suitecloud file:upload \
+  --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js" \
+          "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js" \
+          "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Ready.js"
 
 # 2. entry ทีหลัง
 suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js"
 ```
 
-แก้เฉพาะไฟล์ lib ตัวเดียวอัปตัวเดียวได้ · แก้ entry ด้วยต้องอัป lib ก่อนทุกครั้ง
-· `project:deploy` ยิงทั้งชุดในรอบเดียวจึงไม่มีปัญหานี้ แต่มันแตะ object ด้วย (ดูข้อถัดไป)
+`src/deploy.xml` เรียง `<files>` ตามลำดับนี้ไว้แล้ว · `npm test` มีด่านตรวจ
+**dependency closure** — ไฟล์ที่ entry เรียกแต่ไม่อยู่ใน `deploy.xml` ทำให้เทสตกทันที
 
-`src/deploy.xml` เรียง `<files>` ตามลำดับนี้ไว้แล้วเพื่อให้อ่านแล้วเห็นลำดับ
-· `npm test` มีด่านตรวจ **dependency closure** — ไฟล์ที่ entry เรียกแต่ไม่อยู่ใน `deploy.xml`
-ทำให้เทสตกทันที
+### วิธีอ่านผล dry-run ให้ถูก
 
-### ขึ้น production
+```
+Upload file -- ~/FileCabinet/.../WOCostTrace.js      ← ฝั่งไฟล์
+Update object -- customscript_fs_wo_cost_trace       ← ฝั่ง object
+```
 
-> **ห้าม deploy production จาก repo นี้โดยตรง** แม้จะระบุ path ใน `deploy.xml` ตรงตัวแล้ว —
-> การสลับ `project.json` ไปบัญชีจริงยังทำให้ทับไฟล์ของ WO Status Tracking ที่ยังไม่ได้เทียบเนื้อหาได้
+| ฝั่ง | อ่านว่าอะไร |
+|---|---|
+| ไฟล์ | **ทุก path ที่โผล่ = ไฟล์ที่เนื้อหาต่างจากบนบัญชีและกำลังจะถูกทับ** · ไม่โผล่เลย = ตรงกันแล้ว ไม่ใช่ผิดพลาด |
+| object | `Create` เมื่อยังไม่มีบนบัญชี · `Update` เมื่อมีแล้ว · 1 object xml ให้ 2 บรรทัด (suitelet + scriptdeployment) |
+
+**บรรทัดไฟล์ไม่ใช่รายการทั้ง payload** เป็นเฉพาะไฟล์ที่ต่าง · path ที่ไม่ได้ตั้งใจโผล่ =
+payload กว้างเกิน หรือของบนบัญชีถูกแก้มาโดยไม่ผ่าน repo
+
+## ขึ้น production
+
+> **ห้าม deploy production จาก repo นี้โดยตรง** แม้ `deploy.xml` จะระบุ path ตรงตัวแล้ว ·
+> list กันได้แค่ "ยิงกว้างเกิน" ไม่ได้กัน "ยิงผิดบัญชี" — คนที่สลับ `project.json`
+> ไปบัญชีจริงยังทับ `WOStatusTracking*.js` ที่ยังไม่เคยเทียบเนื้อหาได้อยู่
 
 production ใช้ payload แยกที่ `Foodstar/.deploy-staging/wo-trace-prod/` ซึ่งมี `project.json`
-ของตัวเองชี้บัญชี `9751184` · ขั้นตอนและวิธีอ่านผล dry-run อยู่ใน README ของโฟลเดอร์นั้น
+ของตัวเองชี้บัญชี `9751184` และผูกกับ git tag · ขั้นตอนเต็มอยู่ใน README ของโฟลเดอร์นั้น
 
-### ค่าที่ต่างกันรายบัญชี — ห้าม deploy ทับโดยไม่รู้ตัว
+```bash
+npm run check:prod        # ตรวจ payload 8 ข้อก่อนยิงทุกครั้ง
+```
+
+ตัวตรวจอ่านอย่างเดียว ไม่เขียนอะไรลง staging ไม่แตะบัญชี · 8 ข้อคือ ไม่มี wildcard และ list
+ตรงกับไฟล์จริง · **AMD dependency closure** · `<scriptfile>` resolve โดยสนตัวพิมพ์ ·
+object เทียบ tag ต่างได้เฉพาะ `loglevel` · `loglevel` = `ERROR` · ไฟล์ทุกไฟล์เท่ากับที่ tag ·
+`project.json` สองฝั่งชี้บัญชีถูกตัว · tag reachable จาก `main`
+
+**payload วันนี้มีไฟล์เดียว แต่ `main` ไม่ใช่แล้ว** — `WOCostTrace.js` พึ่ง lib 3 ไฟล์
+วันรีเฟรช payload ต้องเอาไปครบและเติม `<path>` ให้ครบ · ข้อ 2 ของตัวตรวจจับเคสนี้ได้ก่อนยิง
+
+## ค่าที่ต่างรายบัญชี — ห้าม deploy ทับโดยไม่รู้ตัว
 
 ตรวจ 2026-09-08 ด้วย `suitecloud object:import` ลง scratch project (อ่านอย่างเดียว ไม่แตะ `src/`)
 
-`customscript_wo_status_tracking` — deployment ค่าไม่ตรงกันสามช่อง **และสองบัญชีก็ไม่ตรงกันเอง**
+`customscript_wo_status_tracking` — **สองบัญชีไม่ตรงกันเอง และ repo ไม่ตรงกับทั้งคู่**
 
 | ช่อง | repo (`src/Objects`) | SB1 | production |
 |---|---|---|---|
@@ -109,44 +163,95 @@ production ใช้ payload แยกที่ `Foodstar/.deploy-staging/wo-tra
 | `isonline` | ไม่มีในไฟล์ | `T` | `F` |
 | `loglevel` | `DEBUG` | `DEBUG` | `DEBUG` |
 
-→ deploy object นี้จาก repo ลง SB1 จะ**ถอด `runasrole` ทิ้ง** ทำให้ Suitelet เลิกรันเป็น administrator
-· ก่อนจะแตะ object นี้ต้องตัดสินก่อนว่าจะยึดค่าของบัญชีไหน (ยังไม่ตัดสิน — issue #15)
+`customscript_fs_wo_cost_trace` — `loglevel` เป็น `DEBUG` ใน repo และ SB1 แต่ **`ERROR` บน
+production** โดยตั้งใจ เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง · ค่าของ production
+อยู่ใน staging payload เท่านั้น
 
-`customscript_fs_wo_cost_trace` — `loglevel` เป็น `DEBUG` ใน repo/SB1 แต่ `ERROR` บน production
-ค่าของ production อยู่ใน staging payload เท่านั้น
+**ยังไม่ตัดสินว่าจะยึดค่าไหน (issue #24)** — `runasrole=ADMINISTRATOR` คู่กับ `allroles=T`
+หมายความว่าพนักงานคนไหนก็เปิดรายงานแล้วให้มันอ่านข้อมูลระดับ administrator ได้
+เป็นเรื่องสิทธิ์ที่ต้องให้ admin ตัดสิน ไม่ใช่เรื่องที่แก้ไฟล์ให้ตรงกันแล้วจบ
 
-⚠ `WOStatusTracking*.js` บน **production ยังไม่ได้ reconcile ครบ** — `WOStatusTracking.js`
-ตรงกับ repo ทุกไบต์ทั้ง SB1 และ production (ตรวจ 2026-09-08) เหลืออีก 3 ไฟล์ที่ยังไม่ได้เทียบ
+## Cost ref มี 3 กฎจับคู่โดยตั้งใจ
 
-## GATE Checklist ก่อน Go-Live
+ทั้งสามอ่าน record cost ref ตัวเดียวกัน แต่ตอบคำถามคนละข้อ · **ไม่ใช่ drift ห้ามรวมเป็นตัวเดียว**
 
-ตรวจทุกข้อก่อน go-live ในทุก environment:
+| กฎ | อยู่ที่ | จับคู่ด้วย |
+|---|---|---|
+| `classifyCostRef` | `WOCostTrace.js` | ระดับสินค้า — สินค้าที่ผลิต + บริษัท + วันที่ |
+| `costRefByWorkCenter` | `WOCostTrace_Ready.js` | สินค้า + **work center** ของขั้นตอนใน routing |
+| `getCP9_StdCostSetup` | `WOStatusTracking_Queries.js` | สินค้า + WC ของ task + **fallback OH dept rate** ที่ WO Cost Trace ไม่มี |
 
-- [x] รัน `prototype/test_cp03_feedmat.sql` ใน SuiteQL console — ✅ passed 2026-06-14 (UAT data — volume ยังน้อยกว่า production จริง ต้อง re-test หลัง go-live)
-- [x] รัน `prototype/test_cp07_woc_l3.sql` ใน SuiteQL console — ✅ passed 2026-06-14 (UAT data — volume ยังน้อยกว่า production จริง ต้อง re-test หลัง go-live)
-- [x] ยืนยัน `custbody_mfg_rework_qty` (ใน WOC) ตรงกับชื่อ field จริงใน account — ✅ confirmed 2026-06-14
-- [x] ยืนยัน parent ref field name บน `customrecord_mfg_com_labor_cost` — ✅ confirmed 2026-06-14: field คือ `custrecord_mfg_com_labor_cost` (code ถูกต้องแล้ว)
-- [x] ตรวจ `FROM workordercompletion` — ✅ confirmed 2026-06-14: ใช้งานได้ใน SuiteQL ไม่ error
-- [ ] Verify consistency formulas กับ WO ที่รู้ว่าถูกต้อง (เปรียบเทียบผลจาก Suitelet กับข้อมูลจริงใน account อย่างน้อย 3 WO)
+**วันอ้างอิงมี 2 พฤติกรรม ไม่ใช่ 3**
+
+- ชั้นภาพรวม · ชั้นเจาะลึก · CP9 ของ WO Status → ใช้**วันที่ของใบสั่งผลิต**
+- มีแต่ชั้นความพร้อม (`&ready=`) ที่รับ `&rdate=` และตกเป็นวันนี้ถ้าไม่ส่ง
+  เพราะมันถามว่า "**วันนี้**เดินงานได้หรือยัง" ไม่ใช่ "ตอนนั้นคิดต้นทุนด้วยอะไร"
+
+## runbook — WO ใบแรกบน production
+
+**production ยังไม่มี WO หรือ WOC เลยแม้แต่ใบเดียว** (MFG ยังไม่ go-live) ·
+ทุกตัวเลขที่ verify แล้วมาจาก SB1 ทั้งหมด · วันมี WO ใบแรกคือ**การทดสอบ business path
+ครั้งแรกของรายงานนี้** จึงต้องมีขั้นตอนเขียนไว้ก่อน ไม่ใช่ค่อยคิดตอนนั้น
+
+ทำตามลำดับ อย่าข้าม
+
+1. **ก่อนเปิดรายงาน** รัน `&ready=<เลขที่ WO>` ก่อน · ถ้า master ไม่ครบ ตัวเลขต้นทุนจะยัง
+   ไม่มีความหมาย และจะเสียเวลาไล่หาสาเหตุผิดจุด
+2. **เปิดชั้นเจาะลึก** `&wo=<เลขที่>` แล้วอ่าน 3 อย่างนี้**ก่อน**อ่านตัวเลข
+   · ท้ายหน้า "เอกสารอ้างอิงทางเทคนิค" — `error:` ต้องเป็น 0 ทุกคำสั่ง
+   · ตาราง "กระทบยอดงานระหว่างทำ" — ผลต่างต้องเป็นศูนย์
+   · หัวข้อ "ตรวจสุขภาพชั้นที่ 3" — รายการที่ยัง "ไม่ตรง" ห้ามเอาตัวเลขไปใช้อ้างอิง
+3. **เทียบกับการเจาะมือ 1 ใบ** ยอดวัตถุดิบ · ต้นทุนแปรสภาพ · ปริมาณผลิตได้ · ต้นทุน/หน่วย ·
+   ถ้าไม่ตรง ให้เชื่อเอกสารต้นทางก่อน แล้วเปิด issue พร้อมเลขที่ใบและช่องที่ต่าง
+4. **เทียบชั้นภาพรวมกับชั้นเจาะลึก** ใบเดียวกันต้องได้ยอดเท่ากันทุกหลัก · โค้ดล็อกกฎนี้ไว้
+   และ `test/test_trace_parity.js` คุมอยู่ ถ้าของจริงไม่เท่ากันคือเจอเคสที่ fixture ยังไม่มี
+5. **ดู log** `loglevel` บน production เป็น `ERROR` จึงเห็นเฉพาะของที่พังจริง ·
+   ถ้าต้องดูละเอียดชั่วคราว แก้ที่ staging payload แล้ว deploy อย่าแก้บนหน้าจอบัญชี
+   ไม่งั้นค่าจะหายรอบ deploy ถัดไป
+6. **เจอปัญหาแล้ว rollback** git tag ของรอบ deploy ชี้ commit ที่ payload มาจาก ·
+   ตารางหลักฐาน sha256 อยู่ใน README ของ staging · ต้อง normalize ปลายบรรทัดก่อนเทียบทุกครั้ง
+
+ปิด runbook รอบนั้นด้วยการจดผลลงตารางประวัติ deploy ใน README ของ staging และปิด issue
+ที่เปิดจากขั้นที่ 3 ให้ครบ
+
+## เทสและด่านที่มีอยู่
+
+```bash
+npm test              # ทุกด่าน — ต้อง exit 0
+npm run check:prod    # ตรวจ payload production (อ่านอย่างเดียว)
+```
+
+`npm test` ไม่ใช่ framework · node ล้วน และตั้งใจให้เป็นด่านเดียวที่ทุกคนวิ่งผ่าน
+เพราะ repo นี้ยังไม่มี CI
+
+| ไฟล์ | กันอะไร |
+|---|---|
+| `test_repo_guard.js` | ไฟล์สำเนากลับเข้ามาที่ราก `src/` |
+| `test_deploy_manifest.js` | `deploy.xml` ตกไฟล์ · wildcard · dependency closure · `<scriptfile>` |
+| `test_theme.js` | token เพี้ยนจาก `builder.css` ต้นทาง · hex หลุดเข้าโค้ด |
+| `test_qlog_scope.js` | query log สะสมข้าม request |
+| `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
+| `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |
+| `test_summary_math.js` · `test_summary_export.js` · `test_ready_master.js` | สูตรและข้อความของแต่ละชั้น |
+
+fixture ที่ไม่ได้ประกาศ label = **เทสตก** ไม่ใช่คืนแถวว่างเงียบ ๆ · กับดักเดียวกับ `error:`
+ใน query log ที่ทำให้อ่านเลขศูนย์เป็นคำตอบจริง
+
+## ของที่ยังไม่ปิด
+
+| เรื่อง | สภาพ |
+|---|---|
+| `WOStatusTracking*.js` 4 ไฟล์บน production | **ยังไม่ reconcile** · `WOStatusTracking.js` ตรงกับ repo ทุกไบต์ (ตรวจ 2026-09-08) เหลืออีก 3 ไฟล์ที่ยังไม่เทียบ |
+| `runasrole` / `audslctrole` / `isonline` | สองบัญชีไม่ตรงกันเอง ยังไม่ตัดสินว่ายึดค่าไหน — issue #24 |
+| ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `REPORT_STYLE.md` |
+| แยก Summary/Trace ออกจาก entry | **ไม่ทำ** โดยตั้งใจ · โค้ดล็อก parity ไว้ แยกแล้วต้องดูแลสำเนา SQL สองชุดที่ต้องเท่ากันตลอด |
+| re-test SuiteQL ด้วย volume จริง | `prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |
+
+ข้อจำกัดของตัวรายงานที่ยังจริง: WO Status ไม่มี expand-all (drilldown เป็น lazy-load
+ทีละใบ) · ไม่มีการ flag WO ที่ค้างโดยไม่มี activity · ไม่มี filter "เฉพาะที่มีปัญหา"
 
 ---
 
-## Known Limitations (Phase 1)
-
-- **ไม่มี Export** — ไม่สามารถ download ผลลัพธ์เป็น CSV/Excel ได้ (planned Phase 2)
-- **ไม่มี Idle-WO Detection** — WO ที่ค้างอยู่ระหว่าง step โดยไม่มี activity จะไม่ถูก flag โดยอัตโนมัติ
-- **ไม่มี Error-only Filter** — ไม่สามารถ filter เฉพาะ WO ที่มีปัญหาได้จาก UI (ต้อง scroll หาเอง)
-- **Drilldown เป็น Lazy-Load** — ต้องคลิก expand ทีละ WO; ไม่มี expand-all
-- **Role filter ยังไม่ได้ตั้งค่า** — deployment object ยังไม่ได้ระบุ role internal IDs (ต้องตั้งหลัง consult admin)
-
----
-
-## Field Names to Verify
-
-ตาราง field ที่ marked TODO ใน source code — ต้องยืนยันกับ account จริงก่อน go-live:
-
-| Field / Record | ไฟล์ | บรรทัด | หมายเหตุ |
-|---|---|---|---|
-| ~~`custbody_mfg_rework_qty` บน WOC~~ | `WOStatusTracking_Queries.js` | 640 | ✅ **ยืนยันแล้ว 2026-06-14** — field name ถูกต้อง (ไม่มี infix 'woc') |
-| ~~`custbody_mfg_rework_qty` บน WOC~~ | `WOStatusTracking_Drilldown.js` | 156 | ✅ **ยืนยันแล้ว 2026-06-14** |
-| ~~`custrecord_mfg_com_labor_cost_parent`~~ → `custrecord_mfg_com_labor_cost` | `WOStatusTracking_Queries.js` | 512, 515 | ✅ **ยืนยันแล้ว 2026-06-14** — field จริงคือ `custrecord_mfg_com_labor_cost`; code ถูกต้องอยู่แล้ว |
+เอกสารขัดกับความจริงเมื่อไหร่ แก้ที่นี่ในรอบนั้นเลย และอ้าง issue ที่ทำให้ต้องแก้ ·
+งานที่ต้องแตะโค้ดต้องมี issue ก่อนตามกติกาทีม · runbook ของ payload production
+อยู่ที่ `Foodstar/.deploy-staging/wo-trace-prod/README.md`
