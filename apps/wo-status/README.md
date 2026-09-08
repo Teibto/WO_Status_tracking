@@ -19,6 +19,11 @@ suitecloud project:deploy --dryrun        # อ่านชุดที่จะ
 theme (`WOReportTheme.js`) ในโฟลเดอร์ source เป็นก๊อปของ `shared/WOReportTheme.js`
 แก้ที่ต้นฉบับแล้วรัน `npm run sync:theme` — ห้ามแก้ก๊อป
 
+⚠ **หมายเหตุ CP3 พิมพ์ชื่อวัตถุดิบให้ทุก role โดยตั้งใจ** — ที่อื่นในบัญชีถือว่า
+`cseg_subitemtype = 6` เป็นสูตรลับ · รับไว้ตามคำตัดสินของ issue #29 (2026-09-08)
+**ก่อนแตะ CP3 อ่าน [หัวข้อสูตรลับใน README ของราก](../../README.md#secret-bom) ก่อน**
+— มีลำดับที่ต้องทำถ้าวันหนึ่งต้องปิดชื่อจริง
+
 ⚠ **object ของแอปนี้ยังมีประเด็นสิทธิ์ที่ไม่ปิด (issue #24)** — `runasrole` / `audslctrole` /
 `isonline` ในไฟล์ไม่ตรงกับทั้ง SB1 และ production · ระหว่างนี้ห้ามใช้ `project:deploy` กับ SB1
 อัปเฉพาะไฟล์ด้วย `file:upload` และ **ยังไม่ reconcile 3 ไฟล์ lib กับ production**
