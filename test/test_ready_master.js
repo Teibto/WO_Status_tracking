@@ -9,11 +9,7 @@
  *
  * รัน: node test/test_ready_master.js
  */
-const fs = require('fs');
-const path = require('path');
-
-const FILE = path.join(__dirname,
-  '../src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js');
+const H = require('./_harness');
 
 // ── fixture ────────────────────────────────────────────────────────────────
 // โครงที่ใช้ทดสอบ (ล้อของจริงแต่ย่อให้อ่านออก)
@@ -30,6 +26,8 @@ const FILE = path.join(__dirname,
 //     ├ 705 RM ของถูกจองไว้    3.3/batch → 10 มี 100 แต่พร้อมใช้ 5
 //     └ 603 Assembly ไม่มี BOM  → ถือเป็นปลายทาง + เตือน
 const BASE = {
+  // ทางค้นด้วยรหัสสินค้า — BASE ค้นด้วยเลขที่ใบสั่งผลิต จึงไม่มีแถวทางนี้
+  'สินค้าจากรหัส': [],
   'WO header': [
     { wo_id: 191254, wo_no: 'WO-FSC-00000392', wo_date: '7/8/2026', wo_date_iso: '2026-08-07',
       wo_status: 'Released', subsidiary: 'Foodstar Co., Ltd.', wo_type: 'Production' }
@@ -198,53 +196,19 @@ const BASE = {
   ]
 };
 
-// ── stub SuiteScript modules ────────────────────────────────────────────────
+// fixture ตั้งต้น — ซีนทดสอบด้านล่างเขียนทับตัวแปรนี้ harness อ่านผ่าน getter
 let FX = BASE;
-let CURRENT_LABEL = '';
-let MODULE = null;
 
-const MOD = {
-  'N/query': {
-    runSuiteQLPaged() {
-      const label = CURRENT_LABEL;
-      if (FX[label] === 'THROW') throw new Error('Invalid or unsupported search (จำลอง)');
-      const rows = FX[label] || [];
-      return {
-        pageRanges: rows.length ? [{ index: 0 }] : [],
-        fetch: () => ({ data: { asMappedResults: () => rows } })
-      };
-    }
-  },
-  'N/log': { error: () => {}, debug: () => {} },
-  'N/runtime': {
-    getCurrentScript: () => ({
-      id: 'customscript_fs_wo_cost_trace', deploymentId: 'customdeploy_fs_wo_cost_trace'
-    })
-  }
-};
+// ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
+const { T } = H.load({
+  fixtures: () => FX,
+  quietLog: true,
+  exports: ['buildReady', 'readReadyParams', 'renderReadyPage', 'bomVerdictText', 'revVerdictText', 'routingVerdictText', 'costRefVerdictText', 'stockVerdictText', 'compVerdictText']
+});
 
-global.define = (deps, factory) => { MODULE = factory.apply(null, deps.map(d => MOD[d])); };
-global.__setLabel = (l) => { CURRENT_LABEL = l; };
-
-const src = fs.readFileSync(FILE, 'utf8')
-  .replace('function runSQL(label, sql, params) {',
-           'function runSQL(label, sql, params) { global.__setLabel(label);');
-const patched = src.replace('return { onRequest: onRequest };',
-  'return { onRequest: onRequest, __t: { buildReady, readReadyParams, renderReadyPage,'
-  + ' bomVerdictText, revVerdictText, routingVerdictText, costRefVerdictText, stockVerdictText,'
-  + ' compVerdictText } };');
-eval(patched);
-
-const T = MODULE.__t;
 
 // ── ตัวช่วยเทียบผล ──────────────────────────────────────────────────────────
-let fail = 0;
-function eq(label, got, want, tol) {
-  const ok = want == null ? got == null
-    : (typeof want === 'number' ? Math.abs(got - want) <= (tol == null ? 1e-9 : tol) : got === want);
-  if (!ok) { fail++; console.log('  FAIL ' + label + ': got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want)); }
-  else console.log('  ok   ' + label + ' = ' + JSON.stringify(got));
-}
+const eq = H.makeEq({ tol: 1e-9, json: true });
 function run(params) {
   const rp = T.readReadyParams(Object.assign({ ready: 'WO-FSC-00000392' }, params || {}));
   const rd = T.buildReady(rp);
@@ -497,5 +461,5 @@ const rd4 = run({});
 eq('บอกว่าไม่พบ', rd4.ok, false);
 eq('ยังมีตัวเลือกคลังให้แก้ต่อ', rd4.locations.length, 3);
 
-console.log(fail ? '\n' + fail + ' รายการไม่ผ่าน\n' : '\nผ่านทั้งหมด\n');
-process.exit(fail ? 1 : 0);
+console.log(H.fails() ? '\n' + H.fails() + ' รายการไม่ผ่าน\n' : '\nผ่านทั้งหมด\n');
+process.exit(H.fails() ? 1 : 0);

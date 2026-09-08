@@ -8,12 +8,7 @@
  *   ช่องตัวเลขเป็นค่าดิบ ไม่ใช่ข้อความจัดรูปแบบ · ห้ามมี NaN/Infinity ที่ทำให้ Excel ฟ้องไฟล์เสีย
  *   วันที่เป็นเลขวันที่ของ Excel ไม่ใช่ข้อความ d/m/yyyy ที่ sort ไม่ได้
  */
-const fs = require('fs');
-const path = require('path');
-
-// รัน: node test/test_summary_export.js
-const FILE = path.join(__dirname,
-  '../src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js');
+const H = require('./_harness');
 
 // ── fixture: 3 ใบ ครอบเคสที่ทำให้ช่องตัวเลขพังได้ ──────────────────────────
 const FX = {
@@ -52,48 +47,17 @@ const FX = {
   'Cost ref ของสินค้าที่ผลิต': []
 };
 
-// ── stub SuiteScript modules ────────────────────────────────────────────────
-const MOD = {
-  'N/query': {
-    runSuiteQLPaged() {
-      const rows = FX[CURRENT_LABEL] || [];
-      return {
-        pageRanges: rows.length ? [{ index: 0 }] : [],
-        fetch: () => ({ data: { asMappedResults: () => rows } })
-      };
-    }
-  },
-  'N/log': { error: (o) => console.error('LOG.error', o.title, o.details), debug: () => {} },
-  'N/runtime': { getCurrentScript: () => ({ id: 'customscript_fs_wo_cost_trace', deploymentId: 'customdeploy_fs_wo_cost_trace' }) }
-};
-
-let CURRENT_LABEL = '';
-let MODULE = null;
-global.define = (deps, factory) => { MODULE = factory.apply(null, deps.map(d => MOD[d])); };
-
-const src = fs.readFileSync(FILE, 'utf8')
-  .replace('function runSQL(label, sql, params) {',
-           'function runSQL(label, sql, params) { global.__setLabel(label);');
-global.__setLabel = (l) => { CURRENT_LABEL = l; };
-
-const patched = src.replace('return { onRequest: onRequest };',
-  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, '
-  + 'renderSummaryGrid, summaryExportData, renderSummaryExport, excelDate, summaryExportName } };');
-
-eval(patched);
+// ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
+const { T } = H.load({
+  fixtures: FX,
+  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryExportData', 'renderSummaryExport', 'excelDate', 'summaryExportName']
+});
 
 // ── run ────────────────────────────────────────────────────────────────────
-const T = MODULE.__t;
 const sm = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
 const d = T.summaryExportData(sm);
 
-let fail = 0;
-function eq(label, got, want, tol) {
-  const ok = want == null ? got == null
-    : (typeof want === 'number' ? Math.abs(got - want) <= (tol == null ? 1e-8 : tol) : got === want);
-  if (!ok) { fail++; console.log('  FAIL ' + label + ': got ' + JSON.stringify(got) + ' want ' + JSON.stringify(want)); }
-  else console.log('  ok   ' + label + ' = ' + JSON.stringify(got));
-}
+const eq = H.makeEq({ tol: 1e-8, json: true });
 
 console.log('\n── หัวและลำดับคอลัมน์ต้องตรงกับตารางบนหน้าจอ ──');
 // ดึง <th> ของ thead ออกจาก renderSummaryGrid — คอลัมน์ที่เพิ่มในตารางแล้วลืมเพิ่มในไฟล์จะตกที่นี่
@@ -200,5 +164,5 @@ const page = T.renderSummaryPage(sm);
 eq('ปุ่มอยู่ในหน้า', page.indexOf('id="btnXlsx"') > 0, true);
 eq('ปุ่มมาก่อนตาราง', page.indexOf('id="btnXlsx"') < page.indexOf('<div class="scroll">'), true);
 
-console.log(fail ? '\n✖ ' + fail + ' ข้อไม่ผ่าน' : '\n✔ ผ่านทั้งหมด');
-process.exit(fail ? 1 : 0);
+console.log(H.fails() ? '\n✖ ' + H.fails() + ' ข้อไม่ผ่าน' : '\n✔ ผ่านทั้งหมด');
+process.exit(H.fails() ? 1 : 0);

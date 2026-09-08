@@ -2,12 +2,7 @@
  * Harness — ตรวจเลขของ buildSummary ด้วย fixture ที่ล็อกกับตัวเลขที่ verify แล้วใน WO_COST_TRACE.md
  * ไม่แตะ NetSuite · stub N/query ให้คืนแถวตาม label ของ query
  */
-const fs = require('fs');
-const path = require('path');
-
-// รัน: node test/test_summary_math.js  (จากรากโปรเจกต์ หรือที่ไหนก็ได้ — path ผูกกับไฟล์นี้)
-const FILE = path.join(__dirname,
-  '../src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js');
+const H = require('./_harness');
 
 // ── fixture: WOFSC00000470 (ตัวเลขจาก WO_COST_TRACE.md) + WO ที่ยังไม่ปิดงาน ──
 const FX = {
@@ -187,52 +182,17 @@ const FX = {
   ]
 };
 
-// ── stub SuiteScript modules ────────────────────────────────────────────────
-const MOD = {
-  'N/query': {
-    runSuiteQLPaged({ query: sql }) {
-      const label = CURRENT_LABEL;
-      // 'THROW' = จำลอง query พัง เพื่อพิสูจน์ว่ารายงานไม่เอา "อ่านไม่ได้" ไปสรุปเป็น "ไม่มีข้อมูล"
-      if (FX[label] === 'THROW') throw new Error('Invalid or unsupported search (จำลอง)');
-      const rows = FX[label] || [];
-      return {
-        pageRanges: rows.length ? [{ index: 0 }] : [],
-        fetch: () => ({ data: { asMappedResults: () => rows } })
-      };
-    }
-  },
-  'N/log': { error: (o) => console.error('LOG.error', o.title, o.details), debug: () => {} },
-  'N/runtime': { getCurrentScript: () => ({ id: 'customscript_fs_wo_cost_trace', deploymentId: 'customdeploy_fs_wo_cost_trace' }) }
-};
-
-let CURRENT_LABEL = '';
-let MODULE = null;
-global.define = (deps, factory) => { MODULE = factory.apply(null, deps.map(d => MOD[d])); };
-
-// แทรก hook เพื่อรู้ว่ากำลังรัน query label ไหน — runSQL ส่ง label เข้ามาเป็นตัวแรก
-const src = fs.readFileSync(FILE, 'utf8')
-  .replace('function runSQL(label, sql, params) {',
-           'function runSQL(label, sql, params) { global.__setLabel(label);');
-global.__setLabel = (l) => { CURRENT_LABEL = l; };
-
-// ดึงฟังก์ชันภายในออกมาทดสอบ: เติม export ชั่วคราวก่อน return ของ define
-const patched = src.replace('return { onRequest: onRequest };',
-  'return { onRequest: onRequest, __t: { buildSummary, readFilters, renderSummaryPage, renderSummaryGrid, summaryLink, explainSummaryGap } };');
-
-eval(patched);
+// ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
+const { T } = H.load({
+  fixtures: FX,
+  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryLink', 'explainSummaryGap']
+});
 
 // ── run ────────────────────────────────────────────────────────────────────
-const T = MODULE.__t;
 const f = T.readFilters({ from: '2026-07-01', to: '2026-07-31' });
 const sm = T.buildSummary(f);
 
-let fail = 0;
-function eq(label, got, want, tol) {
-  const ok = want == null ? got == null
-    : (typeof want === 'number' ? Math.abs(got - want) <= (tol == null ? 1e-8 : tol) : got === want);
-  if (!ok) { fail++; console.log('  FAIL ' + label + ': got ' + got + ' want ' + want); }
-  else console.log('  ok   ' + label + ' = ' + got);
-}
+const eq = H.makeEq({ tol: 1e-8 });
 
 console.log('\n── WOFSC00000470 ต้องตรงกับตัวเลขที่ verify แล้ว ──');
 const r = sm.rows.filter(x => x.wo_no === 'WOFSC00000470')[0];
@@ -561,5 +521,5 @@ const g0 = T.explainSummaryGap({
 }, {});
 eq('ไม่มียอดวัตถุดิบ = ไม่เข้าลายเซ็น', g0.detected, false);
 
-console.log('\n' + (fail ? fail + ' FAILED' : 'ผ่านทั้งหมด'));
-process.exit(fail ? 1 : 0);
+console.log('\n' + (H.fails() ? H.fails() + ' FAILED' : 'ผ่านทั้งหมด'));
+process.exit(H.fails() ? 1 : 0);
