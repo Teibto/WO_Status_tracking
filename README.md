@@ -10,88 +10,88 @@
 
 ---
 
-## โครงสร้างไฟล์ (File Structure)
+## โครงสร้างไฟล์
 
 ```
 WO_Status_tracking/
+├── project.json                    SDF — ชี้บัญชี 9751184_SB1 (sandbox) และให้คงไว้แบบนั้น
+├── suitecloud.config.js
+├── package.json                    มีแค่ scripts.test ไม่มี dependency
 ├── src/
-│   ├── WOStatusTracking.js            # Main Suitelet (entry point, renders form + results)
-│   ├── WOStatusTracking_Queries.js    # Query module — SuiteQL queries CP1–CP8
-│   ├── WOStatusTracking_Labels.js     # i18n module — bilingual UI strings (th/en)
-│   └── WOStatusTracking_Drilldown.js  # Drilldown module — batch/task HTML rows
-├── deploy/
-│   ├── manifest.xml                   # SDF project manifest
+│   ├── deploy.xml                  รายการที่ deploy
+│   ├── manifest.xml
 │   ├── Objects/
-│   │   └── customscript_wo_status_tracking.xml  # SDF Script + Deployment object
-│   └── FileCabinet/
-│       └── SuiteScripts/Foodstar/WO_Status_tracking/
-│           └── .attributes            # SDF File Cabinet folder registration
-├── prototype/
-│   ├── test_cp03_feedmat.sql          # SuiteQL performance test — CP3 feed material
-│   └── test_cp07_woc_l3.sql           # SuiteQL performance test — CP7 WOC L3
-└── README.md
+│   │   ├── customscript_fs_wo_cost_trace.xml
+│   │   └── customscript_wo_status_tracking.xml
+│   └── FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/     ← source ที่ deploy จริง
+│       ├── WOCostTrace.js                  WO Cost Trace (3 ชั้นในไฟล์เดียว)
+│       ├── WOStatusTracking.js             WO Status Tracking (entry)
+│       ├── WOStatusTracking_Queries.js
+│       ├── WOStatusTracking_Labels.js
+│       ├── WOStatusTracking_Drilldown.js
+│       └── .attributes/
+├── test/                           node ล้วน ไม่มี framework — `npm test`
+├── prototype/                      ไฟล์ทดสอบ SuiteQL + ไฟล์เจาะมือของผู้ใช้
+├── WO_COST_TRACE.md                เอกสารของ WO Cost Trace (ที่มาของทุกตัวเลขที่ verify แล้ว)
+└── IMPLEMENTATION_PLAN.md
 ```
 
----
+repo นี้มี **2 Suitelet**
 
-## การติดตั้ง (Installation)
+| Suitelet | scriptid | ผู้ใช้หลัก |
+|---|---|---|
+| WO Status Tracking | `customscript_wo_status_tracking` | Operation — ติดตามว่าใบสั่งผลิตไปถึงขั้นไหน |
+| WO Cost Trace | `customscript_fs_wo_cost_trace` | Costing — พิสูจน์ที่มาของต้นทุน · ดู `WO_COST_TRACE.md` |
 
-### Step 1 — อัปโหลดไฟล์ไปที่ File Cabinet
+## การแก้โค้ดและ deploy
 
-อัปโหลดไฟล์ทั้ง 4 ใน `src/` ไปที่ File Cabinet ตาม path นี้:
+> **source ที่ deploy จริงมีที่เดียว: `src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/`**
+> อย่าอัปโหลดไฟล์ผ่านหน้า UI ของ NetSuite และอย่าคัดลอกไฟล์ไปไว้ที่อื่นใน repo —
+> สำเนาที่ราก `src/` เคยมีอยู่และทำให้คนอัปโหลดชุดเก่าทับของที่รันอยู่ (issue #9 ลบออกแล้ว)
+> · `npm test` มีด่านกันไฟล์สำเนากลับเข้ามา
 
-```
-/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking.js
-/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Queries.js
-/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Labels.js
-/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Drilldown.js
-```
-
-> วิธี: ไปที่ Documents > Files > File Cabinet > SuiteScripts > Foodstar > สร้างโฟลเดอร์ `WO_Status_tracking` แล้ว upload ทีละไฟล์
-
-### Step 2 — สร้าง Script Record
-
-**วิธีที่ 1 — ผ่าน UI (แนะนำสำหรับ initial deploy):**
-
-1. ไปที่ Setup > Customization > Scripts > New
-2. เลือกไฟล์ `WOStatusTracking.js` จาก File Cabinet
-3. NetSuite จะตรวจ `@NScriptType Suitelet` และสร้าง Script record อัตโนมัติ
-4. กรอก Name: `WO Status Tracking`, Script ID: `customscript_wo_status_tracking`
-5. บันทึก
-
-**วิธีที่ 2 — ผ่าน SDF (สำหรับ CI/CD หรือ migration):**
-
-```
-suitecloud project:deploy
+```bash
+npm test                                  # ต้องผ่านก่อนทุกครั้ง
+suitecloud project:validate               # ทุกหมวดต้อง Success
+suitecloud project:deploy --dryrun        # อ่านรายชื่อ path ที่จะอัป ต้องตรงกับที่ตั้งใจ
+suitecloud project:deploy                 # ลง SB1 ตาม project.json
 ```
 
-ไฟล์ `deploy/Objects/customscript_wo_status_tracking.xml` และ `deploy/manifest.xml` จะถูก deploy พร้อมกัน
+แก้ไฟล์เดียวแล้วอยากเห็นผลเร็ว ๆ (ลง SB1):
 
-> หมายเหตุ: SDF deployment ยังต้องการ `deploy.xml` (project deploy file) ซึ่งไม่ได้รวมอยู่ใน repo นี้ สร้างได้ด้วย `suitecloud project:create` หรือสร้างด้วยมือตาม SuiteCloud documentation
-
-### Step 3 — ตั้งค่า Script Deployment
-
-หลังสร้าง Script record แล้ว:
-
-1. คลิก Deployments tab > เลือก deployment `customdeploy_wo_status_tracking`
-2. ตั้ง Status = **Released**, Log Level = **Debug** (ระหว่าง UAT)
-3. เลือก **Subsidiaries** ที่ต้องการ (Foodstar subsidiaries ที่ใช้ Manufacturing)
-4. เลือก **Roles** ที่ต้องการ — ปรึกษา admin ก่อน; อย่า set `allemployees = T` ใน production
-5. บันทึก และ copy URL ของ Suitelet ไว้ใช้งาน
-
-### Step 4 — ก่อน Go-Live: ทดสอบ Performance
-
-รันไฟล์ใน `prototype/` ใน SuiteQL console (Setup > SuiteQL) เพื่อตรวจ elapsed time:
-
-```sql
--- prototype/test_cp03_feedmat.sql
--- prototype/test_cp07_woc_l3.sql
+```bash
+suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js"
 ```
 
-เป้าหมาย: elapsed < 5 วินาที ต่อ query  
-ถ้าเกิน: เพิ่ม index hint หรือ limit date range ใน filter ก่อน deploy
+### ขึ้น production
 
----
+> **ห้าม deploy production จาก repo นี้โดยตรง** แม้จะระบุ path ใน `deploy.xml` ตรงตัวแล้ว —
+> การสลับ `project.json` ไปบัญชีจริงยังทำให้ทับไฟล์ของ WO Status Tracking ที่ยังไม่ได้เทียบเนื้อหาได้
+
+production ใช้ payload แยกที่ `Foodstar/.deploy-staging/wo-trace-prod/` ซึ่งมี `project.json`
+ของตัวเองชี้บัญชี `9751184` · ขั้นตอนและวิธีอ่านผล dry-run อยู่ใน README ของโฟลเดอร์นั้น
+
+### ค่าที่ต่างกันรายบัญชี — ห้าม deploy ทับโดยไม่รู้ตัว
+
+ตรวจ 2026-09-08 ด้วย `suitecloud object:import` ลง scratch project (อ่านอย่างเดียว ไม่แตะ `src/`)
+
+`customscript_wo_status_tracking` — deployment ค่าไม่ตรงกันสามช่อง **และสองบัญชีก็ไม่ตรงกันเอง**
+
+| ช่อง | repo (`src/Objects`) | SB1 | production |
+|---|---|---|---|
+| `runasrole` | ไม่มีในไฟล์ | `ADMINISTRATOR` | ว่าง |
+| `audslctrole` | ไม่มีในไฟล์ | `ONLINE_FORM_USER` | ว่าง |
+| `isonline` | ไม่มีในไฟล์ | `T` | `F` |
+| `loglevel` | `DEBUG` | `DEBUG` | `DEBUG` |
+
+→ deploy object นี้จาก repo ลง SB1 จะ**ถอด `runasrole` ทิ้ง** ทำให้ Suitelet เลิกรันเป็น administrator
+· ก่อนจะแตะ object นี้ต้องตัดสินก่อนว่าจะยึดค่าของบัญชีไหน (ยังไม่ตัดสิน — issue #15)
+
+`customscript_fs_wo_cost_trace` — `loglevel` เป็น `DEBUG` ใน repo/SB1 แต่ `ERROR` บน production
+ค่าของ production อยู่ใน staging payload เท่านั้น
+
+⚠ `WOStatusTracking*.js` บน **production ยังไม่ได้ reconcile ครบ** — `WOStatusTracking.js`
+ตรงกับ repo ทุกไบต์ทั้ง SB1 และ production (ตรวจ 2026-09-08) เหลืออีก 3 ไฟล์ที่ยังไม่ได้เทียบ
 
 ## GATE Checklist ก่อน Go-Live
 
