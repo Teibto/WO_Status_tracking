@@ -24,8 +24,33 @@
 const fs = require('fs');
 const path = require('path');
 
-const SRC_DIR = path.join(__dirname,
-  '../src/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking');
+// โครง apps/ (epic #37 · ก้อน S1) — สองแอปมี source คนละชุด แต่ path บนบัญชีเป็นโฟลเดอร์เดียวกัน
+const APPS_DIR = path.join(__dirname, '../apps');
+const FC_SUB = path.join('src', 'FileCabinet', 'SuiteScripts', 'Foodstar', 'WO_Status_tracking');
+
+/** โฟลเดอร์ source ของแต่ละแอป — คีย์คือชื่อโฟลเดอร์ใต้ apps/ */
+const APP_DIRS = {};
+fs.readdirSync(APPS_DIR).sort().forEach((app) => {
+  const dir = path.join(APPS_DIR, app, FC_SUB);
+  if (fs.existsSync(dir)) APP_DIRS[app] = dir;
+});
+
+/**
+ * หาโฟลเดอร์แอปจากชื่อไฟล์ entry
+ *
+ * ตั้งใจให้กำกวมไม่ได้: ไฟล์ที่มีอยู่ในหลายแอป (WOReportTheme.js ที่เป็นก๊อปของ shared/)
+ * ต้องโวย ไม่ใช่เดาเอาแอปแรก — เทสที่ตั้งใจอ่านก๊อปให้ส่ง `dir:` มาตรง ๆ
+ */
+function dirOf(file) {
+  const hits = Object.keys(APP_DIRS).filter((a) => fs.existsSync(path.join(APP_DIRS[a], file)));
+  if (!hits.length) {
+    throw new Error('harness: ไม่มีไฟล์ ' + file + ' ในแอปไหนเลย (' + Object.keys(APP_DIRS).join(', ') + ')');
+  }
+  if (hits.length > 1) {
+    throw new Error('harness: ' + file + ' มีอยู่หลายแอป (' + hits.join(', ') + ') — ระบุ dir: มาให้ชัด');
+  }
+  return APP_DIRS[hits[0]];
+}
 
 // ── state ต่อ process (เทสหนึ่งไฟล์ = หนึ่ง process จึงไม่ต้องแยก instance) ──
 let fixtures = {};
@@ -142,8 +167,8 @@ function mustReplace(src, anchor, replacement, what) {
  */
 function load(opts) {
   const o = opts || {};
-  const dir = o.dir || SRC_DIR;
   const file = o.file || 'WOCostTrace.js';
+  const dir = o.dir || dirOf(file);
   setFixtures(o.fixtures);
 
   const MOD = makeStubs(!!o.quietLog, o.sqlRows);
@@ -312,7 +337,8 @@ function sqlOf(label) {
 }
 
 module.exports = {
-  SRC_DIR,
+  APP_DIRS,
+  dirOf,
   load,
   setFixtures,
   makeEq,

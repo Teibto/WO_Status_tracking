@@ -1,0 +1,38 @@
+<deploy>
+    <!--
+      ชุด deploy ของ **WO Status Tracking เท่านั้น** (epic #37 · ก้อน S1)
+
+      ระบุ path ตรงตัวทุกไฟล์และทุก object โดยตั้งใจ (issue #10)
+      เดิมใช้ wildcard ซึ่งทำให้ scope ของ deploy ขยายตามไฟล์ที่มีอยู่ในโฟลเดอร์
+      ไม่ใช่ตามที่คนตั้งใจ — เพิ่มไฟล์ใหม่แล้วต้องมาเติมที่นี่ด้วย ไม่งั้นไฟล์นั้นจะไม่ขึ้นบัญชี
+
+      ลำดับใน <files> เขียนแบบ dependency-first (lib ก่อน entry) เพื่อให้อ่านแล้วเห็นลำดับ
+      ที่ต้องใช้ตอนอัปทีละไฟล์ด้วย `file:upload` — ตัว SDF เองไม่สนลำดับในไฟล์นี้
+
+      ⚠ WOReportTheme.js ในโฟลเดอร์นี้เป็น **ก๊อปที่เครื่องมือสร้าง** ต้นฉบับอยู่ที่ shared/WOReportTheme.js
+        แก้ที่ต้นฉบับแล้วรัน `npm run sync:theme` — ห้ามแก้ไฟล์ในโฟลเดอร์นี้ด้วยมือ (ก้อน S2)
+        นี่เป็นไฟล์เดียวที่การแก้กระเทือนทั้งสองแอป เพราะทั้งสองแอปมีก๊อปของตัวเอง
+
+      ⚠ path บนบัญชีเป็นโฟลเดอร์เดียวกับ WO Cost Trace โดยตั้งใจ (คำตัดสิน #37)
+        โฟลเดอร์ร่วมกันได้เพราะ deploy.xml ระบุไฟล์ตรงตัว — ชุดนี้ไม่แตะไฟล์ของอีกแอป
+        ห้ามเติม path ของ WOCostTrace*.js ลงในไฟล์นี้ (เทส deploy manifest จับ)
+
+      ⚠ object customscript_wo_status_tracking ยังมีประเด็นสิทธิ์ที่ไม่ปิด (issue #24) —
+        deploy จาก repo ลง SB1 จะถอด runasrole=ADMINISTRATOR ที่บัญชีมีแต่ไฟล์นี้ไม่มีทิ้ง
+        ระหว่างนี้อัปเฉพาะไฟล์ด้วย `file:upload` อย่าใช้ `project:deploy` กับ SB1
+
+      ⚠ ห้าม deploy production จาก repo นี้ — WOStatusTracking*.js ยังไม่เคยเทียบเนื้อหากับ
+        ของบน production เลย (epic #7 ตัดสินว่ารอบนั้นไม่ reconcile) การยิงขึ้นบัญชีจริง
+        จึงเป็นการทับของที่ไม่มีใครรู้ว่าต่างกันแค่ไหน
+    -->
+    <files>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOReportTheme.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Labels.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Queries.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking_Drilldown.js</path>
+        <path>~/FileCabinet/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking.js</path>
+    </files>
+    <objects>
+        <path>~/Objects/customscript_wo_status_tracking.xml</path>
+    </objects>
+</deploy>
