@@ -107,13 +107,17 @@ suitecloud project:validate                # local validation — warning เด
 suitecloud project:deploy --dryrun         # อ่านรายชื่อที่จะขึ้น ต้องตรงกับที่ตั้งใจ
 ```
 
-### ⚠ อย่าใช้ `project:deploy` กับ SB1 ตอนนี้
+### `project:deploy` กับ SB1 ใช้ได้แล้ว (ปิด issue #24 เมื่อ 2026-09-12)
 
-`project:deploy` แตะ **object** ด้วย และ object `customscript_wo_status_tracking` ของ repo
-**ไม่มี `runasrole`** ขณะที่บน SB1 ตั้งเป็น `ADMINISTRATOR` ไว้ · deploy จาก repo
-จะถอดค่านั้นทิ้ง = Suitelet เลิกรันเป็น administrator (ยังไม่ตัดสินว่าจะยึดค่าไหน — issue #24)
+object `customscript_wo_status_tracking` ของ repo ตรงกับ SB1 แล้วทั้ง `runasrole` `audslctrole`
+`isonline` จึง deploy ทั้งโปรเจกต์ได้โดยไม่ถอดค่าของบัญชีทิ้ง
 
-ระหว่างนี้อัปเฉพาะไฟล์
+**กับดักที่พิสูจน์แล้วบน SB1** — การ "ไม่มีช่อง `<runasrole>` ในไฟล์" **ไม่ล้างค่าในบัญชี**
+deploy แล้ว `runasrole=ADMINISTRATOR` ยังอยู่เหมือนเดิม ต้องเขียนเป็น element ว่าง
+`<runasrole></runasrole>` เท่านั้นถึงจะล้าง (ต่างจาก `audslctrole` ที่หายไปเองเมื่อไม่มีในไฟล์)
+ห้ามลบบรรทัดนั้นทิ้งแล้วคิดว่าค่าจะกลับเป็นว่าง
+
+อัปเฉพาะไฟล์ยังทำได้เหมือนเดิมถ้าไม่อยากแตะ object
 
 ```bash
 suitecloud file:upload --paths "/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace_Common.js"
@@ -181,22 +185,30 @@ object เทียบ tag ต่างได้เฉพาะ `loglevel` · `l
 
 ตรวจ 2026-09-08 ด้วย `suitecloud object:import` ลง scratch project (อ่านอย่างเดียว ไม่แตะ `src/`)
 
-`customscript_wo_status_tracking` — **สองบัญชีไม่ตรงกันเอง และ repo ไม่ตรงกับทั้งคู่**
+`customscript_wo_status_tracking` — **ตรงกันทั้งสามที่แล้ว** (แก้ตามคำตัดสิน #24 · 2026-09-12)
 
-| ช่อง | repo (`apps/wo-status/src/Objects`) | SB1 | production |
+| ช่อง | repo (`apps/wo-status/src/Objects`) | SB1 (ตรวจ 2026-09-12) | production (ตรวจ 2026-09-08) |
 |---|---|---|---|
-| `runasrole` | ไม่มีในไฟล์ | `ADMINISTRATOR` | ว่าง |
-| `audslctrole` | ไม่มีในไฟล์ | `ONLINE_FORM_USER` | ว่าง |
-| `isonline` | ไม่มีในไฟล์ | `T` | `F` |
+| `runasrole` | ว่าง (element ว่าง) | ว่าง | ว่าง |
+| `audslctrole` | ว่าง (element ว่าง) | ว่าง | ว่าง |
+| `isonline` | `F` | `F` | `F` |
 | `loglevel` | `DEBUG` | `DEBUG` | `DEBUG` |
+
+คอลัมน์ production ยังเป็นค่าที่ import มาเมื่อ 2026-09-08 — รอบ 2026-09-12 re-verify ไม่ได้
+เพราะ authid `9751184` หมดอายุ (`suitecloud` เด้ง browser auth แล้ว timeout) · รอบนี้ไม่ได้แตะ
+production เลย ค่าจึงควรเหมือนเดิม แต่ยังไม่ได้ยืนยันสด
+
+ค่าเดิมของ SB1 คือ `runasrole=ADMINISTRATOR` + `audslctrole=ONLINE_FORM_USER` + `isonline=T`
+ซึ่งแปลว่า **เปิด URL ได้โดยไม่ต้อง login แล้วให้ script อ่านข้อมูลระดับ administrator** ·
+ยึดค่าของ production แทน เหตุผลและหลักฐานอยู่ใน issue #24
 
 `customscript_fs_wo_cost_trace` — `loglevel` เป็น `DEBUG` ใน repo และ SB1 แต่ **`ERROR` บน
 production** โดยตั้งใจ เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง · ค่าของ production
 อยู่ใน staging payload เท่านั้น
 
-**ยังไม่ตัดสินว่าจะยึดค่าไหน (issue #24)** — `runasrole=ADMINISTRATOR` คู่กับ `allroles=T`
-หมายความว่าพนักงานคนไหนก็เปิดรายงานแล้วให้มันอ่านข้อมูลระดับ administrator ได้
-เป็นเรื่องสิทธิ์ที่ต้องให้ admin ตัดสิน ไม่ใช่เรื่องที่แก้ไฟล์ให้ตรงกันแล้วจบ
+`allroles=T` ยังคงไว้โดยตั้งใจ — เมื่อ script รันด้วยสิทธิ์ของผู้เปิดแล้ว การเปิดให้ role ภายใน
+เข้าถึงได้ไม่ได้แปลว่าทุกคนเห็นทุกอย่างอีกต่อไป · การบังคับ subsidiary/location ตามสิทธิ์ของ role
+ในตัวรายงานเองเป็นงานของ issue #47
 
 ## Cost ref มี 3 กฎจับคู่โดยตั้งใจ
 
@@ -275,7 +287,7 @@ fixture ที่ไม่ได้ประกาศ label = **เทสตก*
 | เรื่อง | สภาพ |
 |---|---|
 | `WOStatusTracking*.js` 4 ไฟล์บน production | **ยังไม่ reconcile** · `WOStatusTracking.js` ตรงกับ repo ทุกไบต์ (ตรวจ 2026-09-08) เหลืออีก 3 ไฟล์ที่ยังไม่เทียบ |
-| `runasrole` / `audslctrole` / `isonline` | สองบัญชีไม่ตรงกันเอง ยังไม่ตัดสินว่ายึดค่าไหน — issue #24 |
+| ตัวกรอง Subsidiary / Location ของ WO Status | ยังไม่อิงสิทธิ์ของ role ที่เปิดรายงาน — issue #47 |
 | ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `shared/REPORT_STYLE.md` |
 | แยก Summary/Trace ออกจาก entry | **ไม่ทำ** โดยตั้งใจ · โค้ดล็อก parity ไว้ แยกแล้วต้องดูแลสำเนา SQL สองชุดที่ต้องเท่ากันตลอด |
 | re-test SuiteQL ด้วย volume จริง | `apps/wo-status/prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |

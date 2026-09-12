@@ -9,13 +9,33 @@
     <notifyuser>F</notifyuser>
     <scriptfile>[/SuiteScripts/Foodstar/WO_Status_tracking/WOStatusTracking.js]</scriptfile>
     <scriptdeployments>
+        <!--
+          คำตัดสิน issue #24 (2026-09-12) — ยึดค่าของ production ตามทางเลือก ข.
+
+          runasrole ว่าง    → script รันด้วยสิทธิ์ของ role ที่กดเปิด ไม่ใช่ administrator
+                              รายงานนี้อ่านต้นทุน ค่าแรง และโครงสร้าง BOM ทั้งบัญชี
+                              รันเป็น admin คู่กับ allroles=T แปลว่าใครเปิดได้ก็เห็นทุกอย่าง
+                              และบังคับสิทธิ์ subsidiary/location ตาม role ไม่ได้เลย (#47)
+          audslctrole ว่าง  → ไม่มี audience เป็น Online Form User (ค่าเดิมของ SB1)
+          isonline=F        → เปิด URL โดยไม่ login ไม่ได้ (ค่าเดียวกับ production)
+
+          ⚠ ต้องเขียน <runasrole></runasrole> เป็น element ว่างเท่านั้น — พิสูจน์บน SB1
+            เมื่อ 2026-09-12 ว่าการ "ไม่มีช่องนี้ในไฟล์" ไม่ล้างค่าในบัญชี deploy แล้ว
+            runasrole=ADMINISTRATOR ยังอยู่เหมือนเดิม (ต่างจาก audslctrole ที่หายไปเอง)
+            ห้ามลบบรรทัดนี้ทิ้งแล้วคิดว่าค่าจะกลับเป็นว่าง
+
+          ⚠ ispublic ใส่ไม่ได้ — SDF ตอบว่า "not supported for the scriptdeployment
+            subrecord and will be ignored" ถ้าใส่กลับเข้ามาจะได้แค่ warning ทุกรอบ deploy
+        -->
         <scriptdeployment scriptid="customdeploy_wo_status_tracking">
             <allemployees>T</allemployees>
             <allpartners>F</allpartners>
             <allroles>T</allroles>
+            <audslctrole></audslctrole>
             <isdeployed>T</isdeployed>
-            <ispublic>F</ispublic>
+            <isonline>F</isonline>
             <loglevel>DEBUG</loglevel>
+            <runasrole></runasrole>
             <status>RELEASED</status>
             <title>WO Status Tracking</title>
         </scriptdeployment>
