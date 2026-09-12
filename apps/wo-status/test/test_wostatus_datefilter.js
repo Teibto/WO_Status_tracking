@@ -80,6 +80,16 @@ eq('บอกรูปแบบที่ต้องกรอก',       (form.m
 const shown = form.match(/name="dateFrom"[\s\S]{0,120}?value="([^"]*)"/);
 eq('ค่าเริ่มต้นแสดงเป็น dd/mm/yyyy', /^\d{2}\/\d{2}\/\d{4}$/.test(shown && shown[1]), true);
 
+// ── ปฏิทินที่เขียนเอง (issue #45) ────────────────────────────────────────
+// ด่าน "ไม่มี input type=date" ข้างบนยังอยู่เหมือนเดิมโดยตั้งใจ — ทางที่เลือกคือเขียน
+// ปฏิทินเอง ไม่ได้ยืมของเบราว์เซอร์ จึงไม่ต้องผ่อนด่านนั้นให้หลวมลง
+console.log('\n── ปุ่มปฏิทิน ──');
+eq('มีปุ่มเปิดปฏิทินสองปุ่ม', (form.match(/class="datebtn"/g) || []).length, 2);
+eq('ปุ่มผูกกับช่องตั้งแต่', /data-for="dateFrom"/.test(form), true);
+eq('ปุ่มผูกกับช่องถึง',     /data-for="dateTo"/.test(form), true);
+eq('ปุ่มบอกหน้าที่ให้ screen reader',
+  (form.match(/aria-label="[^"]*"[\s\S]{0,40}?aria-haspopup="dialog"/g) || []).length, 2);
+
 console.log('\n── JS ฝั่งเบราว์เซอร์ต้อง parse ผ่าน ──');
 // เทสอื่นสแกน source ของโมดูลได้ แต่ JS ก้อนนี้อยู่ใน template string
 // พิมพ์ผิดจะรู้ตอนผู้ใช้เปิดหน้าเท่านั้น — parse ที่นี่ให้รู้ตอน npm test
@@ -132,6 +142,29 @@ const clientIso = clientSrc
   eq('client "' + input + '"', got, want);
   eq('สองฝั่งตรงกัน "' + input + '"', got === null ? '' : got, T.parseFilterDate(input));
 });
+
+// ── ปฏิทินต้องพิมพ์ค่าในรูปแบบที่ด่านแปลงอ่านออก (issue #45) ───────────
+// ถ้าปฏิทินเขียนรูปแบบอื่นลงช่อง (เช่น ISO หรือ m/d/yyyy) ปุ่มค้นหาจะเตือนว่า
+// "รูปแบบวันที่ไม่ถูกต้อง" ทั้งที่ผู้ใช้แค่กดเลือกวันจากปฏิทิน — อาการเงียบและงงที่สุด
+const fmtSrc = (form.match(/function _ddmmyyyy\(y, m, d\)[\s\S]*?\n  \}/) || [])[0];
+eq('ดึงตัวเขียนค่าของปฏิทินออกมาได้', !!fmtSrc, true);
+const calFmt = fmtSrc
+  ? new Function('function _p2(n){return ("0"+n).slice(-2);}\n' + fmtSrc + ';\nreturn _ddmmyyyy;')()
+  : () => '';
+eq('ปฏิทินเขียนเป็น dd/mm/yyyy', calFmt(2026, 8, 9), '09/09/2026');
+eq('เติมศูนย์หน้าเสมอ',        calFmt(2026, 0, 1), '01/01/2026');
+[[2026, 8, 9], [2026, 0, 1], [2026, 11, 31]].forEach(([y, m, d]) => {
+  const typed = calFmt(y, m, d);
+  const iso = y + '-' + String(m + 1).padStart(2, '0') + '-' + String(d).padStart(2, '0');
+  eq('ด่าน client อ่านค่าจากปฏิทินออก "' + typed + '"', clientIso({ value: typed }), iso);
+  eq('ฝั่งเซิร์ฟเวอร์ก็อ่านออก "' + typed + '"', T.parseFilterDate(typed), iso);
+});
+
+// ปฏิทินต้องไม่ parse ค่าที่พิมพ์ค้างไว้เอง — ต้องเรียกด่านเดียวกับปุ่มค้นหา
+eq('ปฏิทินอ่านค่าเดิมผ่าน _isoFromDateInput',
+  /function _valueOf\(input\)[\s\S]{0,200}_isoFromDateInput\(input\)/.test(form), true);
+// และต้องเขียนค่ากลับลง "ช่องข้อความ" ไม่ใช่ยิงค่าเข้าตัวค้นหาตรง ๆ
+eq('ปฏิทินเขียนค่าลงช่องข้อความ', /input\.value = _ddmmyyyy\(/.test(form), true);
 
 // ── ชั้น 3: param ที่ถึง SQL ต้องเป็น ISO ───────────────────────────────
 console.log('\n── ค้นหาด้วย dd/mm/yyyy ──');
