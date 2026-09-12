@@ -187,12 +187,16 @@ object เทียบ tag ต่างได้เฉพาะ `loglevel` · `l
 
 `customscript_wo_status_tracking` — **ตรงกันทั้งสามที่แล้ว** (แก้ตามคำตัดสิน #24 · 2026-09-12)
 
-| ช่อง | repo (`apps/wo-status/src/Objects`) | SB1 | production |
+| ช่อง | repo (`apps/wo-status/src/Objects`) | SB1 (ตรวจ 2026-09-12) | production (ตรวจ 2026-09-08) |
 |---|---|---|---|
 | `runasrole` | ว่าง (element ว่าง) | ว่าง | ว่าง |
 | `audslctrole` | ว่าง (element ว่าง) | ว่าง | ว่าง |
 | `isonline` | `F` | `F` | `F` |
 | `loglevel` | `DEBUG` | `DEBUG` | `DEBUG` |
+
+คอลัมน์ production ยังเป็นค่าที่ import มาเมื่อ 2026-09-08 — รอบ 2026-09-12 re-verify ไม่ได้
+เพราะ authid `9751184` หมดอายุ (`suitecloud` เด้ง browser auth แล้ว timeout) · รอบนี้ไม่ได้แตะ
+production เลย ค่าจึงควรเหมือนเดิม แต่ยังไม่ได้ยืนยันสด
 
 ค่าเดิมของ SB1 คือ `runasrole=ADMINISTRATOR` + `audslctrole=ONLINE_FORM_USER` + `isonline=T`
 ซึ่งแปลว่า **เปิด URL ได้โดยไม่ต้อง login แล้วให้ script อ่านข้อมูลระดับ administrator** ·
