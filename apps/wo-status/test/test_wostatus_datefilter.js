@@ -166,6 +166,99 @@ eq('ปฏิทินอ่านค่าเดิมผ่าน _isoFromDate
 // และต้องเขียนค่ากลับลง "ช่องข้อความ" ไม่ใช่ยิงค่าเข้าตัวค้นหาตรง ๆ
 eq('ปฏิทินเขียนค่าลงช่องข้อความ', /input\.value = _ddmmyyyy\(/.test(form), true);
 
+// ── รันปฏิทินจริง ๆ ด้วย DOM ปลอม (issue #45) ──────────────────────────
+// เทสข้างบนพิสูจน์แค่ว่าโค้ด parse ผ่านและตัวเขียนค่าให้รูปแบบถูก — ยังไม่มีอะไร
+// "กด" ปฏิทินสักครั้ง · บล็อกนี้รันโค้ดปฏิทินทั้งก้อนบน DOM ปลอมขั้นต่ำ แล้วกดวันจริง
+// เพื่อยันว่า เปิด → วาด → เลือก → เขียนค่าลงช่อง ทำงานครบวง ไม่ใช่แค่คอมไพล์ผ่าน
+console.log('\n── กดปฏิทินบน DOM ปลอม ──');
+
+function makeDom() {
+  const listeners = [];
+  function el(tag) {
+    const node = {
+      tagName: tag, className: '', textContent: '', value: '', type: '',
+      title: '', tabIndex: 0, disabled: false, attrs: {}, children: [], parentNode: null,
+      get firstChild() { return this.children.length ? this.children[0] : null; },
+      setAttribute(k, v) { this.attrs[k] = String(v); },
+      getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; },
+      appendChild(c) { c.parentNode = this; this.children.push(c); return c; },
+      removeChild(c) {
+        const i = this.children.indexOf(c);
+        if (i >= 0) this.children.splice(i, 1);
+        c.parentNode = null;
+        return c;
+      },
+      addEventListener(type, fn) { (this._h = this._h || {})[type] = (this._h[type] || []).concat([fn]); },
+      dispatchEvent() { return true; },
+      contains(other) {
+        if (other === this) return true;
+        return this.children.some((c) => c.contains(other));
+      },
+      focus() { dom.activeElement = this; },
+      click() { (this._h && this._h.click ? this._h.click : []).forEach((fn) => fn({})); },
+      querySelectorAll(sel) { return dom._collect(this, sel); },
+    };
+    return node;
+  }
+  const dom = {
+    activeElement: null,
+    _all: [],
+    createElement(tag) { const n = el(tag); dom._all.push(n); return n; },
+    addEventListener(type, fn) { listeners.push([type, fn]); },
+    _collect(root, sel) {
+      const want = sel.replace('.', '');
+      const out = [];
+      (function walk(n) {
+        if (n.className && String(n.className).split(' ').indexOf(want) >= 0) out.push(n);
+        n.children.forEach(walk);
+      })(root);
+      return out;
+    },
+  };
+  return { dom, el };
+}
+
+const calSrc = (form.match(/\/\/ ── ปฏิทินของหน้านี้เอง[\s\S]*?\n\}\)\(\);/) || [])[0];
+eq('ดึงโค้ดปฏิทินออกมาได้', !!calSrc, true);
+
+if (calSrc) {
+  const { dom, el } = makeDom();
+  const wrap  = el('div');
+  const input = el('input');
+  const btn   = el('button');
+  btn.className = 'datebtn';
+  btn.setAttribute('data-for', 'dateFrom');
+  wrap.appendChild(input);
+  wrap.appendChild(btn);
+  input.value = '09/09/2026';
+
+  dom.getElementById = (id) => (id === 'dateFrom' ? input : null);
+  dom.querySelectorAll = (sel) => dom._collect(wrap, sel);
+
+  const i18n = JSON.parse((form.match(/const I18N = ([\s\S]*?);\n/) || [])[1] || '{}');
+  const run = new Function('document', 'window', 'I18N', 'LANG', '_isoFromDateInput', 'Event', calSrc);
+  run(dom, {}, i18n, 'th', new Function('return ' + (clientSrc || 'function(){}'))(), function () {});
+
+  btn.click();                                  // เปิดปฏิทิน
+  const box = wrap.children.filter((c) => c.className === 'cal')[0];
+  eq('กดปุ่มแล้วปฏิทินโผล่', !!box, true);
+
+  const title = box ? dom._collect(box, '.cal-title')[0] : null;
+  eq('หัวปฏิทินเป็นเดือนของค่าที่อยู่ในช่อง', title && title.textContent, 'กันยายน 2026');
+
+  const days = box ? dom._collect(box, '.cal-day') : [];
+  eq('วาดครบ 6 สัปดาห์', days.length, 42);
+  eq('วันที่เลือกอยู่ถูกไฮไลต์', days.filter((d) => d.className.indexOf('sel') >= 0).length, 1);
+  eq('ชื่อวันครบเจ็ดช่อง', box ? dom._collect(box, '.cal-dow').length : 0, 7);
+
+  // กดวันที่ 15 ของเดือนที่กำลังแสดง (ไม่ใช่วันของเดือนข้างเคียงที่จาง)
+  const d15 = days.filter((d) => d.textContent === '15' && d.className.indexOf('muted') < 0)[0];
+  eq('เจอปุ่มวันที่ 15', !!d15, true);
+  if (d15) d15.click();
+  eq('กดวันแล้วค่าลงช่องเป็น dd/mm/yyyy', input.value, '15/09/2026');
+  eq('ปิดปฏิทินหลังเลือก', wrap.children.filter((c) => c.className === 'cal').length, 0);
+}
+
 // ── ชั้น 3: param ที่ถึง SQL ต้องเป็น ISO ───────────────────────────────
 console.log('\n── ค้นหาด้วย dd/mm/yyyy ──');
 H.calls.length = 0;
