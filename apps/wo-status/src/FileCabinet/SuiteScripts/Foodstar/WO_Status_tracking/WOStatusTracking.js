@@ -121,6 +121,16 @@ define(
     // ─── Constants ────────────────────────────────────────────────
     const PAGE_SIZE = 100;
 
+    /** ไอคอนปฏิทินของปุ่มเปิด date picker (issue #45)
+     *  วาดด้วย currentColor ทั้งตัว — สีจึงมาจาก CSS token ไม่ใช่ hex ในไฟล์นี้ */
+    const CAL_ICON =
+      '<svg viewBox="0 0 16 16" width="14" height="14" aria-hidden="true" focusable="false">'
+      + '<rect x="1.5" y="2.5" width="13" height="12" rx="1.5" fill="none" '
+      + 'stroke="currentColor" stroke-width="1.4"/>'
+      + '<path d="M1.5 6h13M5 1.5v2M11 1.5v2" stroke="currentColor" stroke-width="1.4" '
+      + 'stroke-linecap="round"/>'
+      + '</svg>';
+
     /**
      * CSS เฉพาะรายงานนี้ - token กลางอยู่ที่ WOReportTheme.js
      *
@@ -153,7 +163,46 @@ define(
       + '.filterbar .fld{display:flex;flex-direction:column;gap:var(--sp-1)}'
       + '.filterbar select,.filterbar input{min-width:150px}'
       // ช่องวันที่เป็นช่องข้อความ (dd/mm/yyyy) — เลขความกว้างเท่ากันเหมือนตารางตัวเลข
-      + '.dateinput{font-variant-numeric:tabular-nums}'
+      + '.dateinput{font-variant-numeric:tabular-nums;padding-right:30px}'
+      // ── ปฏิทินของหน้านี้เอง (issue #45) ─────────────────────────────
+      // เขียนเองแทนปฏิทินของเบราว์เซอร์ เพราะช่อง input แบบ date ของเบราว์เซอร์แสดงรูปแบบและปี
+      // ตาม locale ของเครื่อง (en-US เห็น mm/dd/yyyy · th-TH เห็นปี พ.ศ.) บังคับไม่ได้
+      + '.datewrap{position:relative;display:inline-flex;align-items:center}'
+      + '.datebtn{position:absolute;right:4px;top:50%;transform:translateY(-50%);'
+      + 'display:flex;align-items:center;justify-content:center;width:22px;height:22px;'
+      + 'padding:0;background:none;border:0;border-radius:var(--radius-sm);cursor:pointer;'
+      + 'color:var(--pj-text-muted)}'
+      + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+      + '.datebtn:disabled{cursor:default;opacity:.5}'
+      + '.datebtn:focus-visible{outline:2px solid var(--pj-primary);outline-offset:1px}'
+      + '.cal{position:absolute;z-index:40;top:calc(100% + 4px);left:0;width:238px;'
+      + 'background:var(--pj-surface);border:1px solid var(--pj-border-strong);'
+      + 'border-radius:var(--radius-md);box-shadow:var(--shadow-lg);'
+      + 'padding:var(--sp-2);font-size:var(--fs-sm)}'
+      + '.cal[hidden]{display:none}'
+      + '.cal-head{display:flex;align-items:center;justify-content:space-between;'
+      + 'gap:var(--sp-1);margin-bottom:var(--sp-1)}'
+      + '.cal-title{font-weight:700;color:var(--pj-text);font-size:var(--fs-sm)}'
+      + '.cal-nav{background:none;border:1px solid var(--pj-border);color:var(--pj-text-dim);'
+      + 'width:24px;height:24px;line-height:1;border-radius:var(--radius-sm);cursor:pointer;'
+      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:700;padding:0}'
+      + '.cal-nav:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+      + '.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}'
+      + '.cal-dow{text-align:center;font-size:10px;font-weight:700;padding:2px 0;'
+      + 'color:var(--pj-text-label);text-transform:uppercase}'
+      + '.cal-day{border:0;background:none;font-family:inherit;font-size:var(--fs-sm);'
+      + 'color:var(--pj-text);padding:5px 0;border-radius:var(--radius-sm);cursor:pointer;'
+      + 'font-variant-numeric:tabular-nums}'
+      + '.cal-day:hover{background:var(--pj-surface-alt)}'
+      + '.cal-day.muted{color:var(--pj-text-muted)}'
+      + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
+      + '.cal-day.sel{background:var(--pj-primary);color:#fff;font-weight:700}'
+      + '.cal-day:focus-visible{outline:2px solid var(--pj-primary);outline-offset:-2px}'
+      + '.cal-foot{display:flex;justify-content:flex-end;margin-top:var(--sp-1);'
+      + 'border-top:1px solid var(--pj-border);padding-top:var(--sp-1)}'
+      + '.cal-today{background:none;border:0;color:var(--pj-primary);cursor:pointer;'
+      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2)}'
+      + '.cal-today:hover{text-decoration:underline}'
       + '.filterbar button{background:var(--pj-primary);color:#fff;'
       + 'border:1px solid var(--pj-primary);padding:7px var(--sp-4);'
       + 'border-radius:var(--radius-md);font-family:inherit;font-weight:600;'
@@ -1282,17 +1331,27 @@ ${embed ? '' : theme.topbar({
     </div>
     <div class="fld" id="date-fld-from">
       <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;" data-i18n="fFrom">${escapeHtml(t.fFrom)} <span id="date-opt-hint" style="color:var(--pj-text-muted);font-weight:400;text-transform:none;font-size:10px;">(ถ้าไม่ระบุ WO/Batch)</span></label>
-      <input type="text" name="dateFrom" id="dateFrom" class="dateinput"
-             value="${escapeAttr(fmtDate(selectedFrom))}"
-             placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
-             autocomplete="off" spellcheck="false" />
+      <div class="datewrap">
+        <input type="text" name="dateFrom" id="dateFrom" class="dateinput"
+               value="${escapeAttr(fmtDate(selectedFrom))}"
+               placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
+               autocomplete="off" spellcheck="false" />
+        <button type="button" class="datebtn" id="dateFrom-btn" data-for="dateFrom"
+                data-i18n-title="calOpen" title="${escapeAttr(t.calOpen)}"
+                aria-label="${escapeAttr(t.calOpen)}" aria-haspopup="dialog">${CAL_ICON}</button>
+      </div>
     </div>
     <div class="fld" id="date-fld-to">
       <label data-i18n="fTo">${escapeHtml(t.fTo)}</label>
-      <input type="text" name="dateTo" id="dateTo" class="dateinput"
-             value="${escapeAttr(fmtDate(selectedTo))}"
-             placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
-             autocomplete="off" spellcheck="false" />
+      <div class="datewrap">
+        <input type="text" name="dateTo" id="dateTo" class="dateinput"
+               value="${escapeAttr(fmtDate(selectedTo))}"
+               placeholder="dd/mm/yyyy" inputmode="numeric" maxlength="10"
+               autocomplete="off" spellcheck="false" />
+        <button type="button" class="datebtn" id="dateTo-btn" data-for="dateTo"
+                data-i18n-title="calOpen" title="${escapeAttr(t.calOpen)}"
+                aria-label="${escapeAttr(t.calOpen)}" aria-haspopup="dialog">${CAL_ICON}</button>
+      </div>
     </div>
     <button type="button" id="btnSearch" data-i18n="go">${escapeHtml(t.go)}</button>
   </div>
@@ -1393,6 +1452,191 @@ function _isoFromDateInput(el) {
   return y + '-' + ('0' + m).slice(-2) + '-' + ('0' + d).slice(-2);
 }
 
+// ── ปฏิทินของหน้านี้เอง (issue #45) ──────────────────────────────────────
+// เขียนเองแทนการยืมช่อง input แบบ date ของเบราว์เซอร์ เพราะตัวนั้นแสดงรูปแบบและปี
+// ตาม locale ของเครื่อง (en-US เห็น mm/dd/yyyy · th-TH เห็นปี พ.ศ.) บังคับไม่ได้
+//
+// กติกาที่ห้ามแตะ: ปฏิทิน "พิมพ์" ค่าเป็น dd/mm/yyyy ลงช่องข้อความเท่านั้น แล้วปล่อยให้
+// _isoFromDateInput เป็นด่านแปลงด่านเดียวเหมือนเดิม — ปุ่มค้นหาไม่เคยอ่านค่าจากปฏิทินตรง ๆ
+// สัญญา ISO ที่วิ่งต่อไปถึง SQL จึงไม่เปลี่ยนเลย
+(function() {
+  var openCal = null;   // { input, btn, box, y, m, focus }
+
+  function _p2(n) { return ('0' + n).slice(-2); }
+  function _ddmmyyyy(y, m, d) { return _p2(d) + '/' + _p2(m + 1) + '/' + y; }
+  function _L() { return I18N[LANG] || I18N.th || {}; }
+
+  // อ่านค่าที่อยู่ในช่องผ่านตัวแปลงตัวเดียวกับปุ่มค้นหา — ไม่ parse ซ้ำเอง
+  function _valueOf(input) {
+    var iso = _isoFromDateInput(input);
+    if (!iso) return null;                       // '' = ว่าง · null = อ่านไม่ออก
+    var p = iso.split('-');
+    return { y: +p[0], m: +p[1] - 1, d: +p[2] };
+  }
+
+  function _close(refocus) {
+    if (!openCal) return;
+    var cur = openCal;
+    openCal = null;
+    if (cur.box && cur.box.parentNode) cur.box.parentNode.removeChild(cur.box);
+    if (cur.btn) cur.btn.setAttribute('aria-expanded', 'false');
+    if (refocus && cur.input) cur.input.focus();
+  }
+
+  function _pick(y, m, d) {
+    var input = openCal && openCal.input;
+    if (!input) return;
+    input.value = _ddmmyyyy(y, m, d);
+    _close(true);
+    try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+  }
+
+  function _shift(days) {
+    if (!openCal) return;
+    var f = openCal.focus;
+    var dt = new Date(f.y, f.m, f.d + days);
+    openCal.y = dt.getFullYear();
+    openCal.m = dt.getMonth();
+    openCal.focus = { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate() };
+    _draw(true);
+  }
+
+  function _shiftMonth(delta) {
+    if (!openCal) return;
+    var dt = new Date(openCal.y, openCal.m + delta, 1);
+    openCal.y = dt.getFullYear();
+    openCal.m = dt.getMonth();
+    var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+    openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+    _draw(true);
+  }
+
+  function _mkBtn(cls, text, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.textContent = text;
+    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  // วาดใหม่ทั้งกล่องทุกครั้ง — เดือนหนึ่งไม่เกิน 42 ปุ่ม ถูกกว่าการไล่แก้ทีละใบ
+  function _draw(moveFocus) {
+    if (!openCal) return;
+    var t = _L();
+    var months = t.calMonths || [];
+    var dows   = t.calDow || [];
+    var box = openCal.box;
+    var sel = _valueOf(openCal.input);
+    var now = new Date();
+    var today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+
+    while (box.firstChild) box.removeChild(box.firstChild);
+
+    var head = document.createElement('div');
+    head.className = 'cal-head';
+    head.appendChild(_mkBtn('cal-nav', '‹', t.calPrev, function() { _shiftMonth(-1); }));
+    var title = document.createElement('div');
+    title.className = 'cal-title';
+    title.textContent = (months[openCal.m] || (openCal.m + 1)) + ' ' + openCal.y;
+    head.appendChild(title);
+    head.appendChild(_mkBtn('cal-nav', '›', t.calNext, function() { _shiftMonth(1); }));
+    box.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    for (var i = 0; i < 7; i++) {
+      var dow = document.createElement('div');
+      dow.className = 'cal-dow';
+      dow.textContent = dows[i] || '';
+      grid.appendChild(dow);
+    }
+
+    var first = new Date(openCal.y, openCal.m, 1);
+    var start = new Date(openCal.y, openCal.m, 1 - first.getDay());
+    var focusBtn = null;
+    for (var c = 0; c < 42; c++) {
+      var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + c);
+      var y = dt.getFullYear(), m = dt.getMonth(), d = dt.getDate();
+      var cls = 'cal-day';
+      if (m !== openCal.m) cls += ' muted';
+      if (y === today.y && m === today.m && d === today.d) cls += ' today';
+      var isSel = !!(sel && sel.y === y && sel.m === m && sel.d === d);
+      if (isSel) cls += ' sel';
+      var b = _mkBtn(cls, String(d), '', (function(yy, mm, dd) {
+        return function() { _pick(yy, mm, dd); };
+      })(y, m, d));
+      b.setAttribute('aria-label', _ddmmyyyy(y, m, d));
+      if (isSel) b.setAttribute('aria-current', 'date');
+      var isFocus = (y === openCal.focus.y && m === openCal.focus.m && d === openCal.focus.d);
+      b.tabIndex = isFocus ? 0 : -1;
+      if (isFocus) focusBtn = b;
+      grid.appendChild(b);
+    }
+    box.appendChild(grid);
+
+    var foot = document.createElement('div');
+    foot.className = 'cal-foot';
+    foot.appendChild(_mkBtn('cal-today', t.calToday || 'Today', '', function() {
+      _pick(today.y, today.m, today.d);
+    }));
+    box.appendChild(foot);
+
+    if (moveFocus !== false && focusBtn) focusBtn.focus();
+  }
+
+  function _open(input, btn) {
+    if (openCal && openCal.input === input) { _close(true); return; }
+    _close(false);
+    var box = document.createElement('div');
+    box.className = 'cal';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', _L().calOpen || 'Calendar');
+    box.addEventListener('keydown', _onKey);
+    input.parentNode.appendChild(box);
+
+    var now = new Date();
+    var view = _valueOf(input) || { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+    openCal = { input: input, btn: btn, box: box, y: view.y, m: view.m, focus: view };
+    btn.setAttribute('aria-expanded', 'true');
+    _draw(true);
+  }
+
+  function _onKey(e) {
+    if (!openCal) return;
+    var k = e.key;
+    if      (k === 'Escape')     { e.preventDefault(); _close(true); }
+    else if (k === 'ArrowLeft')  { e.preventDefault(); _shift(-1); }
+    else if (k === 'ArrowRight') { e.preventDefault(); _shift(1); }
+    else if (k === 'ArrowUp')    { e.preventDefault(); _shift(-7); }
+    else if (k === 'ArrowDown')  { e.preventDefault(); _shift(7); }
+    else if (k === 'PageUp')     { e.preventDefault(); _shiftMonth(-1); }
+    else if (k === 'PageDown')   { e.preventDefault(); _shiftMonth(1); }
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    if (!openCal) return;
+    if (openCal.box.contains(e.target) || openCal.btn.contains(e.target)) return;
+    _close(false);
+  });
+
+  var calBtns = document.querySelectorAll('.datebtn');
+  for (var bi = 0; bi < calBtns.length; bi++) {
+    (function(btn) {
+      btn.setAttribute('aria-expanded', 'false');
+      btn.addEventListener('click', function() {
+        if (btn.disabled) return;
+        var input = document.getElementById(btn.getAttribute('data-for'));
+        if (input) _open(input, btn);
+      });
+    })(calBtns[bi]);
+  }
+
+  // ให้ส่วนอื่นสั่งปิดได้ตอนช่องวันที่ถูกปิดใช้งาน (ผู้ใช้ระบุ WO/Batch แล้ว)
+  window.__closeDateCal = function() { _close(false); };
+})();
+
 // ── Search button — validate then AJAX fetch (no form submit / no reload) ─
 document.getElementById('btnSearch').addEventListener('click', function() {
   try {
@@ -1440,6 +1684,10 @@ document.getElementById('btnSearch').addEventListener('click', function() {
     if (fFrom) fFrom.style.opacity = hasEntity ? '0.45' : '1';
     if (fTo)   fTo.style.opacity   = hasEntity ? '0.45' : '1';
     if (hint)  hint.style.display  = hasEntity ? 'none' : '';
+    // ช่องวันที่จางลงแล้วปุ่มปฏิทินต้องกดไม่ได้ตามไปด้วย ไม่ใช่จางแต่ยังเปิดได้ (issue #45)
+    var calBtns = document.querySelectorAll('.datebtn');
+    for (var i = 0; i < calBtns.length; i++) calBtns[i].disabled = hasEntity;
+    if (hasEntity && window.__closeDateCal) window.__closeDateCal();
   }
 
   ef.addEventListener('input',   _updateDateHint);
@@ -1673,6 +1921,14 @@ window.addEventListener('resize', fixStickyHeader);
           errDateOrder:    '"ถึง" ต้องมาหลัง "ตั้งแต่" / "To" must be after "From"',
           errDateRange:    'กรุณาเลือกช่วงไม่เกิน 7 วัน / Date range must be ≤ 7 days',
           errDateFormat:   'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026 / Invalid date format',
+          // ปฏิทินของหน้านี้ (issue #45) — ปีเป็น ค.ศ. ให้ตรงกับช่องข้อความ ไม่ใช่ พ.ศ.
+          calOpen:   'เปิดปฏิทิน',
+          calPrev:   'เดือนก่อนหน้า',
+          calNext:   'เดือนถัดไป',
+          calToday:  'วันนี้',
+          calMonths: ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
+                      'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'],
+          calDow:    ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'],
         },
         en: {
           title: 'Work Order Status Tracking',
@@ -1719,6 +1975,13 @@ window.addEventListener('resize', fixStickyHeader);
           errDateOrder:    '"To" must be after "From" / "ถึง" ต้องมาหลัง "ตั้งแต่"',
           errDateRange:    'Date range must be ≤ 7 days / กรุณาเลือกช่วงไม่เกิน 7 วัน',
           errDateFormat:   'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026 / รูปแบบวันที่ไม่ถูกต้อง',
+          calOpen:   'Open calendar',
+          calPrev:   'Previous month',
+          calNext:   'Next month',
+          calToday:  'Today',
+          calMonths: ['January', 'February', 'March', 'April', 'May', 'June',
+                      'July', 'August', 'September', 'October', 'November', 'December'],
+          calDow:    ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
         },
       };
       return labels[lang] || labels.th;
