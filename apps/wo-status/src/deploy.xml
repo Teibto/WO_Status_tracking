@@ -17,9 +17,9 @@
         โฟลเดอร์ร่วมกันได้เพราะ deploy.xml ระบุไฟล์ตรงตัว — ชุดนี้ไม่แตะไฟล์ของอีกแอป
         ห้ามเติม path ของ WOCostTrace*.js ลงในไฟล์นี้ (เทส deploy manifest จับ)
 
-      ⚠ object customscript_wo_status_tracking ยังมีประเด็นสิทธิ์ที่ไม่ปิด (issue #24) —
-        deploy จาก repo ลง SB1 จะถอด runasrole=ADMINISTRATOR ที่บัญชีมีแต่ไฟล์นี้ไม่มีทิ้ง
-        ระหว่างนี้อัปเฉพาะไฟล์ด้วย `file:upload` อย่าใช้ `project:deploy` กับ SB1
+      ⚠ object customscript_wo_status_tracking ปิดประเด็นสิทธิ์แล้ว (issue #24 · 2026-09-12)
+        runasrole/audslctrole ว่าง + isonline=F ตรงกับ SB1 และ production — `project:deploy` ใช้ได้
+        ห้ามลบ <runasrole></runasrole> ที่เป็น element ว่างใน Objects/ ทิ้ง ไม่งั้นค่าในบัญชีจะไม่ถูกล้าง
 
       ⚠ ห้าม deploy production จาก repo นี้ — WOStatusTracking*.js ยังไม่เคยเทียบเนื้อหากับ
         ของบน production เลย (epic #7 ตัดสินว่ารอบนั้นไม่ reconcile) การยิงขึ้นบัญชีจริง
