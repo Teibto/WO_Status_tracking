@@ -90,6 +90,25 @@ eq('ปุ่มผูกกับช่องถึง',     /data-for="dateTo"
 eq('ปุ่มบอกหน้าที่ให้ screen reader',
   (form.match(/aria-label="[^"]*"[\s\S]{0,40}?aria-haspopup="dialog"/g) || []).length, 2);
 
+// ── CSS: ปุ่มปฏิทินต้องไม่โดนปุ่มค้นหาทับ (issue #45 — เจอบน SB1 ด้วยเบราว์เซอร์จริง) ──
+// อาการ: ทุกช่องวันเป็นปุ่มสีน้ำเงินทึบหมดทั้งตาราง เพราะ `.filterbar button{...}` เดิมเป็น
+// descendant selector (specificity 0,1,1) กวาดทุกปุ่มที่อยู่ใต้ .filterbar ไม่ว่าจะซ้อนลึก
+// แค่ไหน — ปุ่มปฏิทิน (.datebtn/.cal-nav/.cal-day/.cal-today) ที่อยู่ใน .fld > .datewrap
+// ก็โดนไปด้วย ชนะกฎ `background:none` ของตัวเอง (specificity 0,1,0) ทั้งที่ปุ่มค้นหา
+// (#btnSearch) เป็นลูกตรงของ .filterbar เท่านั้น (ตรวจ markup แล้ว — ดู WOStatusTracking.js)
+// เทสนี้จับที่ระดับข้อความ CSS: ถ้าใครย้อนกฎกลับไปเป็น descendant selector แบบเดิม ต้องแดง
+console.log('\n── CSS ปุ่มปฏิทินต้องไม่โดนปุ่มค้นหาทับ (issue #45 regression) ──');
+const styleBlock = (form.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '';
+eq('ไม่มี descendant selector `.filterbar button{` ที่กวาดทุกปุ่มใต้ตัวกรอง',
+  /\.filterbar\s+button\s*\{/.test(styleBlock), false);
+eq('กฎปุ่มค้นหาใช้ child combinator เจาะจงลูกตรงเท่านั้น (`.filterbar>button`)',
+  /\.filterbar\s*>\s*button\s*\{/.test(styleBlock), true);
+['.datebtn', '.cal-nav', '.cal-day', '.cal-today'].forEach((cls) => {
+  const re = new RegExp('\\' + cls + '\\{[^}]*background:\\s*none');
+  eq(cls + ' ยังประกาศ background:none ของตัวเองไว้ (ไม่ถูกกฎอื่นแทนที่ไปแล้ว)',
+    re.test(styleBlock), true);
+});
+
 console.log('\n── JS ฝั่งเบราว์เซอร์ต้อง parse ผ่าน ──');
 // เทสอื่นสแกน source ของโมดูลได้ แต่ JS ก้อนนี้อยู่ใน template string
 // พิมพ์ผิดจะรู้ตอนผู้ใช้เปิดหน้าเท่านั้น — parse ที่นี่ให้รู้ตอน npm test

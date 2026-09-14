@@ -203,11 +203,21 @@ define(
       + '.cal-today{background:none;border:0;color:var(--pj-primary);cursor:pointer;'
       + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2)}'
       + '.cal-today:hover{text-decoration:underline}'
-      + '.filterbar button{background:var(--pj-primary);color:#fff;'
+      // สาเหตุเดิม (บั๊กที่เจอบน SB1, issue #45): `.filterbar button{` เป็น descendant
+      // selector สปีซิฟิซิตี้ (0,1,1) ชนะกฎ background:none ของปฏิทิน (.datebtn/.cal-nav/
+      // .cal-day/.cal-today ทุกตัวสปีซิฟิซิตี้แค่ (0,1,0)) — ปุ่มปฏิทินทั้งหมดที่อยู่ลึกใน
+      // .fld > .datewrap จึงโดนทับเป็นพื้นน้ำเงินทึบไปด้วย ทั้งที่ตั้งใจสไตล์แค่ #btnSearch
+      // (ลูกตรงของ .filterbar) ตัวเดียว
+      // ทางแก้: เปลี่ยนเป็น `.filterbar>button` — child combinator "ไม่ได้" เพิ่ม
+      // สปีซิฟิซิตี้ (ยังเป็น 0,1,1 เท่าเดิม) แต่ "จำกัดขอบเขตที่เลือก" ให้แมตช์เฉพาะปุ่ม
+      // ที่เป็นลูกตรงของ .filterbar เท่านั้น (ตรวจ markup แล้วว่า #btnSearch เป็นลูกตรงจริง)
+      // ปุ่มปฏิทินที่ซ้อนอยู่ใน .fld > .datewrap จึงไม่ใช่ผู้สมัครของกฎนี้อีกต่อไป
+      // ไม่ต้องแข่งสปีซิฟิซิตี้ ไม่ต้องใช้ !important
+      + '.filterbar>button{background:var(--pj-primary);color:#fff;'
       + 'border:1px solid var(--pj-primary);padding:7px var(--sp-4);'
       + 'border-radius:var(--radius-md);font-family:inherit;font-weight:600;'
       + 'cursor:pointer;font-size:var(--fs-sm)}'
-      + '.filterbar button:hover{background:var(--pj-primary-dark)}'
+      + '.filterbar>button:hover{background:var(--pj-primary-dark)}'
       // KPI - คงคลาส .kpi เดิมไว้เพราะ markup มี data-i18n ผูกอยู่ แต่หน้าตาตาม .kpi-card
       // ต่างจาก template จุดเดียว: ค่าตัวใหญ่กว่า เพราะหน้านี้มี 4 การ์ด ไม่ใช่ 10
       + '.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));'
