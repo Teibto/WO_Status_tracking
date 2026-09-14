@@ -45,7 +45,12 @@ const FX = {
     { wo_id: 1001, sc_value: 1020186.59, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 },
     { wo_id: 1003, sc_value: 1100, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 }
   ],
-  'Cost ref ของสินค้าที่ผลิต': []
+  'Cost ref ของสินค้าที่ผลิต': [],
+  // flag = 'T' ทั้งคู่ — เทสไฟล์นี้ไม่ได้ทดสอบ issue #54 เอง แค่กันไม่ให้พฤติกรรมเดิมเปลี่ยนไป
+  'ต้นทุนต่อลังตามประเภทย่อยสินค้า': [
+    { item_id: 501, cost_per_carton_flag: 'T' },
+    { item_id: 502, cost_per_carton_flag: 'T' }
+  ]
 };
 
 // ── โหลด module ด้วย harness (stub · label hook · เปิดฟังก์ชันก์ภายใน) ──
