@@ -1529,6 +1529,46 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return (TH_MONTH[m - 1] || ym) + ' ' + asStr(ym).substring(0, 4);
   }
 
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "บริษัท" — เงื่อนไขเดียวกับ WO Status Tracking
+   * (WOStatusTracking.js:269) · ผ่าน runSQL ซึ่งมี try/catch ในตัวอยู่แล้ว พังแล้วคืน [] ไม่ทำหน้าล่ม
+   */
+  function qFilterSubsidiaries() {
+    return runSQL('ตัวกรอง — บริษัท', `SELECT id, name FROM subsidiary ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "อาคารผลิต" — เฉพาะ location ที่ตั้งเป็นอาคารผลิตจริง
+   * เงื่อนไขเดียวกับ WO Status Tracking (WOStatusTracking.js:279)
+   * ป้ายเปลี่ยนจาก "คลัง (id)" เป็น "อาคารผลิต" เพราะของจริงกรองแคบกว่าคลังทั้งหมด (issue #50)
+   */
+  function qFilterProductionPlants() {
+    return runSQL('ตัวกรอง — อาคารผลิต',
+      `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือกของ <select> จากแถว {id, name} — ทำ selected ให้ค่าที่ผูกมากับ query string
+   *
+   * ค่าที่ไม่อยู่ในลิสต์ (ลิงก์เก่า/bookmark ที่ id ไม่ตรงกับที่ query คืนมา เช่น loc เป็นคลัง
+   * ที่ไม่ใช่อาคารผลิต) **ห้ามหายเงียบ** — ถ้าปล่อยให้ browser เลือก option แรก ("ทั้งหมด") แทน
+   * ตัวเลขของรายงานจะเปลี่ยนโดยไม่มีใครรู้ (สัญญาของ param ข้อ 2 ใน #50)
+   * จึงเติมเป็นตัวเลือกชั่วคราวที่ถูกเลือกไว้ก่อน แสดง id ตรง ๆ โดยไม่ยิง query เพิ่มไปหาชื่อ
+   */
+  function selectOptions(rows, selected, allLabel, missingHint) {
+    const sel = asStr(selected);
+    let found = !sel;
+    const opts = (rows || []).map(r => {
+      const id = asStr(r.id);
+      if (id === sel) found = true;
+      return `<option value="${esc(id)}"${id === sel ? ' selected' : ''}>${esc(asStr(r.name))}</option>`;
+    });
+    if (sel && !found) {
+      opts.push(`<option value="${esc(sel)}" selected>${esc(missingHint + ' (id: ' + sel + ')')}</option>`);
+    }
+    return `<option value=""${sel ? '' : ' selected'}>${esc(allLabel)}</option>` + opts.join('');
+  }
+
   function renderSummaryForm(f) {
     const s = runtime.getCurrentScript();
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
@@ -1550,8 +1590,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       <br style="line-height:9px">
       <label>รหัสสินค้า</label> <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้" style="width:130px">
       &nbsp;<label>เลขที่ใบสั่งผลิต</label> <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่" style="width:140px">
-      &nbsp;<label>บริษัท (id)</label> <input type="text" name="sub" value="${esc(f.sub)}" style="width:50px">
-      &nbsp;<label>คลัง (id)</label> <input type="text" name="loc" value="${esc(f.loc)}" style="width:50px">
+      &nbsp;<label>บริษัท</label>
+      <select name="sub">${selectOptions(f.subRows, f.sub, '— ทุกบริษัท —', 'รหัสนี้ไม่อยู่ในรายชื่อบริษัท')}</select>
+      &nbsp;<label>อาคารผลิต</label>
+      <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
       &nbsp;<label>เรียงตาม</label>
       <select name="sort">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
       &nbsp;<label>ไม่เกิน</label> <input type="text" name="max" value="${esc(String(f.max))}" style="width:45px"> ใบ
@@ -2673,6 +2715,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นภาพรวม ───────────────────────────────────────────────────────
     if (!woKey) {
+      // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
+      // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
+      filters.subRows = qFilterSubsidiaries();
+      filters.locRows = qFilterProductionPlants();
       let sm;
       try {
         sm = buildSummary(filters);

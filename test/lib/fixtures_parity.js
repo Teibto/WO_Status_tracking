@@ -188,7 +188,10 @@ function summary() {
       wo_id: WO_ID, dl_oh_std: EXPECT.dl_oh_std, dl_oh_act: EXPECT.dl_oh_act,
       ca_docs: uniq(convRows.map((r) => r.ca_id)).length
     }],
-    'Cost ref ของสินค้าที่ผลิต': []
+    'Cost ref ของสินค้าที่ผลิต': [],
+    // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ไม่ผูกกับยอดต้นทุน แค่ให้ onRequest ยิงได้ไม่พัง
+    'ตัวกรอง — บริษัท': [{ id: 2, name: 'Foodstar' }],
+    'ตัวกรอง — อาคารผลิต': [{ id: 10, name: 'PD_B1' }]
   };
 }
 
