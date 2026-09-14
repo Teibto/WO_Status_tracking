@@ -68,6 +68,12 @@ const FX = {
       production_line: 'LINE5', item_id: 608, sub_id: 2,
       item_code: '20010100012', item_name: 'FG วัตถุดิบถูกนับซ้ำ', wo_qty: 180000,
       unit_name: 'BOTTLE', base_per_carton: 12 },
+    // 1013 = สินค้าที่ประเภทย่อยตั้งไว้ไม่คิดต่อลัง (issue #54) — มี base_per_carton จริง
+    // แต่ flag = 'F' ต้องชนะ: conversion = 1 → ต้นทุน/ลัง ต้องเท่าต้นทุน/หน่วยเป๊ะ
+    { wo_id: 1013, wo_no: 'WOFSC00000506', wo_date: '21/7/2026', wo_date_iso: '2026-07-21',
+      production_line: 'LINE6', item_id: 609, sub_id: 2,
+      item_code: '20010100013', item_name: 'FG ประเภทย่อยไม่คิดต่อลัง', wo_qty: 200,
+      unit_name: 'BOTTLE', base_per_carton: 20 },
     // บรรทัด mainline='T' ซ้ำของใบเดิม — ต้องถูกตัดออก ไม่งั้นยอดของใบนี้ถูกบวกสองครั้ง
     { wo_id: 1001, wo_no: 'WOFSC00000470', wo_date: '23/7/2026', wo_date_iso: '2026-07-23',
       wo_status: 'Released', production_line: 'LINE1', item_id: 501,
@@ -101,7 +107,9 @@ const FX = {
     { wo_id: 1011, woc_qty: 54000, woc_count: 9, woc_fg_count: 3, woc_sc_linked: 2, woc_in_range: 9,
       woc_last: '31/07/2026', woc_last_iso: '2026-07-31' },
     { wo_id: 1012, woc_qty: 165600, woc_count: 30, woc_fg_count: 10, woc_sc_linked: 10, woc_in_range: 30,
-      woc_last: '31/07/2026', woc_last_iso: '2026-07-31' }
+      woc_last: '31/07/2026', woc_last_iso: '2026-07-31' },
+    { wo_id: 1013, woc_qty: 200, woc_count: 1, woc_fg_count: 1, woc_sc_linked: 1, woc_in_range: 1,
+      woc_last: '21/07/2026', woc_last_iso: '2026-07-21' }
   ],
   'ภาพรวม — วัตถุดิบและบรรจุภัณฑ์': [
     { wo_id: 1001, rm_cost: 347651.01, doc_count: 1, item_count: 30 },
@@ -114,7 +122,8 @@ const FX = {
     { wo_id: 1010, rm_cost: 1000, doc_count: 10, item_count: 5 },
     { wo_id: 1011, rm_cost: 1000, doc_count: 3, item_count: 5 },
     // ใบเบิกใบเดียวสำหรับทั้ง 10 batch — ต้นตอที่ทำให้ยอดถูกนับซ้ำได้
-    { wo_id: 1012, rm_cost: 173138.54, doc_count: 1, item_count: 19 }
+    { wo_id: 1012, rm_cost: 173138.54, doc_count: 1, item_count: 19 },
+    { wo_id: 1013, rm_cost: 500, doc_count: 1, item_count: 1 }
   ],
   'ภาพรวม — ต้นทุนแปรสภาพ': [
     { wo_id: 1001, dl_oh_std: 70298.58, dl_oh_act: 70298.58, ca_docs: 1 },
@@ -122,7 +131,8 @@ const FX = {
     { wo_id: 1004, dl_oh_std: 21754, dl_oh_act: 21754, ca_docs: 1 },
     { wo_id: 1010, dl_oh_std: 500, dl_oh_act: 500, ca_docs: 10 },
     { wo_id: 1011, dl_oh_std: 300, dl_oh_act: 300, ca_docs: 3 },
-    { wo_id: 1012, dl_oh_std: 60710, dl_oh_act: 60710, ca_docs: 3 }
+    { wo_id: 1012, dl_oh_std: 60710, dl_oh_act: 60710, ca_docs: 3 },
+    { wo_id: 1013, dl_oh_std: 100, dl_oh_act: 100, ca_docs: 1 }
   ],
   // Cost ref — ค่าจริงของ record 17 บน SB1 คือ option 2 (Using Cost from Record)
   // ช่องต้นทุนเป็น 0 สองช่อง ที่เหลือว่าง (null) · header ครอบทั้งปี 2026 บริษัท 2
@@ -178,7 +188,24 @@ const FX = {
     // ปิดงาน 3 รอบ มีใบ summary cost 2 ใบ ผูกครบทั้งสองใบ = ไม่ซ้ำ แต่ขาดไป 1 รอบ
     { wo_id: 1011, sc_value: 1300, sc_docs: 2, sc_docs_valued: 2, sc_docs_orphan: 0 },
     // 9 x 179,396.34 + 174,539.54 = 1,789,106.60 (ค่าจริงบน SB1)
-    { wo_id: 1012, sc_value: 1789106.60, sc_docs: 10, sc_docs_valued: 10, sc_docs_orphan: 0 }
+    { wo_id: 1012, sc_value: 1789106.60, sc_docs: 10, sc_docs_valued: 10, sc_docs_orphan: 0 },
+    { wo_id: 1013, sc_value: 600, sc_docs: 1, sc_docs_valued: 1, sc_docs_orphan: 0 }
+  ],
+  // ธงคิดต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — 'T' ทุกตัวคงพฤติกรรมเดิมของเทสนี้ไว้
+  // ยกเว้น 609 ที่ตั้งใจให้เป็น 'F' (ทดสอบ conversion = 1 โดยเฉพาะ)
+  'ต้นทุนต่อลังตามประเภทย่อยสินค้า': [
+    { item_id: 501, cost_per_carton_flag: 'T' },
+    { item_id: 502, cost_per_carton_flag: 'T' },
+    { item_id: 503, cost_per_carton_flag: 'T' },
+    { item_id: 601, cost_per_carton_flag: 'T' },
+    { item_id: 602, cost_per_carton_flag: 'T' },
+    { item_id: 603, cost_per_carton_flag: 'T' },
+    { item_id: 604, cost_per_carton_flag: 'T' },
+    { item_id: 605, cost_per_carton_flag: 'T' },
+    { item_id: 606, cost_per_carton_flag: 'T' },
+    { item_id: 607, cost_per_carton_flag: 'T' },
+    { item_id: 608, cost_per_carton_flag: 'T' },
+    { item_id: 609, cost_per_carton_flag: 'F' }
   ]
 };
 
@@ -340,12 +367,29 @@ const fdef = T.readFilters({});
 eq('ไม่ส่งอะไรมา = เดือนปัจจุบันทั้งเดือน', fdef.from, fdef.month + '-01');
 
 console.log('\n── โครงผลลัพธ์ (บรรทัด mainline ซ้ำต้องถูกตัด) ──');
-eq('shown', sm.shown, 12);
-eq('total', sm.total, 12);
+eq('shown', sm.shown, 13);
+eq('total', sm.total, 13);
 eq('truncated', sm.truncated, false);
 eq('WOFSC00000470 โผล่ครั้งเดียว', sm.rows.filter(x => x.wo_no === 'WOFSC00000470').length, 1);
 let sumRm = 0; sm.rows.forEach(x => { sumRm += x.rm_cost; });
-eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 8 + 173138.54, 1e-8);
+eq('ผลรวมวัตถุดิบไม่ถูกนับซ้ำ', sumRm, 347651.01 + 1000 * 8 + 173138.54 + 500, 1e-8);
+
+// ── issue #54: ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง (flag = 'F') ──────────────
+console.log('\n── flag = F: ต้นทุน/ลัง ต้องเท่าต้นทุน/หน่วยเป๊ะ แม้มี base_per_carton จริง ──');
+const rf = sm.rows.filter(x => x.wo_no === 'WOFSC00000506')[0];
+eq('มี base_per_carton จริง (20) แต่ไม่ใช้', rf.base_per_carton, 20);
+eq('ธงที่พาออกมาคือ F', rf.cost_per_carton_flag, 'F');
+eq('cartons = ปริมาณที่ผลิตได้ (conversion = 1)', rf.cartons, rf.woc_qty, 1e-9);
+eq('ต้นทุน/ลัง เท่ากับต้นทุน/หน่วยเป๊ะ', rf.cost_per_carton, rf.cost_per_unit, 1e-12);
+eq('ห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton (ไม่เกี่ยวกันแล้ว)',
+  rf.notes.some(n => n.text.indexOf('ไม่ได้ตั้ง custitem_item_basepercarton') >= 0), false);
+eq('ต้องมีหมายเหตุอธิบายว่าทำไมเลขเท่ากับต่อหน่วย (ไม่ใช่ปล่อยให้ตัวเลขพูดเอง)',
+  rf.notes.some(n => n.cls === 'info' && n.text.indexOf('ไม่คิดต่อลัง') >= 0), true);
+
+console.log('\n── flag = T (ของเดิมทุกใบ): ตัวหารต้องไม่เปลี่ยนจากเดิม ──');
+// WOFSC00000470 ตั้งไว้ T — ตัวเลข cartons/cost_per_carton ต้อง "เท่าเดิมทุกตัว" ตามเช็คลิสต์ของ issue
+eq('WOFSC00000470 ยังพา flag T ออกมา', r.cost_per_carton_flag, 'T');
+eq('cartons ยังคิดจาก base_per_carton ตามเดิม (ไม่ใช่เปลี่ยนไปเป็น conversion 1)', r.cartons, 3339.083333, 1e-6);
 
 console.log('\n── render ต้องไม่ throw และมีลิงก์เจาะลึก ──');
 const html = T.renderSummaryPage(sm);
@@ -418,10 +462,30 @@ eq('ไม่กล่าวหาว่าจับคู่ไม่ได้'
 eq('บอกว่าอ่านไม่สำเร็จ', re1.notes.some(n => n.text.indexOf('อ่าน Cost ref ไม่สำเร็จ') >= 0), true);
 FX['Cost ref ของสินค้าที่ผลิต'] = FX_CR;
 
+// ── issue #54: จุดที่ต้องระวังที่สุด — อ่านธง flag ไม่ได้ (field ยังไม่ถูกสร้าง) ──
+// ทดสอบกับ WOFSC00000506 ที่ flag จริงเป็น 'F' โดยเจตนา — ถ้าโค้ดพลาดแล้วให้ "อ่านไม่ได้"
+// ตกไปทาง conversion 1 (เข้าใจผิดว่าเป็น F) เทสนี้จะจับได้ทันที เพราะค่าที่ควรได้คือคิดตามเดิม
+// (÷ base_per_carton = 20) ไม่ใช่ conversion 1 ที่บังเอิญให้คำตอบเหมือนกันโดยบังเอิญไม่ได้
+// (200/20 = 10 ≠ 200/1 = 200 — สองทางนี้ต้องต่างกันชัดเจนถึงจะพิสูจน์อะไรได้)
+console.log('\n── อ่านธง flag ไม่ได้ (field ยังไม่ถูกสร้าง) ต้องคิดตามเดิม ไม่ใช่ตกไปทาง conversion 1 ──');
+const FX_CPC = FX['ต้นทุนต่อลังตามประเภทย่อยสินค้า'];
+FX['ต้นทุนต่อลังตามประเภทย่อยสินค้า'] = 'THROW';
+const smNoFlag = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' }));
+const rnf = smNoFlag.rows.filter(x => x.wo_no === 'WOFSC00000506')[0];   // ใบที่ flag จริงคือ F
+eq('ไม่ตกไปทาง conversion 1 — คิดตามเดิมด้วย base_per_carton', rnf.cartons, 200 / 20, 1e-9);
+eq('ต้นทุน/ลัง ต้องไม่เท่าต้นทุน/หน่วย (ถ้าเท่า = พลาดไปทาง conversion 1)',
+  rnf.cost_per_carton === rnf.cost_per_unit, false);
+eq('ธงที่พาออกมาว่างเปล่า (ไม่ใช่ F ปลอม)', rnf.cost_per_carton_flag, '');
+eq('บอกว่าอ่านธงคิดต้นทุนต่อลังไม่ได้',
+  rnf.notes.some(n => n.text.indexOf('อ่านธงคิดต้นทุนต่อลัง') >= 0), true);
+eq('ห้ามขึ้นหมายเหตุ "ไม่คิดต่อลัง" ของเคส F จริง',
+  rnf.notes.some(n => n.cls === 'info' && n.text.indexOf('ไม่คิดต่อลัง') >= 0), false);
+FX['ต้นทุนต่อลังตามประเภทย่อยสินค้า'] = FX_CPC;
+
 console.log('\n── ตัด max แล้วต้องบอกว่าตัด ──');
 const sm2 = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31', max: '1' }));
 eq('shown', sm2.shown, 1);
-eq('total', sm2.total, 12);
+eq('total', sm2.total, 13);
 eq('truncated', sm2.truncated, true);
 eq('html แจ้งการตัด', T.renderSummaryPage(sm2).indexOf('แต่แสดงเพียง') > 0, true);
 

@@ -56,6 +56,10 @@ const ALIASES = {
   'ภาพรวม — Summary Cost Item': {
     required: ['wo_id', 'sc_value', 'sc_docs', 'sc_docs_valued', 'sc_docs_orphan'],
     numeric: ['sc_value', 'sc_docs', 'sc_docs_valued', 'sc_docs_orphan']
+  },
+  // ธง 'T'/'F' — ข้อความ ไม่ใช่ตัวเลข (issue #54) จึงไม่มี `numeric`
+  'ต้นทุนต่อลังตามประเภทย่อยสินค้า': {
+    required: ['item_id', 'cost_per_carton_flag']
   }
 };
 

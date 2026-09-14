@@ -287,6 +287,78 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     `);
   }
 
+  const COST_PER_CARTON_FLAG_LABEL = 'ต้นทุนต่อลังตามประเภทย่อยสินค้า';
+
+  /**
+   * ธงคิดต้นทุนต่อลังจากประเภทย่อยสินค้า (issue #54)
+   *
+   * `cseg_subitemtype` เป็น custom segment บน item (ไม่ใช่ `custitem_*`) — join ไปที่
+   * `customrecord_cseg_subitemtype` เพื่ออ่าน `custrecord_subitemtype_r_costpercarton`
+   * (checkbox 'T'/'F') · ยืนยันแล้วว่าตาราง master ยิง SuiteQL ได้จริงบน SB1 (คอมเมนต์ #54)
+   * แต่ยังไม่มีใครยืนยันว่า admin สร้าง checkbox ตัวนี้แล้วหรือยัง
+   *
+   * ⚠ แยกเป็น query ของตัวเอง ไม่รวมเข้า `qItems`/`qSummaryWOs` โดยตั้งใจ — ถ้า field
+   * ยังไม่ถูกสร้างจริง SELECT คอลัมน์นี้ error **ทั้งคำสั่ง** ไม่ใช่คืนค่าว่าง ถ้ารวมอยู่
+   * query เดียวกับ average cost/base_per_carton จะทำให้ข้อมูลหลักของสินค้าทุกตัวหายไป
+   * ทั้งชุดตามไปด้วย — รูปแบบเดียวกับ `qCostRef` ด้านบนที่แยก query เผื่อ record ที่ยังไม่พร้อม
+   *
+   * คืน `{ byItem, failed }` — `failed=true` เฉพาะตอนคำสั่งพังจริง (ผ่าน QLOG diff
+   * แบบเดียวกับ `qCostRef`) ไม่ใช่ตอนที่สินค้าแค่ไม่มีแถวจับคู่ (ไม่ได้ตั้ง `cseg_subitemtype`)
+   * แยกสองเคสนี้ให้ชัดเจน เพราะทั้งคู่ต้อง "คิดตามเดิม + ขึ้นหมายเหตุ" เหมือนกัน
+   * แต่ **ห้ามมีเคสไหนตกไปทาง conversion 1** (ดู `costPerCartonEff` ด้านล่าง)
+   */
+  function qCostPerCartonFlags(itemIds) {
+    if (!itemIds.length) return { byItem: {}, failed: false };
+    const at = QLOG.length;
+    const rows = runSQL(COST_PER_CARTON_FLAG_LABEL, `
+      SELECT I.id                                            AS item_id,
+             S.custrecord_subitemtype_r_costpercarton        AS cost_per_carton_flag
+      FROM item I
+      LEFT JOIN customrecord_cseg_subitemtype S ON S.id = I.cseg_subitemtype
+      WHERE I.id IN (${inList(itemIds)})
+    `);
+    let failed = false;
+    for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
+    const byItem = {};
+    rows.forEach(r => { byItem[asStr(r.item_id)] = asStr(r.cost_per_carton_flag); });
+    // log.audit ให้เห็นจาก Script Execution Log โดยไม่ต้องถามแอดมินว่า checkbox ถูกสร้างหรือยัง
+    log.audit({
+      title: COST_PER_CARTON_FLAG_LABEL,
+      details: failed
+        ? 'อ่านไม่ได้ (' + itemIds.length + ' รายการที่ขอ) — custrecord_subitemtype_r_costpercarton '
+          + 'อาจยังไม่ถูกสร้างบนบัญชีนี้ · คิดต้นทุนต่อลังตามเดิมทั้งชุด'
+        : 'อ่านได้ ' + rows.length + ' จาก ' + itemIds.length + ' รายการ'
+    });
+    return { byItem: byItem, failed: failed };
+  }
+
+  /**
+   * ตัวหารต้นทุนต่อลังที่ใช้จริง (issue #54) — คิดครั้งเดียวที่นี่ แล้วปล่อยให้ปลายทาง
+   * (flushGroup / unitCell / SUMMARY_EXPORT_COLS / renderTotals) ใช้ `cartons` ตามเดิม
+   *
+   *   flag 'T'        → คิดตามเดิม (÷ custitem_item_basepercarton)
+   *   flag 'F'        → conversion = 1 (ไม่คิดต่อลัง)
+   *   อ่านไม่ได้/ไม่ได้ตั้ง → คิดตามเดิม + หมายเหตุ — ห้ามตกไปทาง conversion 1 เด็ดขาด
+   *     (เลขต่อลังที่ผิดมองออกด้วยตา แต่ conversion 1 จาก flag อ่านไม่ได้แยกไม่ออกจาก
+   *     สินค้าที่ตั้งใจไม่คิดต่อลัง — กับดักเดียวกับ subsidiary ว่าง = fail-open ของ BomRestrict)
+   */
+  function costPerCartonEff(bpc, flags, itemId) {
+    const f = flags || { byItem: {}, failed: false };
+    if (f.failed) {
+      return {
+        bpcEff: bpc, flag: '',
+        note: { cls: 'warn', text: 'อ่านธงคิดต้นทุนต่อลัง (ประเภทย่อยสินค้า) ไม่ได้ — คิดต้นทุนต่อลังตามเดิม' }
+      };
+    }
+    const flag = asStr(f.byItem[asStr(itemId)]);
+    if (flag === 'F') return { bpcEff: 1, flag: flag, note: null };
+    if (flag === 'T') return { bpcEff: bpc, flag: flag, note: null };
+    return {
+      bpcEff: bpc, flag: flag,
+      note: { cls: 'warn', text: 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม' }
+    };
+  }
+
   /**
    * ledger เข้า-ออกของสินค้า — ใช้พิสูจน์ average cost
    * ค่าเฉลี่ยเคลื่อนที่ = ผลรวมมูลค่า / ผลรวมปริมาณ (คิดเครื่องหมาย)
@@ -1145,8 +1217,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ต้องรวม component ใน BOM ด้วย ไม่งั้น item ที่โผล่จาก BOM เท่านั้นจะไม่มี average cost
     // ให้เทียบ แล้วรายงานจะฟ้องว่า "ไม่ตรง" ทั้งที่จริงคือไม่มีข้อมูลมาเทียบ
-    qItems(uniq(allItemIds.concat(bomRows.map(r => r.comp_item))))
-      .forEach(r => { ctx.itemById[asStr(r.item_id)] = r; });
+    const itemIdsForFlags = uniq(allItemIds.concat(bomRows.map(r => r.comp_item)));
+    qItems(itemIdsForFlags).forEach(r => { ctx.itemById[asStr(r.item_id)] = r; });
+    // ต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — ใช้ item id ชุดเดียวกับ qItems ข้างบน
+    ctx.cpcFlags = qCostPerCartonFlags(itemIdsForFlags);
 
     // ledger ดึงให้ทั้งวัตถุดิบใน WO ต้นทาง และ component ใน BOM
     const ledgerIds = uniq(
@@ -1325,6 +1399,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // Cost ref ดึงตามสินค้า (ไม่ใช่ตามใบ) แล้วจับคู่บริษัท/วันที่ของแต่ละใบใน JS
     const crAll = qCostRef(uniq(use.map(r => r.item_id)));
     const crByItem = groupBy(crAll.rows, 'item_id');
+    // ต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — ต้องใช้แหล่งเดียวกับชั้นเจาะลึก
+    // (`qCostPerCartonFlags` ที่ `ctx.cpcFlags` ใช้) ไม่งั้นสองชั้นได้ตัวหารไม่เท่ากัน
+    const cpcFlags = qCostPerCartonFlags(uniq(use.map(r => r.item_id)));
 
     const rows = use.map(h => {
       const id = asStr(h.wo_id);
@@ -1333,7 +1410,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const dlOh = asNum((conv[id] || {}).dl_oh_std);
       const cost = rmCost + dlOh;
       const bpc = asNum(h.base_per_carton);
-      const cartons = bpc ? wocQty / bpc : 0;
+      // ธงคิดต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — ตัดสินตัวหารที่ใช้จริงครั้งเดียวที่นี่
+      const cpc = costPerCartonEff(bpc, cpcFlags, h.item_id);
+      const bpcEff = cpc.bpcEff;
+      const cartons = bpcEff ? wocQty / bpcEff : 0;
       const scValue = asNum((sc[id] || {}).sc_value);
       const scDocs = asNum((sc[id] || {}).sc_docs);
       const scDocsValued = asNum((sc[id] || {}).sc_docs_valued);
@@ -1387,7 +1467,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + ' ใบ summary cost — นับเกิน ' + fmt(over, 2)
           + ' คิดเป็น ' + fmt(over / scGap * 100, 1) + '% ของผลต่าง · ประเด็นฝั่งสร้างเอกสาร' });
       }
-      if (!bpc) notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      // flag = F ไม่คิดต่อลังตั้งใจ — ห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton (ไม่เกี่ยวกันแล้ว)
+      if (cpc.flag !== 'F' && !bpc) notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      if (cpc.note) notes.push(cpc.note);
+      // F ไม่ใช่ปัญหา — แต่ถ้าไม่บอกไว้ คนอ่าน Excel/หน้าเว็บจะเห็นต้นทุน/ลัง = ต้นทุน/หน่วยเฉย ๆ
+      // แล้วเข้าใจผิดว่าเป็นบั๊ก จึงต้องมีคำอธิบายกำกับไว้เสมอ (ไม่ใช่แค่ปล่อยให้ตัวเลขพูดเอง)
+      if (cpc.flag === 'F') {
+        notes.push({ cls: 'info', text: 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — ต้นทุน/ลัง = ต้นทุน/หน่วย (conversion = 1)' });
+      }
 
       return {
         wo_id: id,
@@ -1411,6 +1498,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         dl_oh_cost: dlOh,
         cost: cost,
         base_per_carton: bpc,
+        cost_per_carton_flag: cpc.flag,
         cartons: cartons,
         // ตัวหารเป็นศูนย์ = ยังไม่ปิดงานผลิต ต้องคืน null ให้หน้ารายงานขึ้นว่า "ยังไม่มี"
         // ไม่ใช่ 0 ซึ่งอ่านเป็น "ต้นทุนศูนย์"
@@ -1904,8 +1992,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + 'ตัด classification 1 (WIP) ออกเพราะเป็นยอดรวมไม่ใช่องค์ประกอบ</td></tr>'
       + '<tr><td>ต้นทุน/หน่วย</td><td>(วัตถุดิบ + แปรสภาพ) ÷ ปริมาณที่ผลิตได้จริงจาก WOC '
       + '<b>ไม่ใช่</b>จำนวนที่สั่งผลิต · ใบที่ยังไม่มี WOC จึงยังคิดไม่ได้</td></tr>'
-      + '<tr><td>ต้นทุน/ลัง</td><td>(วัตถุดิบ + แปรสภาพ) ÷ (ผลิตได้จริง ÷ '
-      + '<code>custitem_item_basepercarton</code> ของสินค้านั้น)</td></tr>'
+      + '<tr><td>ต้นทุน/ลัง</td><td>ตัวหารตัดสินโดยธง <b>คิดต้นทุนต่อลัง</b> ที่ประเภทย่อยสินค้า '
+      + '(<code>customrecord_cseg_subitemtype</code>) — ตั้งไว้จึงหารด้วย '
+      + '<code>custitem_item_basepercarton</code> ตามเดิม · ไม่ตั้งจึง conversion = 1 '
+      + '(ต้นทุน/ลัง = ต้นทุน/หน่วย) · อ่านธงนี้ไม่ได้หรือสินค้าไม่ได้ตั้งประเภทย่อยไว้ '
+      + 'คิดตามเดิมและขึ้นหมายเหตุในหน้าเจาะลึก</td></tr>'
       + '<tr><td>ผลต่าง</td><td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ) · ต้องเป็นศูนย์ '
       + 'ส่วนต่างเท่าไหร่ค้างอยู่ในบัญชีงานระหว่างทำเท่านั้น กดเจาะลึกเพื่อดูว่าเกิดที่เอกสารใบไหน</td></tr>'
       + '</table></div>';
@@ -2054,7 +2145,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const fg = s.fg || {};
     const fgItem = ctx.itemById[asStr(fg.item_id)] || {};
     const bpc = asNum(fgItem.base_per_carton);
-    const cartons = bpc ? s.produced / bpc : 0;
+    // ธงคิดต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — แหล่งเดียวกับชั้นภาพรวม
+    const cpc = costPerCartonEff(bpc, ctx.cpcFlags, fg.item_id);
+    const bpcEff = cpc.bpcEff;
+    const cartons = bpcEff ? s.produced / bpcEff : 0;
     const unit = asStr(fg.unit_name);
 
     let h = `<table><tr><th>องค์ประกอบต้นทุน</th><th class="n">มูลค่ารวม</th>
@@ -2066,16 +2160,24 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     h += `<tr class="grand"><td>วัตถุดิบและบรรจุภัณฑ์ + ต้นทุนแปรสภาพ</td>` + numCell(total, 2)
       + numCell(rmU + cvU, 8) + `<td>÷ ผลิตได้จริง ${esc(fmt(s.produced, 4))} ${esc(unit)}</td></tr>`;
 
-    // ต่อลัง — จำนวนลัง = ผลิตได้จริง ÷ จำนวนหน่วยต่อลังของสินค้า
-    if (bpc) {
+    // ต่อลัง — จำนวนลัง = ผลิตได้จริง ÷ ตัวหารที่ใช้จริง (ดู costPerCartonEff)
+    // ใช้ bpcEff คุมเงื่อนไข ไม่ใช่ bpc ดิบ — ไม่งั้นสินค้า flag F ที่ไม่ได้ตั้ง basepercarton
+    // จะตกไปโชว์ข้อความ "คำนวณต้นทุนต่อลังไม่ได้" ทั้งที่จริงคำนวณได้ (conversion = 1)
+    if (bpcEff) {
+      const srcText = cpc.flag === 'F'
+        ? 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)'
+        : `ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpcEff, 4))} (<code>custitem_item_basepercarton</code>)`;
       h += `<tr><td>จำนวนลังที่ผลิตได้</td>` + numCell(cartons, 6) + '<td class="n z"></td>'
-        + `<td>ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpc, 4))} (<code>custitem_item_basepercarton</code>)</td></tr>`;
+        + `<td>${srcText}</td></tr>`;
       h += `<tr class="grand"><td>ต้นทุนต่อลัง</td>` + numCell(total, 2)
         + numCell(cartons ? total / cartons : 0, 8)
         + `<td>(วัตถุดิบ + แปรสภาพ) ÷ จำนวนลัง</td></tr>`;
     } else {
       h += '<tr><td colspan="4" class="warn">สินค้านี้ไม่ได้ตั้งค่า '
         + '<code>custitem_item_basepercarton</code> จึงคำนวณต้นทุนต่อลังไม่ได้</td></tr>';
+    }
+    if (cpc.note) {
+      h += `<tr><td colspan="4" class="${esc(cpc.note.cls)}">${esc(cpc.note.text)}</td></tr>`;
     }
     return h + '</table>';
   }
