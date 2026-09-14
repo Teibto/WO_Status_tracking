@@ -16,12 +16,13 @@ const FX = {
     // ปกติ ปิดงานแล้ว ตั้ง basepercarton ครบ
     { wo_id: 1001, wo_no: 'WOFSC00000470', wo_date: '23/7/2026', wo_date_iso: '2026-07-23',
       item_id: 501, item_code: '11010900010', item_name: 'FG ส้ม 300 มล. <ขวด>', wo_qty: 163000,
-      sub_id: 2, unit_name: 'BOTTLE', base_per_carton: 48 },
+      sub_id: 2, unit_name: 'BOTTLE', base_per_carton: 48, production_line: 'LINE01' },
     // ยังไม่ปิดงานผลิต → ต้นทุน/หน่วยและต้นทุน/ลังเป็น null
     { wo_id: 1002, wo_no: 'WOFSC00000471', wo_date: '24/7/2026', wo_date_iso: '2026-07-24',
       item_id: 501, item_code: '11010900010', item_name: 'FG ส้ม 300 มล.', wo_qty: 50000,
       sub_id: 2, unit_name: 'BOTTLE', base_per_carton: 48 },
     // ไม่ได้ตั้ง basepercarton → ตัวหารเป็นศูนย์ ต้องไม่กลายเป็น Infinity ในไฟล์
+    // และไม่ได้ตั้งไลน์ผลิต → ต้องเป็นช่องว่าง ไม่ใช่ null/undefined
     { wo_id: 1003, wo_no: 'WOFSC00000480', wo_date: '25/7/2026', wo_date_iso: '2026-07-25',
       item_id: 502, item_code: '11010900099', item_name: 'FG ไม่ตั้ง basepercarton', wo_qty: 1000,
       sub_id: 2, unit_name: 'BOTTLE', base_per_carton: null }
@@ -87,6 +88,13 @@ eq('ผลต่าง', row470[col('ผลต่าง')], 1020186.59 - 417949.
 eq('ห้ามมีเครื่องหมายคั่นหลักในช่องตัวเลข',
   d.rows.some(r => typeof r[col('รวมต้นทุน')] === 'string' && r[col('รวมต้นทุน')].indexOf(',') >= 0), false);
 
+console.log('\n── ไลน์ผลิต ต่อจากชื่อสินค้า (#51) ──');
+eq('หัวตารางมีไลน์ผลิตต่อจากชื่อสินค้า',
+  gridHeads[gridHeads.indexOf('ชื่อสินค้า') + 1], 'ไลน์ผลิต');
+eq('หัวไฟล์ Excel มีไลน์ผลิตต่อจากชื่อสินค้าตำแหน่งเดียวกัน',
+  d.headers[d.headers.indexOf('ชื่อสินค้า') + 1], 'ไลน์ผลิต');
+eq('ใบที่ตั้งไลน์ผลิตแสดงค่าจริง', row470[col('ไลน์ผลิต')], 'LINE01');
+
 console.log('\n── ช่องที่คิดไม่ได้ต้องว่าง ไม่ใช่ 0 / NaN / Infinity ──');
 const row471 = d.rows.filter(r => r[0] === 'WOFSC00000471')[0];   // ยังไม่ปิดงานผลิต
 eq('ต้นทุน/หน่วยว่าง', row471[col('ต้นทุน/หน่วย')], '');
@@ -94,6 +102,7 @@ eq('ต้นทุน/ลังว่าง', row471[col('ต้นทุน/�
 eq('วันปิดงานผลิตว่าง', row471[col('ปิดงานผลิต')], '');
 const row480 = d.rows.filter(r => r[0] === 'WOFSC00000480')[0];   // ไม่ตั้ง basepercarton
 eq('ต้นทุน/ลังว่างเมื่อไม่ตั้ง basepercarton', row480[col('ต้นทุน/ลัง')], '');
+eq('ใบที่ไม่ได้ตั้งไลน์ผลิตเป็นช่องว่าง ไม่ใช่ null/-', row471[col('ไลน์ผลิต')], '');
 eq('แต่ต้นทุน/หน่วยยังคิดได้', row480[col('ต้นทุน/หน่วย')], 1100 / 900, 1e-12);
 const flat = d.rows.reduce((a, r) => a.concat(r), []);
 eq('ไม่มี NaN', flat.some(v => typeof v === 'number' && isNaN(v)), false);

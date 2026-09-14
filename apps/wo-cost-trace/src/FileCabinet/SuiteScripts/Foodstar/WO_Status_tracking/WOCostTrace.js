@@ -1529,6 +1529,46 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return (TH_MONTH[m - 1] || ym) + ' ' + asStr(ym).substring(0, 4);
   }
 
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "บริษัท" — เงื่อนไขเดียวกับ WO Status Tracking
+   * (WOStatusTracking.js:269) · ผ่าน runSQL ซึ่งมี try/catch ในตัวอยู่แล้ว พังแล้วคืน [] ไม่ทำหน้าล่ม
+   */
+  function qFilterSubsidiaries() {
+    return runSQL('ตัวกรอง — บริษัท', `SELECT id, name FROM subsidiary ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "อาคารผลิต" — เฉพาะ location ที่ตั้งเป็นอาคารผลิตจริง
+   * เงื่อนไขเดียวกับ WO Status Tracking (WOStatusTracking.js:279)
+   * ป้ายเปลี่ยนจาก "คลัง (id)" เป็น "อาคารผลิต" เพราะของจริงกรองแคบกว่าคลังทั้งหมด (issue #50)
+   */
+  function qFilterProductionPlants() {
+    return runSQL('ตัวกรอง — อาคารผลิต',
+      `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือกของ <select> จากแถว {id, name} — ทำ selected ให้ค่าที่ผูกมากับ query string
+   *
+   * ค่าที่ไม่อยู่ในลิสต์ (ลิงก์เก่า/bookmark ที่ id ไม่ตรงกับที่ query คืนมา เช่น loc เป็นคลัง
+   * ที่ไม่ใช่อาคารผลิต) **ห้ามหายเงียบ** — ถ้าปล่อยให้ browser เลือก option แรก ("ทั้งหมด") แทน
+   * ตัวเลขของรายงานจะเปลี่ยนโดยไม่มีใครรู้ (สัญญาของ param ข้อ 2 ใน #50)
+   * จึงเติมเป็นตัวเลือกชั่วคราวที่ถูกเลือกไว้ก่อน แสดง id ตรง ๆ โดยไม่ยิง query เพิ่มไปหาชื่อ
+   */
+  function selectOptions(rows, selected, allLabel, missingHint) {
+    const sel = asStr(selected);
+    let found = !sel;
+    const opts = (rows || []).map(r => {
+      const id = asStr(r.id);
+      if (id === sel) found = true;
+      return `<option value="${esc(id)}"${id === sel ? ' selected' : ''}>${esc(asStr(r.name))}</option>`;
+    });
+    if (sel && !found) {
+      opts.push(`<option value="${esc(sel)}" selected>${esc(missingHint + ' (id: ' + sel + ')')}</option>`);
+    }
+    return `<option value=""${sel ? '' : ' selected'}>${esc(allLabel)}</option>` + opts.join('');
+  }
+
   function renderSummaryForm(f) {
     const s = runtime.getCurrentScript();
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
@@ -1550,8 +1590,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       <br style="line-height:9px">
       <label>รหัสสินค้า</label> <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้" style="width:130px">
       &nbsp;<label>เลขที่ใบสั่งผลิต</label> <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่" style="width:140px">
-      &nbsp;<label>บริษัท (id)</label> <input type="text" name="sub" value="${esc(f.sub)}" style="width:50px">
-      &nbsp;<label>คลัง (id)</label> <input type="text" name="loc" value="${esc(f.loc)}" style="width:50px">
+      &nbsp;<label>บริษัท</label>
+      <select name="sub">${selectOptions(f.subRows, f.sub, '— ทุกบริษัท —', 'รหัสนี้ไม่อยู่ในรายชื่อบริษัท')}</select>
+      &nbsp;<label>อาคารผลิต</label>
+      <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
       &nbsp;<label>เรียงตาม</label>
       <select name="sort">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
       &nbsp;<label>ไม่เกิน</label> <input type="text" name="max" value="${esc(String(f.max))}" style="width:45px"> ใบ
@@ -1626,7 +1668,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const groupByItem = sm.filters.sort === 'item';
 
     let h = `<div class="scroll"><table><thead><tr>
-      <th>ใบสั่งผลิต</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
+      <th>ใบสั่งผลิต</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ไลน์ผลิต</th>
       <th class="n">สั่งผลิต</th><th class="n">ผลิตได้ (WOC)</th>
       <th class="n">วัตถุดิบ</th><th class="n">แปรสภาพ (DL+OH)</th><th class="n">รวมต้นทุน</th>
       <th class="n">ต้นทุน/หน่วย</th><th class="n">ต้นทุน/ลัง</th>
@@ -1638,7 +1680,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const cpu = g.woc ? g.cost / g.woc : null;
       const cpc = g.cartons ? g.cost / g.cartons : null;
       const gPartial = partialCostNote(g.rm, g.cost);
-      h += `<tr class="sub"><td colspan="5">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
+      h += `<tr class="sub"><td colspan="6">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
         + numCell(g.wo_qty, 4) + numCell(g.woc, 4)
         + numCell(g.rm, 2) + numCell(g.dl, 2) + numCell(g.cost, 2)
         + unitCell(cpu, 8, gPartial) + unitCell(cpc, 8, gPartial)
@@ -1672,6 +1714,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + `<td>${r.woc_last ? esc(r.woc_last) : '<span class="miss">ยังไม่ปิด</span>'}</td>`
         + `<td>${itemLink(r.item_id, r.item_code)}</td>`
         + `<td>${esc(r.item_name)}</td>`
+        + `<td>${esc(r.production_line)}</td>`
         + numCell(r.wo_qty, 4) + numCell(r.woc_qty, 4)
         + numCell(r.rm_cost, 2) + numCell(r.dl_oh_cost, 2) + numCell(r.cost, 2)
         + unitCell(r.cost_per_unit, 8, partialCostNote(r.rm_cost, r.cost))
@@ -1685,7 +1728,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ต้นทุนต่อหน่วยของหลายสินค้ารวมกันไม่มีความหมาย — แถวรวมท้ายตารางจึงไม่แสดงช่องนั้น
     const items = uniq(sm.rows.map(r => r.item_code)).length;
     const tCpu = items === 1 && t.woc ? t.cost / t.woc : null;
-    h += `<tr class="grand"><td colspan="5">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
+    h += `<tr class="grand"><td colspan="6">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
       + numCell(t.wo_qty, 4) + numCell(t.woc, 4)
       + numCell(t.rm, 2) + numCell(t.dl, 2) + numCell(t.cost, 2)
       + (items === 1 ? unitCell(tCpu, 8, partialCostNote(t.rm, t.cost)) : '<td class="n z">—</td>')
@@ -1710,6 +1753,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     { head: 'ปิดงานผลิต', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.woc_last_iso) },
     { head: 'รหัสสินค้า', w: 15, get: r => asStr(r.item_code) },
     { head: 'ชื่อสินค้า', w: 34, get: r => asStr(r.item_name) },
+    { head: 'ไลน์ผลิต', w: 16, get: r => asStr(r.production_line) },
     { head: 'สั่งผลิต', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.wo_qty) },
     { head: 'ผลิตได้ (WOC)', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.woc_qty) },
     { head: 'วัตถุดิบ', w: 14, fmt: '#,##0.00', get: r => xlNum(r.rm_cost) },
@@ -2671,6 +2715,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นภาพรวม ───────────────────────────────────────────────────────
     if (!woKey) {
+      // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
+      // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
+      filters.subRows = qFilterSubsidiaries();
+      filters.locRows = qFilterProductionPlants();
       let sm;
       try {
         sm = buildSummary(filters);
