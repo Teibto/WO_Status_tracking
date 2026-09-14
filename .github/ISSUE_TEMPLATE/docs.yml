@@ -1,0 +1,71 @@
+name: "📚 Docs"
+description: "เปลี่ยนเอกสารอย่างเดียว"
+title: "[Docs] "
+labels: ["documentation"]
+body:
+  - type: textarea
+    id: work
+    attributes:
+      label: "งาน"
+    validations:
+      required: true
+  - type: textarea
+    id: reason
+    attributes:
+      label: "เหตุผล"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "ขอบเขต"
+    validations:
+      required: true
+  - type: textarea
+    id: done
+    attributes:
+      label: "เช็คว่าเสร็จ"
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: "Area/module ที่เป็นเจ้าของงาน เช่น MRP, PWOC, MES, WMS หรือ Cross-module"
+    validations:
+      required: true
+  - type: dropdown
+    id: change_risk
+    attributes:
+      label: Change risk
+      description: "ความเสี่ยงจากการ merge/deploy ไม่ใช่ Severity หรือ Delivery Health"
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: dropdown
+    id: primary_executor
+    attributes:
+      label: Primary executor
+      options:
+        - Human
+        - Claude Code
+        - Codex
+        - Grok
+        - Mixed
+    validations:
+      required: true
+  - type: textarea
+    id: shared_resource_claims
+    attributes:
+      label: Shared-resource claims
+      description: >-
+        Account/SB, subsidiary, location, setup record, deploy file,
+        QA browser หรือ none
+      value: "none"
+    validations:
+      required: true

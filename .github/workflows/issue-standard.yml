@@ -1,0 +1,104 @@
+# canonical: Teibto/teibto-dev-standards/templates/issue-standard/workflows/issue-standard.yml
+# เปลี่ยน ISSUE_PROFILE ได้เป็น generic|delivery|netsuite|erp|intake; ห้ามแก้กฎ validator ที่ไฟล์นี้
+# @author Wichit Wongta @since 2026-08-18
+name: issue-standard
+
+on:
+  issues:
+    types: [opened, edited, labeled, unlabeled]
+
+permissions:
+  contents: read
+  issues: write
+
+env:
+  ISSUE_PROFILE: netsuite
+
+jobs:
+  validate:
+    # WO_Status_tracking เป็น repo public (ยืนยันด้วย `gh repo view` วันนี้) — ต้นฉบับกลาง
+    # (ns-foodstar-9751184/.github/workflows/issue-standard.yml) สั่งห้ามใช้ self-hosted กับ repo
+    # public ไว้ตรง ๆ เพราะ issue จากคนนอก/fork จะรันโค้ดบนเครื่องทีมได้ จึงคง `ubuntu-latest`
+    # ตามบรรทัดที่ต้นฉบับเว้นทางไว้ให้ ไม่ใช่ [self-hosted, teibto-devtools]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Validate issue schema
+        id: validate
+        shell: bash
+        run: |
+          set +e
+          python .github/scripts/issue-standard.py validate \
+            --event "${GITHUB_EVENT_PATH}" \
+            --profile "${ISSUE_PROFILE}" \
+            --format json > "${RUNNER_TEMP}/issue-standard-result.json"
+          code=$?
+          echo "exit_code=${code}" >> "${GITHUB_OUTPUT}"
+          exit 0
+
+      - name: Apply normalization status
+        uses: actions/github-script@v9
+        env:
+          RESULT_PATH: ${{ runner.temp }}/issue-standard-result.json
+        with:
+          script: |
+            const fs = require("fs");
+            const marker = "<!-- teibto-issue-standard -->";
+            const result = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, "utf8"));
+            const owner = context.repo.owner;
+            const repo = context.repo.repo;
+            const issue_number = context.issue.number;
+            const label = "needs-normalization";
+
+            async function ensureLabel() {
+              try {
+                await github.rest.issues.getLabel({owner, repo, name: label});
+              } catch (error) {
+                if (error.status !== 404) throw error;
+                await github.rest.issues.createLabel({
+                  owner, repo, name: label, color: "D93F0B",
+                  description: "Issue title/body/labels ยังไม่ตรงมาตรฐานกลาง"
+                });
+              }
+            }
+
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner, repo, issue_number, per_page: 100
+            });
+            const previous = comments.find(comment => comment.body?.includes(marker));
+
+            if (result.valid) {
+              try {
+                await github.rest.issues.removeLabel({owner, repo, issue_number, name: label});
+              } catch (error) {
+                if (error.status !== 404) throw error;
+              }
+              if (previous) {
+                await github.rest.issues.updateComment({
+                  owner, repo, comment_id: previous.id,
+                  body: `${marker}\n✅ Issue ตรงมาตรฐานกลางแล้ว (profile: \`${result.profile}\`).`
+                });
+              }
+              return;
+            }
+
+            await ensureLabel();
+            await github.rest.issues.addLabels({owner, repo, issue_number, labels: [label]});
+            const rows = result.findings.map(finding => {
+              const suggestion = finding.suggestion ? ` — แนะนำ: ${finding.suggestion}` : "";
+              return `- **${finding.level.toUpperCase()} ${finding.code}**: ${finding.message}${suggestion}`;
+            });
+            const body = [
+              marker,
+              `## Issue standard: ต้อง normalize (${result.summary.errors} errors, ${result.summary.warnings} warnings)`,
+              "",
+              ...rows,
+              "",
+              "แก้ title/body/labels แล้ว workflow จะตรวจซ้ำและถอน `needs-normalization` ให้เอง."
+            ].join("\n");
+            if (previous) {
+              await github.rest.issues.updateComment({owner, repo, comment_id: previous.id, body});
+            } else {
+              await github.rest.issues.createComment({owner, repo, issue_number, body});
+            }
