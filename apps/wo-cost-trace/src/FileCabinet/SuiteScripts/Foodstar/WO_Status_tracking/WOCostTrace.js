@@ -1626,7 +1626,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const groupByItem = sm.filters.sort === 'item';
 
     let h = `<div class="scroll"><table><thead><tr>
-      <th>ใบสั่งผลิต</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th>
+      <th>ใบสั่งผลิต</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ไลน์ผลิต</th>
       <th class="n">สั่งผลิต</th><th class="n">ผลิตได้ (WOC)</th>
       <th class="n">วัตถุดิบ</th><th class="n">แปรสภาพ (DL+OH)</th><th class="n">รวมต้นทุน</th>
       <th class="n">ต้นทุน/หน่วย</th><th class="n">ต้นทุน/ลัง</th>
@@ -1638,7 +1638,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const cpu = g.woc ? g.cost / g.woc : null;
       const cpc = g.cartons ? g.cost / g.cartons : null;
       const gPartial = partialCostNote(g.rm, g.cost);
-      h += `<tr class="sub"><td colspan="5">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
+      h += `<tr class="sub"><td colspan="6">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
         + numCell(g.wo_qty, 4) + numCell(g.woc, 4)
         + numCell(g.rm, 2) + numCell(g.dl, 2) + numCell(g.cost, 2)
         + unitCell(cpu, 8, gPartial) + unitCell(cpc, 8, gPartial)
@@ -1672,6 +1672,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + `<td>${r.woc_last ? esc(r.woc_last) : '<span class="miss">ยังไม่ปิด</span>'}</td>`
         + `<td>${itemLink(r.item_id, r.item_code)}</td>`
         + `<td>${esc(r.item_name)}</td>`
+        + `<td>${esc(r.production_line)}</td>`
         + numCell(r.wo_qty, 4) + numCell(r.woc_qty, 4)
         + numCell(r.rm_cost, 2) + numCell(r.dl_oh_cost, 2) + numCell(r.cost, 2)
         + unitCell(r.cost_per_unit, 8, partialCostNote(r.rm_cost, r.cost))
@@ -1685,7 +1686,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ต้นทุนต่อหน่วยของหลายสินค้ารวมกันไม่มีความหมาย — แถวรวมท้ายตารางจึงไม่แสดงช่องนั้น
     const items = uniq(sm.rows.map(r => r.item_code)).length;
     const tCpu = items === 1 && t.woc ? t.cost / t.woc : null;
-    h += `<tr class="grand"><td colspan="5">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
+    h += `<tr class="grand"><td colspan="6">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
       + numCell(t.wo_qty, 4) + numCell(t.woc, 4)
       + numCell(t.rm, 2) + numCell(t.dl, 2) + numCell(t.cost, 2)
       + (items === 1 ? unitCell(tCpu, 8, partialCostNote(t.rm, t.cost)) : '<td class="n z">—</td>')
@@ -1710,6 +1711,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     { head: 'ปิดงานผลิต', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.woc_last_iso) },
     { head: 'รหัสสินค้า', w: 15, get: r => asStr(r.item_code) },
     { head: 'ชื่อสินค้า', w: 34, get: r => asStr(r.item_name) },
+    { head: 'ไลน์ผลิต', w: 16, get: r => asStr(r.production_line) },
     { head: 'สั่งผลิต', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.wo_qty) },
     { head: 'ผลิตได้ (WOC)', w: 13, fmt: '#,##0.0000', get: r => xlNum(r.woc_qty) },
     { head: 'วัตถุดิบ', w: 14, fmt: '#,##0.00', get: r => xlNum(r.rm_cost) },
