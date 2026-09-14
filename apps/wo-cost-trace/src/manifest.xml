@@ -5,5 +5,15 @@
     <features>
       <feature required="true">SERVERSIDESCRIPTING</feature>
     </features>
+    <!--
+      role ที่อยู่ใน <audslctrole> ของ object (คำตัดสิน #53) ต้องประกาศเป็น dependency
+      ไม่งั้น project:validate ตอบว่า "The object referenced in audslctrole is missing in
+      the project and is not included in the dependencies list" · ประกาศไว้เฉย ๆ ว่าบัญชี
+      ปลายทางต้องมี role นี้อยู่แล้ว ไม่ได้แปลว่า SDF จะ deploy ตัว role ไปด้วย
+    -->
+    <objects>
+      <object>customrole_fs_mfg_costing</object>
+      <object>customrole1081</object>
+    </objects>
   </dependencies>
 </manifest>
