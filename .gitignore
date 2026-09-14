@@ -19,3 +19,6 @@ package-lock.json
 
 # หน้าตัวอย่าง style ที่ generate ได้เอง (qa/make_theme_preview.js) — issue #18
 shared/qa/theme-preview.html
+
+# worktree ชั่วคราวของ subagent — ไม่ใช่ของ repo
+.claude/

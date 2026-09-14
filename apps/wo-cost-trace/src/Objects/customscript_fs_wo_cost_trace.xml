@@ -9,13 +9,46 @@
     <notifyuser>F</notifyuser>
     <scriptfile>[/SuiteScripts/Foodstar/WO_Status_tracking/WOCostTrace.js]</scriptfile>
     <scriptdeployments>
+        <!--
+          คำตัดสิน issue #53 (2026-09-14) — ยึดค่าของ SB1 ทั้งชุด ยกเว้น 2 ข้อที่ระบุไว้ข้างล่าง
+          ค่าของ SB1 มาจาก `suitecloud object:import` ลง scratch project เมื่อ 2026-09-14
+          (อ่านอย่างเดียว ไม่แตะ src/) ไม่ใช่การเดาจากตารางใน issue
+
+          allroles=F +     → ยึดตาม SB1 · ก่อนหน้านี้ repo เป็น allroles=T และไม่มี audslctrole
+          audslctrole        เลย การ deploy จาก repo จึงเคยเท่ากับ "เปิดรายงานต้นทุนทั้งบัญชี
+                             ให้ทุก role" โดยไม่มีใครตั้งใจ · รายชื่อ role ยกมาจาก SB1 ตรงตัว
+                             รวม ADMINISTRATOR ด้วย (ตาราง #53 ตกชื่อนี้ไป ของจริงมี)
+          loglevel=ERROR   → ยึดตาม SB1 และตรงกับ production · รายงานนี้ยิง 19 query
+                             ต่อการเปิดหนึ่งครั้ง DEBUG ทำให้ log ท่วมโดยไม่ได้ใช้
+          isonline=F       → เขียนตรง ๆ แทนที่จะปล่อยว่าง ค่าเดิมของ SB1 ก็ F อยู่แล้ว
+
+          สองข้อที่ **ตั้งใจไม่ตาม SB1**
+
+          runasrole ว่าง   → SB1 เป็น ADMINISTRATOR · เปลี่ยนตามคำตัดสินเดียวกับ #24
+                             ให้ script รันด้วยสิทธิ์ของ role ที่กดเปิด ไม่ใช่ administrator ·
+                             รายงานนี้อ่านต้นทุน ค่าแรง และการปันส่วนทั้งบัญชี · ผลพลอยได้คือ
+                             NetSuite จะบีบ dropdown บริษัท/อาคารผลิตตามสิทธิ์ให้เอง (#50)
+          ONLINE_FORM_USER → ถอดออกจาก audience · isonline=F อยู่แล้วจึงไม่มีผลทันที แต่เป็น
+                             ค่าที่ค้างมาโดยไม่มีใครตั้งใจ (WO Status ก็ถอดไปแล้วที่ #24)
+
+          ⚠ allemployees=T ยังเป็น T ตามที่ SB1 เป็นอยู่ — แปลว่า **พนักงานทุกคนยังเปิดได้**
+            audience 3 role ข้างล่างจึงยังไม่ได้จำกัดใครจริงตราบใดที่ช่องนี้เป็น T ·
+            การเปลี่ยนเป็น F เป็นคำตัดสินคนละใบ ไม่ได้อยู่ในขอบเขต #53 — ดู #57
+
+          ⚠ ต้องเขียน <runasrole></runasrole> เป็น element ว่างเท่านั้น — พิสูจน์บน SB1
+            ที่ #24 แล้วว่าการ "ไม่มีช่องนี้ในไฟล์" ไม่ล้างค่าในบัญชี ห้ามลบบรรทัดทิ้ง
+
+          ⚠ ispublic ใส่ไม่ได้ — SDF ตอบว่าไม่รองรับใน scriptdeployment แล้ว ignore
+        -->
         <scriptdeployment scriptid="customdeploy_fs_wo_cost_trace">
             <allemployees>T</allemployees>
             <allpartners>F</allpartners>
-            <allroles>T</allroles>
+            <allroles>F</allroles>
+            <audslctrole>ADMINISTRATOR|[scriptid=customrole_fs_mfg_costing]|[scriptid=customrole1081]</audslctrole>
             <isdeployed>T</isdeployed>
-            <ispublic>F</ispublic>
-            <loglevel>DEBUG</loglevel>
+            <isonline>F</isonline>
+            <loglevel>ERROR</loglevel>
+            <runasrole></runasrole>
             <status>RELEASED</status>
             <title>WO Cost Trace</title>
         </scriptdeployment>

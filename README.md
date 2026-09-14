@@ -202,13 +202,30 @@ production เลย ค่าจึงควรเหมือนเดิม �
 ซึ่งแปลว่า **เปิด URL ได้โดยไม่ต้อง login แล้วให้ script อ่านข้อมูลระดับ administrator** ·
 ยึดค่าของ production แทน เหตุผลและหลักฐานอยู่ใน issue #24
 
-`customscript_fs_wo_cost_trace` — `loglevel` เป็น `DEBUG` ใน repo และ SB1 แต่ **`ERROR` บน
-production** โดยตั้งใจ เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง · ค่าของ production
-อยู่ใน staging payload เท่านั้น
+`customscript_fs_wo_cost_trace` — **ตรงกับ SB1 แล้ว** (แก้ตามคำตัดสิน #53 · 2026-09-14)
 
-`allroles=T` ยังคงไว้โดยตั้งใจ — เมื่อ script รันด้วยสิทธิ์ของผู้เปิดแล้ว การเปิดให้ role ภายใน
-เข้าถึงได้ไม่ได้แปลว่าทุกคนเห็นทุกอย่างอีกต่อไป · การบังคับ subsidiary/location ตามสิทธิ์ของ role
-ในตัวรายงานเองเป็นงานของ issue #47
+| ช่อง | repo (`apps/wo-cost-trace/src/Objects`) | SB1 (ตรวจ 2026-09-14 หลัง deploy) | production |
+|---|---|---|---|
+| `runasrole` | ว่าง (element ว่าง) | ว่าง | ยังไม่ได้ตรวจ — authid หมดอายุ |
+| `allroles` | `F` | `F` | ยังไม่ได้ตรวจ |
+| `audslctrole` | `ADMINISTRATOR` · `customrole_fs_mfg_costing` · `customrole1081` | เหมือนกัน | ยังไม่ได้ตรวจ |
+| `isonline` | `F` | `F` | ยังไม่ได้ตรวจ |
+| `loglevel` | `ERROR` | `ERROR` | `ERROR` (ใน staging payload) |
+
+ค่าเดิมของ repo คือ `allroles=T` + ไม่มี `audslctrole` เลย ซึ่งแปลว่า **`project:deploy`
+จาก repo จะเปิดรายงานต้นทุนให้ทุก role** โดยไม่มีใครตั้งใจ · `runasrole` เดิมของ SB1 เป็น
+`ADMINISTRATOR` เปลี่ยนเป็นว่างตามคำตัดสินเดียวกับ #24 ให้รันด้วยสิทธิ์ของผู้เปิด ·
+`loglevel` เป็น `ERROR` ทั้งสามที่แล้ว เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง
+
+`audslctrole` อ้างถึง role 2 ใบ จึงต้องประกาศไว้ใน `<objects>` ของ `src/manifest.xml` ด้วย
+ไม่งั้น `project:validate` ตอบว่า *"The object referenced in audslctrole is missing in the
+project and is not included in the dependencies list"* · ประกาศไว้เฉย ๆ ไม่ได้แปลว่า SDF
+จะ deploy ตัว role ไปด้วย
+
+⚠ **`allemployees` ยังเป็น `T` ทั้งสองใบ** — audience ของ NetSuite เป็น union ดังนั้น
+รายชื่อ role ข้างบน **ยังไม่ได้จำกัดใครจริง** ตราบใดที่ช่องนี้เป็น `T` · สิ่งที่ #53 แก้ได้คือ
+กัน deploy จาก repo ไม่ให้ขยายสิทธิ์เพิ่ม ไม่ใช่ปิดรายงานให้เหลือ 3 role · คำตัดสินเรื่องนี้
+อยู่ที่ issue #57 · การบังคับ subsidiary/location ตามสิทธิ์ของ role ในตัวรายงานเองเป็นงานของ #47
 
 <a id="secret-bom"></a>
 
