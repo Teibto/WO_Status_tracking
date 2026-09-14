@@ -309,6 +309,108 @@ define(
     }
 
     // ══════════════════════════════════════════════════════════════
+    // Filter scope loader — บริษัท (subsidiary) / อาคารผลิต (location)
+    // ══════════════════════════════════════════════════════════════
+    //
+    // อ้างอิงผล spike ของ #47 (2026-09-14, SB1, role `FS - Manufacturing Costing (User Sub)`):
+    //
+    //   • subsidiary — NetSuite บีบ `SELECT id, name FROM subsidiary` ให้แคบลงเองตาม
+    //     subsidiary restriction ของ role ที่กำลังรันจริง (ยืนยันแล้ว 5 → 2 ตัวเลือกบน SB1
+    //     โดยไม่ต้องเขียนโค้ดกรอง) แถวที่คืนมาจึงเป็น allow-list ที่เชื่อถือได้ — เป็นด่านสิทธิ์จริง
+    //   • location — **ยังพิสูจน์ไม่ได้** ว่า NetSuite บีบให้เหมือนกันหรือเปล่า role ที่ใช้ทดสอบ
+    //     ไม่มี location restriction ตั้งไว้เลย และ role record ไม่มีช่อง "accessible locations"
+    //     แบบที่ subsidiary มี (location restriction ถ้ามีจริงมาจากฝั่ง employee record คนละกลไก)
+    //     เงื่อนไข `custrecord_mfg_productionplant='T'` เป็นแค่ตัวกรองธุรกิจ (อาคารผลิตจริง)
+    //     ไม่ใช่ด่านสิทธิ์ — ห้ามเดาชื่อตาราง/ฟิลด์ restriction เพิ่มจนกว่าจะมี role ที่ตั้งค่าไว้จริง
+    //     มาพิสูจน์ (การเดาเคยกินรอบ deploy ไปหลายรอบแล้ว ดู issue #47)
+    //
+    // ผลจากความต่างนี้ — id นอกลิสต์ถูกปฏิบัติต่างกันโดยตั้งใจ (ดู resolveSubsidiaryId กับ
+    // buildLocationOptions): subsidiary ต้องถูกบีบกลับเข้าลิสต์ก่อนถึง query จริงเสมอ ส่วน
+    // location เก็บค่าดิบไว้แสดง+เตือนแบบเดียวกับที่ #50 ทำให้ WO Cost Trace (WOCostTrace.js
+    // selectOptions) เพราะไม่ใช่เรื่องสิทธิ์
+
+    function loadSubsidiaryScope() {
+      try {
+        return {
+          rows: query.runSuiteQL({ query: `SELECT id, name FROM subsidiary ORDER BY name` }).asMappedResults(),
+          failed: false
+        };
+      } catch (e) {
+        log.error({ title: 'Subsidiary scope query failed', details: JSON.stringify(e) });
+        return { rows: [], failed: true };
+      }
+    }
+
+    function loadLocationScope() {
+      try {
+        return {
+          rows: query.runSuiteQL({
+            query: `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`
+          }).asMappedResults(),
+          failed: false
+        };
+      } catch (e) {
+        log.error({ title: 'Location scope query failed', details: JSON.stringify(e) });
+        return { rows: [], failed: true };
+      }
+    }
+
+    /**
+     * บีบ subsidiaryId ที่มาจาก URL/ฟอร์มให้อยู่ในชุดที่ role มีสิทธิ์เห็นเท่านั้น — ด่านสิทธิ์จริง
+     *
+     * ค่านอกลิสต์ (ยัด id ผ่าน URL ตรง ๆ / bookmark เก่าหลังสิทธิ์เปลี่ยน / รหัสมั่ว) ต้อง**ไม่**
+     * ถูกส่งเข้า Q.getCP1_Approve ตามที่ขอมา — บีบกลับเป็น "" (= ไม่เติมเงื่อนไข subsidiary เอง
+     * ปล่อยให้กลไกของ NetSuite ที่บีบ allow-list ข้างต้นทำงานต่อ) ต่างจากค่าว่างเดิม (ผู้ใช้ไม่ได้
+     * เลือกอะไร) ตรงที่ต้องบอกผู้ใช้ว่าค่าที่ระบุถูกเปลี่ยน ไม่ใช่เงียบ ๆ (`clamped: true`)
+     *
+     * ไม่ได้เรียกฟังก์ชันนี้เมื่อโหลด allow-list ไม่สำเร็จ — กรณีนั้น fail closed ทั้งหน้าไปก่อน
+     * ที่จุดเรียก (ดู renderResults/renderFragment) เพราะพิสูจน์ไม่ได้ว่าค่าไหนอยู่ในสิทธิ์เลย
+     */
+    function resolveSubsidiaryId(rawId, subRows) {
+      const raw = String(rawId || '');
+      if (!raw) return { value: '', clamped: false };
+      const allowed = (subRows || []).some((r) => String(r.id) === raw);
+      return allowed ? { value: raw, clamped: false } : { value: '', clamped: true };
+    }
+
+    /**
+     * ตัวเลือก <option> ของ dropdown อาคารผลิต — เก็บค่าดิบที่ถูกเลือกไว้เสมอ (ไม่ใช่ด่านสิทธิ์
+     * ดูคอมเมนต์ของ loadLocationScope ด้านบน) ค่าที่ไม่อยู่ในลิสต์ต้องไม่หายเงียบ — เติมเป็น
+     * ตัวเลือกชั่วคราวที่ยังเลือกไว้ แสดง id ตรง ๆ โดยไม่ยิง query เพิ่มไปหาชื่อ
+     * (ท่าเดียวกับที่ #50 ทำให้ WO Cost Trace — WOCostTrace.js `selectOptions`)
+     */
+    function buildLocationOptions(rows, selectedRaw) {
+      const sel = String(selectedRaw || '');
+      let found = !sel;
+      const opts = (rows || []).map((r) => {
+        const id = String(r.id);
+        if (id === sel) found = true;
+        return `<option value="${escapeAttr(id)}" ${id === sel ? 'selected' : ''}>${escapeHtml(r.name)}</option>`;
+      });
+      if (sel && !found) {
+        opts.push(`<option value="${escapeAttr(sel)}" selected>`
+          + `${escapeHtml('รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต (id: ' + sel + ')')}</option>`);
+      }
+      return opts.join('');
+    }
+
+    /**
+     * แถบแจ้งเตือนเรื่องชุดสิทธิ์/ตัวกรอง — คลาส `.schema-notice` เดิมของไฟล์นี้ (โทน warning
+     * ไม่ error เพราะหน้ายังใช้งานได้ แค่ขอบเขตที่ขอมาไม่ได้ถูกใช้ตามที่ขอ หรือรายการอาจไม่ครบ)
+     */
+    function buildScopeNoticeHtml(lines) {
+      if (!lines || !lines.length) return '';
+      return '<div class="schema-notice">' + lines.map(escapeHtml).join('<br>') + '</div>';
+    }
+
+    /** ข้อความ fail-closed เต็มหน้าเมื่อโหลด allow-list ของบริษัทไม่สำเร็จ (ดู onRequest/renderResults) */
+    function subsidiaryScopeFailMsg(lang) {
+      return lang === 'en'
+        ? 'Failed to load your subsidiary access list — no data is shown for safety. Please retry, or contact an administrator if this keeps happening.'
+        : 'ดึงชุดสิทธิ์บริษัทของคุณไม่สำเร็จ — ไม่แสดงข้อมูลเพื่อความปลอดภัย กรุณาลองใหม่อีกครั้ง หรือแจ้งผู้ดูแลระบบหากยังไม่หาย';
+    }
+
+    // ══════════════════════════════════════════════════════════════
     // renderForm — initial filter page (no results)
     // ══════════════════════════════════════════════════════════════
     function renderForm(context) {
@@ -321,25 +423,22 @@ define(
       const osNumber    = (p.osNumber    || '').trim().toUpperCase();
       const embed       = p.embed === '1';
 
-      // Load subsidiaries
-      let subRows = [];
-      try {
-        subRows = query.runSuiteQL({
-          query: `SELECT id, name FROM subsidiary ORDER BY name`
-        }).asMappedResults();
-      } catch (e) {
-        log.error({ title: 'Subsidiary query failed', details: JSON.stringify(e) });
-      }
+      // Load filter scope (subsidiary/location) — see loadSubsidiaryScope/loadLocationScope
+      // comment block above for why the two are treated differently when they fail
+      const subScope = loadSubsidiaryScope();
+      const locScope = loadLocationScope();
+      const subRows = subScope.rows;
+      const locRows = locScope.rows;
 
-      // Load production plant locations
-      let locRows = [];
-      try {
-        locRows = query.runSuiteQL({
-          query: `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`
-        }).asMappedResults();
-      } catch (e) {
-        log.error({ title: 'Location query failed', details: JSON.stringify(e) });
-      }
+      // หน้านี้ยังไม่รันคำสั่งข้อมูลจริง (ไม่มีตัวกรองจาก URL — selectedSub/Loc ข้างล่างคงเป็น '')
+      // จึงไม่มีอะไรต้อง fail closed แต่ต้องไม่ปล่อยให้ query พังแบบเงียบ ๆ เหมือนกัน
+      const scopeNoticeLines = [];
+      if (subScope.failed) scopeNoticeLines.push(lang === 'en'
+        ? 'Failed to load the subsidiary access list — the company filter may be incomplete.'
+        : 'ดึงรายชื่อบริษัทที่มีสิทธิ์ไม่สำเร็จ — ตัวกรองบริษัทอาจไม่ครบ');
+      if (locScope.failed) scopeNoticeLines.push(lang === 'en'
+        ? 'Failed to load the production plant list — the location filter may be incomplete.'
+        : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
       // Sub item type options (issue #27)
       const sitRows = Q.getSubItemTypes();
@@ -361,6 +460,7 @@ define(
         selectedSit: '',
         selectedFrom: fromStr,
         selectedTo: todayStr,
+        scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
         kpiHtml: '',
         gridHtml: '',
         paginationHtml: '',
@@ -385,7 +485,7 @@ define(
     function renderResults(context) {
       const p = context.request.parameters;
       const lang         = p.lang || 'th';
-      const subsidiaryId = p.subsidiaryId || '';
+      const subsidiaryIdRaw = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
       const dateFromRaw  = p.dateFrom     || '';
       const dateToRaw    = p.dateTo       || '';
@@ -404,6 +504,8 @@ define(
       // ── Server-side date format guard ───────────────────────────
       // ช่องกรองเป็น text แล้ว (dd/mm/yyyy) ค่าที่ส่งมาจึงอาจอ่านไม่ออก
       // ต้องบอกตรง ๆ ไม่ปล่อยให้ TO_DATE พังแล้วผู้ใช้เห็นเป็น "ไม่พบข้อมูล"
+      // อยู่ก่อนโหลด filter scope โดยตั้งใจ — เป็นด่านตรวจ input ล้วน ไม่เกี่ยวกับสิทธิ์
+      // ไม่ควรยิง query ใด ๆ (รวมถึง query ของ scope) ถ้ายังไม่ผ่านด่านนี้
       if (!hasEntityFilter && ((dateFromRaw && !dateFrom) || (dateToRaw && !dateTo))) {
         const fmtErr = lang === 'en'
           ? 'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026.'
@@ -413,24 +515,32 @@ define(
         return;
       }
 
-      // Load filter dropdown data (need to repopulate on results page)
-      let subRows = [];
-      try {
-        subRows = query.runSuiteQL({
-          query: `SELECT id, name FROM subsidiary ORDER BY name`
-        }).asMappedResults();
-      } catch (e) {
-        log.error({ title: 'Subsidiary query failed (results)', details: JSON.stringify(e) });
+      // ── Filter scope (subsidiary/location) ────────────────────────
+      // subsidiary คือด่านสิทธิ์จริง (ดูคอมเมนต์ที่ loadSubsidiaryScope) — ถ้าโหลด allow-list
+      // ไม่สำเร็จ พิสูจน์ไม่ได้ว่า id ไหนอยู่ในสิทธิ์เลย ต้อง fail closed ทั้งหน้าก่อนจะรันอะไรต่อ
+      // (ไม่ใช่ catch → log.error → [] → เดินต่อเหมือนไม่มีตัวกรอง แบบของเดิม)
+      const subScope = loadSubsidiaryScope();
+      if (subScope.failed) {
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write(buildErrorPage(subsidiaryScopeFailMsg(lang)));
+        return;
       }
+      const locScope = loadLocationScope();
+      const subRows = subScope.rows;
+      const locRows = locScope.rows;
 
-      let locRows = [];
-      try {
-        locRows = query.runSuiteQL({
-          query: `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`
-        }).asMappedResults();
-      } catch (e) {
-        log.error({ title: 'Location query failed (results)', details: JSON.stringify(e) });
-      }
+      // บีบ subsidiaryId ให้อยู่ในสิทธิ์ก่อนไปถึงจุดใช้งานอื่นใด — ค่านอกลิสต์ห้ามไหลต่อไปถึง
+      // Q.getCP1_Approve (ดูคอมเมนต์ของ resolveSubsidiaryId ด้านบน)
+      const subResolved  = resolveSubsidiaryId(subsidiaryIdRaw, subRows);
+      const subsidiaryId = subResolved.value;
+
+      const scopeNoticeLines = [];
+      if (subResolved.clamped) scopeNoticeLines.push(lang === 'en'
+        ? `The requested subsidiary (id: ${subsidiaryIdRaw}) is outside your access — showing only subsidiaries you can access instead.`
+        : `บริษัทที่ระบุ (id: ${subsidiaryIdRaw}) ไม่อยู่ในสิทธิ์ของคุณ — ระบบแสดงเฉพาะบริษัทที่คุณมีสิทธิ์เข้าถึงแทน`);
+      if (locScope.failed) scopeNoticeLines.push(lang === 'en'
+        ? 'Failed to load the production plant list — the location filter may be incomplete.'
+        : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
       const sitRows = Q.getSubItemTypes();
 
@@ -515,6 +625,7 @@ define(
         selectedSit: subItemTypeId,
         selectedFrom: dateFrom,
         selectedTo: dateTo,
+        scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
         kpiHtml,
         gridHtml,
         paginationHtml,
@@ -540,7 +651,7 @@ define(
     function renderFragment(context) {
       const p = context.request.parameters;
       const lang         = p.lang || 'th';
-      const subsidiaryId = p.subsidiaryId || '';
+      const subsidiaryIdRaw = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
       const dateFromRaw  = p.dateFrom     || '';
       const dateToRaw    = p.dateTo       || '';
@@ -563,6 +674,30 @@ define(
         context.response.write('<div class="schema-notice">' + escapeHtml(fmtErr) + '</div>');
         return;
       }
+
+      // ── Filter scope (subsidiary/location) ───────────────────────
+      // นี่คือทางที่ปุ่ม "ค้นหา" จริง ๆ ยิงมา (fetch AJAX — ดู client JS `btnSearch` handler)
+      // ไม่ใช่แค่ path โหลดหน้าแรก จึงต้องบีบ subsidiaryId ที่นี่ด้วย ไม่งั้นด่านสิทธิ์ที่ทำใน
+      // renderResults จะไม่มีผลกับการใช้งานจริงส่วนใหญ่เลย (ดูคอมเมนต์ที่ loadSubsidiaryScope/
+      // resolveSubsidiaryId ด้านบนของไฟล์)
+      const subScope = loadSubsidiaryScope();
+      if (subScope.failed) {
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write('<div class="schema-notice">' + escapeHtml(subsidiaryScopeFailMsg(lang)) + '</div>');
+        return;
+      }
+      const subResolved  = resolveSubsidiaryId(subsidiaryIdRaw, subScope.rows);
+      const subsidiaryId = subResolved.value;
+      const locScope      = loadLocationScope();
+
+      const scopeNoticeLines = [];
+      if (subResolved.clamped) scopeNoticeLines.push(lang === 'en'
+        ? `The requested subsidiary (id: ${subsidiaryIdRaw}) is outside your access — showing only subsidiaries you can access instead.`
+        : `บริษัทที่ระบุ (id: ${subsidiaryIdRaw}) ไม่อยู่ในสิทธิ์ของคุณ — ระบบแสดงเฉพาะบริษัทที่คุณมีสิทธิ์เข้าถึงแทน`);
+      if (locScope.failed) scopeNoticeLines.push(lang === 'en'
+        ? 'Failed to load the production plant list — the location filter may be incomplete.'
+        : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
+      const scopeNoticeHtml = buildScopeNoticeHtml(scopeNoticeLines);
 
       const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       let cp1Rows = [];
@@ -607,7 +742,7 @@ define(
       const legendHtml     = buildLegendHtml(lang);
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
-      context.response.write(kpiHtml + gridHtml + paginationHtml + (gridHtml ? legendHtml : ''));
+      context.response.write(scopeNoticeHtml + kpiHtml + gridHtml + paginationHtml + (gridHtml ? legendHtml : ''));
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -1245,6 +1380,7 @@ ${thead}
     function buildPageShell({
       lang, subRows, locRows, sitRows,
       selectedSub, selectedLoc, selectedSit, selectedFrom, selectedTo,
+      scopeNoticeHtml,
       kpiHtml, gridHtml, paginationHtml,
       page, totalPages, totalWO,
       scriptId, deployId,
@@ -1252,19 +1388,17 @@ ${thead}
     }) {
       const t = getI18nLabels(lang);
 
-      // Subsidiary options
+      // Subsidiary options — selectedSub มาจาก resolveSubsidiaryId เสมอแล้ว (renderForm/
+      // renderResults บีบให้อยู่ในสิทธิ์ก่อนเรียกฟังก์ชันนี้) จึงตรงกับ subRows หรือเป็น "" เท่านั้น
+      // ไม่ต้องกันค่านอกลิสต์ที่นี่ซ้ำอีกชั้น — ต่างจาก location ด้านล่าง (ดูคอมเมนต์ตอนบนไฟล์)
       const subOptions = subRows.map(r =>
         `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedSub) ? 'selected' : ''}>
           ${escapeHtml(r.name)}
         </option>`
       ).join('');
 
-      // Location options
-      const locOptions = locRows.map(r =>
-        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedLoc) ? 'selected' : ''}>
-          ${escapeHtml(r.name)}
-        </option>`
-      ).join('');
+      // Location options — ไม่ใช่ด่านสิทธิ์ ค่านอกลิสต์เก็บไว้แสดง+เตือนแทนการบีบ (buildLocationOptions)
+      const locOptions = buildLocationOptions(locRows, selectedLoc);
 
       // Sub item type options (issue #27)
       const sitOptions = (sitRows || []).map(r =>
@@ -1368,6 +1502,7 @@ ${embed ? '' : theme.topbar({
 </form>
 
 <div id="results-zone">
+${scopeNoticeHtml || ''}
 ${kpiHtml}
 ${gridHtml}
 ${paginationHtml}

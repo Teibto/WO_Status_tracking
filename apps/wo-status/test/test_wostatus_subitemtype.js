@@ -25,6 +25,11 @@ let woRows = [];
 // พฤติกรรมของสองทางที่ดึงรายการค่า — 'master' | 'item' | 'none'
 let listSource = 'master';
 
+// เทสนี้ไม่ได้ตั้งใจพิสูจน์เรื่องด่านสิทธิ์ (#47 มีเทสของตัวเองแยก) แค่ต้องการให้
+// subsidiaryId='2' ที่ใช้ในเคส "ใช้คู่กับตัวกรองอื่นได้" ผ่านด่านของ resolveSubsidiaryId
+// (ต้องอยู่ใน allow-list ก่อนถึงจะไหลไปถึง CP1) จึงประกาศไว้เป็นบริษัทที่ "มีสิทธิ์" เสมอ
+const SUBS = [{ id: '2', name: 'Foodstar Co., Ltd.' }];
+
 function sqlRows(sql) {
   if (/customrecord_cseg_subitemtype/.test(sql)) {
     if (listSource === 'master') return SIT;
@@ -35,6 +40,7 @@ function sqlRows(sql) {
     if (listSource === 'item') return SIT;
     throw new Error('Invalid or unsupported search (จำลอง)');
   }
+  if (/FROM subsidiary/i.test(sql)) return SUBS;
   if (/t\.type\s*=\s*'WorkOrd'/.test(sql)) return woRows;
   return [];
 }
@@ -90,8 +96,11 @@ console.log('\n── พังทั้งสองทาง: หน้าต�
 listSource = 'none';
 const formNone = run({});
 eq('หน้ายังขึ้น', formNone.indexOf('<select name="subItemTypeId">') >= 0, true);
-eq('เหลือแต่ตัวเลือกรวม', (formNone.match(/<option value="/g) || []).length,
-  (formNone.match(/<option value="" /g) || []).length);
+// ขอบเขตเฉพาะ <select name="subItemTypeId"> — ไม่นับรวมทั้งหน้า เพราะ dropdown บริษัท/
+// อาคารผลิตมีตัวเลือกจริงของตัวเองอยู่แล้ว (ไม่เกี่ยวกับ cseg_subitemtype ที่พังในเคสนี้)
+const sitSelect = (formNone.match(/<select name="subItemTypeId">[\s\S]*?<\/select>/) || [''])[0];
+eq('เหลือแต่ตัวเลือกรวมของประเภทย่อย', (sitSelect.match(/<option value="/g) || []).length,
+  (sitSelect.match(/<option value="" /g) || []).length);
 listSource = 'master';
 
 // ── เงื่อนไขต้องถึง SQL ─────────────────────────────────────────────────
