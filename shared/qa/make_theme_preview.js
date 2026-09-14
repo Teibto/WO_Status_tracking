@@ -14,8 +14,13 @@ const path = require('path');
 const H = require('../../test/lib/_harness');
 const FX = require('../../test/lib/fixtures_parity');
 
+// ต้องโหลด lib ให้ครบเหมือน test/test_theme.js — ตั้งแต่ #13 ย้าย runSQL ไปอยู่ใน
+// WOCostTrace_Common.js แล้ว harness หา anchor ของ runSQL ไม่เจอถ้าโหลดแค่ WOReportTheme.js
+// (ก่อนแก้: throw "หา runSQL ไม่เจอทั้งใน lib และ entry" — ดู issue #43)
+// requireRunSQL ต้องเป็น true (ค่าเริ่มต้น) เพราะ renderSummaryPage เรียก buildSummary
+// ซึ่งยิง SuiteQL จริงผ่าน runSQL — ใส่ requireRunSQL:false จะข้ามปัญหาไปแบบหลอก ไม่ใช่แก้
 const { T } = H.load({
-  libs: ['WOReportTheme.js'],
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX.summary(),
   quietLog: true,
   exports: ['buildSummary', 'readFilters', 'renderSummaryPage']
