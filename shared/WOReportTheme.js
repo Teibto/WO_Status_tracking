@@ -216,6 +216,69 @@ define([], function () {
     + 'color:var(--pj-text-muted);font-size:var(--fs-sm)}';
 
   /**
+   * ไอคอนสถานะ — inline SVG 16px ตามมาตรฐาน Teibto Redwood (#64 ขั้น 2)
+   * ก่อนหน้านี้ WOStatusTracking.js / _Drilldown.js / WOCostTrace.js / _Ready.js ต่างคนต่างเขียน
+   * ตัวอักษร ✓ ◷ ✕ ⚠ ↗ เป็นไอคอนเอง (คนละที่ ~6 จุด) — ย้ายมารวมที่นี่แหล่งเดียวเพราะทั้งสองแอป
+   * require ไฟล์นี้อยู่แล้ว (ตรวจโดย test/test_theme.js) ไม่ต้องเพิ่ม dependency ใหม่ที่ entry
+   *
+   * กติกา: `stroke="currentColor"` เสมอ (ห้าม hardcode สี — ให้ span/td ที่ครอบกำหนดสีผ่าน CSS)
+   * ทุกตัวมี `aria-hidden="true"` ติดตัว — ไม่ใช่เพราะไอคอนทั้งหมด "แค่ตกแต่ง" แต่เพราะ svg ที่ถูก
+   * ห่อด้วย `iconImg()` (ข้างล่าง) ให้ `role="img"` + `aria-label` ที่ span ห่อแทน — svg ข้างในต้อง
+   * `aria-hidden` เสมอกัน screen reader ไม่อ่านซ้ำสองรอบ (ตัวห่อประกาศชื่อ / svg ข้างในเงียบ)
+   * ที่ใดไอคอนเป็นของตกแต่งจริง (มีข้อความเคียงข้างบอกความหมายอยู่แล้ว) ให้ใช้ ICONS.xxx ตรง ๆ
+   * ไม่ต้องห่อ — ที่ใดไอคอนเป็นตัว**สื่อความหมาย**เดียวที่บอกสถานะ (ไม่มีข้อความอื่นบอกซ้ำ) ต้อง
+   * ห่อด้วย `iconImg(name, escapedLabel)` เสมอ (#64 ขั้น 2b — ดูจุดเรียกใช้จริงในแต่ละไฟล์)
+   * ชื่อคีย์ตั้งตามรูปทรง ไม่ใช่ตามความหมายสถานะ (ok/err ฯลฯ) เพราะสองแอปผูกความหมายไม่เหมือนกัน
+   * (wo-status: ok/wait/err/na · wo-cost-trace: ok/bad/warn/unk/info) แต่ต้องได้ path เดียวกัน
+   */
+  var ICONS = {
+    check: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M3.5 8.4l3 3 6.2-7.2" stroke="currentColor" stroke-width="1.6" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    cross: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M4 4l8 8M12 4l-8 8" stroke="currentColor" stroke-width="1.6" '
+      + 'stroke-linecap="round"/></svg>',
+    clock: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/>'
+      + '<path d="M8 4.6V8.3l2.6 1.6" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
+      + 'stroke-linejoin="round"/></svg>',
+    warn: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M8 2.3l6.4 11a.9.9 0 01-.78 1.35H2.34a.9.9 0 01-.78-1.35l6.4-11a.9.9 '
+      + '0 011.56 0z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>'
+      + '<path d="M8 6.4v3.1" stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/>'
+      + '<path d="M8 11.6h.01" stroke="currentColor" stroke-width="1.7" stroke-linecap="round"/></svg>',
+    help: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/>'
+      + '<path d="M6.1 6.1c.15-1.1 1-1.85 2.1-1.85 1.15 0 2.05.78 2.05 1.85 0 .95-.55 1.35-1.25 '
+      + '1.85-.6.42-.9.8-.9 1.55" stroke="currentColor" stroke-width="1.3" stroke-linecap="round" '
+      + 'stroke-linejoin="round"/><path d="M8 11.5h.01" stroke="currentColor" stroke-width="1.6" '
+      + 'stroke-linecap="round"/></svg>',
+    extLink: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M6.2 9.8L13 3M8 3h5v5M12.2 8.6V12a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 '
+      + '1 0 011-1h3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
+      + 'stroke-linejoin="round"/></svg>'
+  };
+
+  /**
+   * ห่อไอคอนที่**สื่อความหมาย**ด้วย `role="img"` + `aria-label` ให้ screen reader ประกาศชื่อได้
+   * (issue: ขั้น 2 เปลี่ยน ✓ ◷ ✕ ⚠ เป็น svg `aria-hidden` ล้วน ทำให้ช่องสถานะที่ไม่มีข้อความ
+   * อื่นบอกความหมายกลายเป็น "เงียบ" ทั้งที่ตัวอักษรเดิมยังอ่านออกเสียง — #64 ขั้น 2b แก้ตรงนี้)
+   *
+   * ทำไมเลือกวิธีนี้ (ไม่ใช้ `<title>` ในตัว svg เอง): svg เดียวกัน (markup เดียวกันทุกตัวใน
+   * ICONS) render ซ้ำหลายสิบครั้งต่อหน้า — `<title>` ต้องมี `id` ไม่ซ้ำกันต่ออินสแตนซ์เพื่อผูก
+   * `aria-labelledby` ทำให้ทุกจุดที่เรียกต้องคิดเลข id เอง เสี่ยงชนกัน ส่วน `role="img"
+   * aria-label="…"` ที่ span ห่อไม่ต้องมี id เลย ป้ายแต่ละอันเป็นอิสระจากกัน และ browser/AT
+   * รองรับกว้างกว่า (svg `<title>` มีปัญหาเข้ากันไม่ได้กับ Safari/VoiceOver บางรุ่น)
+   *
+   * @param {string} name         คีย์ใน ICONS (เช่น 'check')
+   * @param {string} escapedLabel ชื่อไอคอน **escape มาแล้ว** (สัญญาเดียวกับฟังก์ชันอื่นในไฟล์นี้ —
+   *                              ผู้เรียกต้อง escape เอง ไม่มีการ escape ซ้ำในนี้)
+   */
+  function iconImg(name, escapedLabel) {
+    return '<span role="img" aria-label="' + escapedLabel + '">' + (ICONS[name] || '') + '</span>';
+  }
+
+  /**
    * บล็อก `<style>` ของหน้า — token + พื้นฐาน + คอมโพเนนต์ แล้วต่อ CSS เฉพาะรายงาน
    * @param {string} [reportCss] CSS ของรายงานนั้นเอง (เขียนด้วย token ข้างบน ไม่ใส่ hex ตรง ๆ)
    */
@@ -276,6 +339,8 @@ define([], function () {
     TOKENS: TOKENS,
     BASE: BASE,
     COMPONENTS: COMPONENTS,
+    ICONS: ICONS,
+    iconImg: iconImg,
     css: css,
     topbar: topbar,
     kpiCard: kpiCard,
