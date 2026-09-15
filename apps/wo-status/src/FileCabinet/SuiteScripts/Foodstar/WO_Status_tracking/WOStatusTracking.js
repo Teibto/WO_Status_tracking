@@ -1578,6 +1578,11 @@ let LANG = ${JSON.stringify(lang)};
 // ฝังเป็นสตริงตอน render (เหมือน I18N/STATUS_ICONS ข้างบน) เพราะ ICONS อยู่ฝั่งเซิร์ฟเวอร์
 const CAL_PREV_SVG = ${JSON.stringify(theme.ICONS.chevronLeft)};
 const CAL_NEXT_SVG = ${JSON.stringify(theme.ICONS.chevronRight)};
+// chevron ของ combobox ที่ค้นได้ (issue #64 ขั้น 3) — svg เดียวกับที่ theme.ICONS.chevronDown
+// ใช้วาดไว้ในตัว .rw-select เอง (ที่นั่นเป็น data: URI ฝัง hex เพราะ currentColor ใช้กับ
+// background-image ไม่ได้ — ดูคอมเมนต์ที่ shared/WOReportTheme.js) ส่วนที่นี่ต่อ DOM จริง
+// จึงใช้ currentColor ได้ตามปกติ ไม่ต้องฝัง hex ซ้ำ
+const RW_CHEVRON_SVG = ${JSON.stringify(theme.ICONS.chevronDown)};
 
 // ── Language toggle ───────────────────────────────────────────────
 // Toggling language does a full page reload (GET) so server re-renders
@@ -1974,6 +1979,285 @@ function _isoFromDateInput(el) {
 
   // ให้ส่วนอื่นสั่งปิดได้ตอนช่องวันที่ถูกปิดใช้งาน (ผู้ใช้ระบุ WO/Batch แล้ว)
   window.__closeDateCal = function() { _close(false); };
+})();
+
+// ── Redwood searchable combobox (issue #64 ขั้น 3 — list field) ─────────────────
+// ครอบ <select> ที่เป็น "ข้อมูล" (มาจาก SuiteQL — subsidiaryId/locationId/subItemTypeId)
+// ด้วยกล่องค้นหา ไม่ทิ้ง <select> เดิม (ยังเป็นตัวเก็บค่าจริง label for= ยังโฟกัสไปหาได้เพราะ
+// ซ่อนด้วย sr-only ไม่ใช่ display:none — ดูเหตุผลที่ shared/WOReportTheme.js .sr-only)
+// เกณฑ์ตัดจำนวนตัวเลือกแบบ ">8" ถูกผู้ใช้ปฏิเสธแล้ว (MRP #500) — ฟังก์ชันนี้จึง**ไม่มี**เงื่อนไข
+// ความยาวใด ๆ เลย เอนแฮนซ์ทุก select ที่ถูกส่งเข้ามาเสมอ ไม่ว่าจะมีกี่ตัวเลือก
+// dropdown ใช้ position:fixed จาก getBoundingClientRect + flip + scroll capture ท่าเดียวกับ
+// ปฏิทินด้านบน (ขั้น 4) — โค้ดสองก้อนนี้แยกกันเพราะคนละ element แต่หลักการเดียวกัน
+(function() {
+  /** signature ของชุดตัวเลือก — ต้องรวม "ชื่อที่แสดง" ด้วย ไม่ใช่แค่จำนวน+value
+   *  (บั๊กจริงใน makeSearchableSelect ของ MRP: signature เดิมใช้แค่ length+value จึงพลาด
+   *  กรณี repopulate ที่จำนวน/value เดิมแต่ label เปลี่ยน — ที่นี่จึงต่อทั้ง value และ text
+   *  ของตัวเลือกแรกกับตัวสุดท้ายเข้าไปด้วย) */
+  function _sig(select) {
+    var opts = select.options;
+    if (!opts.length) return '0';
+    var first = opts[0], last = opts[opts.length - 1];
+    return opts.length + '|' + first.value + '|' + first.text + '|' + last.value + '|' + last.text;
+  }
+
+  function _syncInputFromSelect(w) {
+    var opt = w._select.options[w._select.selectedIndex];
+    w._input.value = opt ? opt.text : '';
+    w.classList.toggle('has-value', !!w._select.value);
+  }
+
+  function _closeOthers(except) {
+    var open = document.querySelectorAll('.rw-combobox.is-open');
+    for (var i = 0; i < open.length; i++) { if (open[i] !== except) _close(open[i]); }
+  }
+
+  function _close(w) {
+    if (!w.classList.contains('is-open')) return;
+    w.classList.remove('is-open');
+    if (w._list && w._list.parentNode) w._list.parentNode.removeChild(w._list);
+    w._list = null;
+    w._input.setAttribute('aria-expanded', 'false');
+    if (w._reposition && typeof window !== 'undefined' && window.removeEventListener) {
+      window.removeEventListener('scroll', w._reposition, true);
+      window.removeEventListener('resize', w._reposition);
+    }
+    w._reposition = null;
+    w._active = -1;
+    w._shown = [];
+  }
+
+  // ตำแหน่งจริงของ popup — ท่าเดียวกับปฏิทินของ WOStatusTracking.js (#64 ขั้น 4) ทุกประการ
+  // (ลอยที่ <body> เพราะฟอร์ม/การ์ดเป็น overflow หลายชั้น ต้องคำนวณเองจาก getBoundingClientRect)
+  function _position(w) {
+    var list = w._list, anchor = w._input;
+    if (!list || !anchor) return;
+    var pad = 4;
+    var vw = (typeof window !== 'undefined' && window.innerWidth)  || 0;
+    var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
+    var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
+      || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+    var listRect = (list.getBoundingClientRect && list.getBoundingClientRect()) || {};
+    var width  = rect.width  || 200;
+    var height = listRect.height || 280;
+
+    var left = rect.left;
+    if (vw && left + width > vw - pad) left = vw - pad - width;
+    if (left < pad) left = pad;
+
+    var spaceBelow = vh ? (vh - rect.bottom) : (height + pad);
+    var flipUp = !!(vh && spaceBelow < (height + pad) && rect.top > (height + pad));
+    var top = flipUp ? (rect.top - pad - height) : (rect.bottom + pad);
+
+    list.style.position = 'fixed';
+    list.style.left = left + 'px';
+    list.style.top  = top  + 'px';
+    list.style.width = width + 'px';
+    list.setAttribute('data-flip', flipUp ? 'up' : 'down');
+  }
+
+  function _renderOptions(w) {
+    var select = w._select, list = w._list;
+    var q = (w._filterText || '').trim().toLowerCase();
+    while (list.firstChild) list.removeChild(list.firstChild);
+    var opts = select.options;
+    var shown = [];
+    for (var i = 0; i < opts.length; i++) {
+      var text = opts[i].text || '', val = opts[i].value || '';
+      if (q && text.toLowerCase().indexOf(q) < 0 && val.toLowerCase().indexOf(q) < 0) continue;
+      shown.push(i);
+    }
+    w._shown = shown;
+    if (!shown.length) {
+      var empty = document.createElement('div');
+      empty.className = 'rw-combobox-empty';
+      empty.textContent = 'ไม่พบตัวเลือกที่ตรงกัน / No matching option';
+      list.appendChild(empty);
+      w._active = -1;
+      return;
+    }
+    var activeRow = shown.indexOf(select.selectedIndex);
+    w._active = activeRow >= 0 ? activeRow : 0;
+    shown.forEach(function(optIdx, row) {
+      var opt = opts[optIdx];
+      var item = document.createElement('div');
+      item.className = 'rw-combobox-option' + (row === w._active ? ' is-active' : '');
+      item.textContent = opt.text;
+      item.setAttribute('role', 'option');
+      item.setAttribute('aria-selected', optIdx === select.selectedIndex ? 'true' : 'false');
+      // mousedown (ไม่ใช่ click) + preventDefault กัน blur ของช่องค้นหาปิด dropdown ไปก่อนที่
+      // การคลิกจะถูกนับ (ลำดับ event ปกติของเบราว์เซอร์คือ mousedown → blur → click)
+      item.addEventListener('mousedown', function(e) {
+        e.preventDefault();
+        _pick(w, optIdx);
+      });
+      list.appendChild(item);
+    });
+  }
+
+  /** เลือกตัวเลือก — ต้นทางเดียวที่แตะ select.selectedIndex แล้วยิง change ครั้งเดียว
+   *  (สัญญาที่ห้ามแตะ: handler เดิมทั้งหมดที่อ่าน [name=xxx] หรือฟัง change ต้องทำงานเหมือนเดิม) */
+  function _pick(w, optIdx) {
+    var select = w._select;
+    select.selectedIndex = optIdx;
+    _syncInputFromSelect(w);
+    _close(w);
+    select.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+
+  // หมายเหตุ: _open() ไม่แตะ w._filterText เอง (เดิมเคยรีเซ็ตเป็น '' ที่นี่ — บั๊กจริงที่ทำให้
+  // พิมพ์กรองตอนช่องยังปิดอยู่ถูกโยนทิ้ง เพราะ handler ของ 'input' set _filterText ไว้ก่อนเรียก
+  // _open() แล้ว _open() เดิมมาล้างทับซ้ำ) ผู้เรียก (focus/click/input handler) เป็นคนตัดสินใจ
+  // ว่าจะรีเซ็ต filter หรือคงของเดิมไว้ ก่อนเรียกฟังก์ชันนี้เสมอ
+  function _open(w) {
+    if (w.classList.contains('is-open')) return;
+    _closeOthers(w);
+    var list = document.createElement('div');
+    list.className = 'rw-combobox-list';
+    list.setAttribute('role', 'listbox');
+    (document.body || document).appendChild(list);
+    w._list = list;
+    w.classList.add('is-open');
+    w._input.setAttribute('aria-expanded', 'true');
+    _renderOptions(w);
+    _position(w);
+    w._reposition = function() { _position(w); };
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('scroll', w._reposition, true);
+      window.addEventListener('resize', w._reposition);
+    }
+  }
+
+  function _moveActive(w, delta) {
+    var shown = w._shown || [];
+    if (!shown.length) return;
+    w._active = (w._active + delta + shown.length) % shown.length;
+    var items = w._list ? w._list.children : [];
+    for (var i = 0; i < items.length; i++) items[i].classList.toggle('is-active', i === w._active);
+    var activeEl = items[w._active];
+    if (activeEl && activeEl.scrollIntoView) activeEl.scrollIntoView({ block: 'nearest' });
+  }
+
+  /** เอนแฮนซ์ <select> เดิมให้เป็น combobox ค้นได้ — เรียกซ้ำไม่ได้ (data-searchable=1)
+   *  เรียกซ้ำ = sync ค่า/ตัวเลือกใหม่แทน (ดู _syncCombobox) */
+  function enhanceRwSelect(select) {
+    if (!select) return;
+    if (select.getAttribute('data-searchable') === '1') { _syncCombobox(select); return; }
+    select.setAttribute('data-searchable', '1');
+    select.setAttribute('data-rw-sig', _sig(select));
+    select.classList.add('sr-only');
+    select.tabIndex = -1;
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'rw-combobox';
+    select.parentNode.insertBefore(wrapper, select);
+    wrapper.appendChild(select);
+
+    var input = document.createElement('input');
+    input.type = 'text';
+    input.className = 'rw-combobox-input';
+    input.autocomplete = 'off';
+    input.spellcheck = false;
+    input.setAttribute('role', 'combobox');
+    input.setAttribute('aria-haspopup', 'listbox');
+    input.setAttribute('aria-expanded', 'false');
+    input.setAttribute('aria-autocomplete', 'list');
+    if (select.disabled) input.disabled = true;
+    wrapper.appendChild(input);
+
+    var chevron = document.createElement('span');
+    chevron.className = 'rw-combobox-chevron';
+    chevron.setAttribute('aria-hidden', 'true');
+    chevron.innerHTML = RW_CHEVRON_SVG;
+    wrapper.appendChild(chevron);
+
+    wrapper._select = select;
+    wrapper._input = input;
+    wrapper._shown = [];
+    wrapper._active = -1;
+    wrapper._filterText = '';
+    _syncInputFromSelect(wrapper);
+
+    // เปิดกล่อง — ล้างตัวกรองก่อนเปิด "เฉพาะตอนที่ยังไม่เปิดอยู่" (โฟกัส/คลิกครั้งแรก)
+    // ไม่งั้นค่าที่ผู้ใช้เห็นตอนโฟกัส (ชื่อตัวเลือกที่เลือกไว้ เช่น "Foodstar Co., Ltd.") จะกลาย
+    // เป็น "ตัวกรอง" ค้างอยู่ ทำให้พิมพ์อะไรก็ไม่ตรงอะไรเลย — input.select() เลือกข้อความทั้งช่อง
+    // ไว้ด้วยเพื่อให้พิมพ์ตัวแรกทับได้ทันทีแบบ combobox ทั่วไป (เบราว์เซอร์จริงเท่านั้นที่มี .select —
+    // DOM ปลอมในเทสไม่ต้องมี จึง guard ด้วย typeof)
+    function _openFresh() {
+      if (wrapper.classList.contains('is-open')) return;
+      wrapper._filterText = '';
+      if (typeof input.select === 'function') input.select();
+      _open(wrapper);
+    }
+    input.addEventListener('focus', _openFresh);
+    input.addEventListener('click', _openFresh);
+    // พิมพ์ตอนช่องยังปิดอยู่ (เช่น พิมพ์ทับตัวที่ .select() เลือกไว้) ต้องไม่ถูกโยนทิ้ง — set
+    // _filterText ก่อนเรียก _open() เสมอ (gap ที่แก้: _open() เดิมเคยรีเซ็ต _filterText เอง)
+    input.addEventListener('input', function() {
+      wrapper._filterText = input.value;
+      if (!wrapper.classList.contains('is-open')) _open(wrapper);
+      else { _renderOptions(wrapper); _position(wrapper); }
+    });
+    input.addEventListener('keydown', function(e) {
+      if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        if (!wrapper.classList.contains('is-open')) _openFresh(); else _moveActive(wrapper, 1);
+      } else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        if (!wrapper.classList.contains('is-open')) _openFresh(); else _moveActive(wrapper, -1);
+      } else if (e.key === 'Enter') {
+        if (wrapper.classList.contains('is-open')) {
+          e.preventDefault();
+          if (wrapper._shown && wrapper._shown.length) _pick(wrapper, wrapper._shown[wrapper._active]);
+        }
+      } else if (e.key === 'Escape') {
+        if (wrapper.classList.contains('is-open')) { e.preventDefault(); _close(wrapper); _syncInputFromSelect(wrapper); }
+      } else if (e.key === 'Tab') {
+        _close(wrapper);
+      }
+    });
+    // ปิดหน่วง 0ms ให้ mousedown ของตัวเลือก (ที่ preventDefault กันไปแล้วเป็นด่านแรก) ทำงานก่อน
+    input.addEventListener('blur', function() {
+      setTimeout(function() {
+        if (!wrapper.classList.contains('is-open')) return;
+        _close(wrapper);
+        _syncInputFromSelect(wrapper); // ปิดโดยไม่เลือก → คืนค่าที่ select ถืออยู่ ไม่ใช่ข้อความพิมพ์ค้าง
+      }, 0);
+    });
+  }
+
+  /** เรียกซ้ำกับ select ที่ enhance แล้ว = sync ค่า/ตัวเลือกที่อาจถูกเติมใหม่ทีหลัง
+   *  เทียบ signature ก่อน (รวม label แล้ว — ดู _sig) ตัวเลือกไม่เปลี่ยนก็แค่ sync ค่าที่แสดง */
+  function _syncCombobox(select) {
+    var wrapper = select.parentNode;
+    if (!wrapper || !wrapper.classList || !wrapper.classList.contains('rw-combobox')) return;
+    var sig = _sig(select);
+    if (select.getAttribute('data-rw-sig') !== sig) {
+      select.setAttribute('data-rw-sig', sig);
+      if (wrapper.classList.contains('is-open')) _renderOptions(wrapper);
+    }
+    _syncInputFromSelect(wrapper);
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    var open = document.querySelectorAll('.rw-combobox.is-open');
+    for (var i = 0; i < open.length; i++) {
+      var w = open[i];
+      if (w.contains(e.target) || (w._list && w._list.contains(e.target))) continue;
+      _close(w);
+      _syncInputFromSelect(w);
+    }
+  });
+
+  ['subsidiaryId', 'locationId', 'subItemTypeId'].forEach(function(name) {
+    var select = document.querySelector('select[name="' + name + '"]');
+    if (select) enhanceRwSelect(select);
+  });
+
+  // เผื่ออนาคตต้องเรียก sync จากที่อื่น (เช่นถ้าตัวเลือกถูกเติมใหม่แบบ dynamic ทีหลัง) —
+  // ยังไม่มีจุดเรียกจริงตอนนี้ เพราะหน้านี้ไม่ repopulate select พวกนี้หลัง initial load
+  window.__rwSyncCombobox = _syncCombobox;
+  window.__rwEnhanceSelect = enhanceRwSelect;
 })();
 
 // ── Search button — validate then AJAX fetch (no form submit / no reload) ─

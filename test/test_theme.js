@@ -110,6 +110,58 @@ eq('มี breadcrumbs', page.indexOf('class="breadcrumbs"') > 0, true);
 eq('เนื้อหาอยู่ใน .content', page.indexOf('<div class="content">') > 0, true);
 eq('ปุ่มค้นหาใช้คลาสปุ่มของ template', page.indexOf('class="btn primary"') > 0, true);
 
+// ── 2b. ห้าม `background:` shorthand บนกฎที่แตะ tag `select` ตรง ๆ (#64 ขั้น 3 — list field) ──
+// กับดักจริงที่ list-field.md เตือนไว้ (เจอตอน adopt ที่ MRP #489): shorthand เช่น
+// `.form-group select{background:...}` รีเซ็ต background-image ของ `.rw-select` (ลูกศร
+// chevron ของ native select) ให้หายไปเงียบ ๆ ถ้าสปีซิฟิซิตี้ของกฎนั้นสูงกว่า (0,1,0) ของ
+// .rw-select เอง — ตรวจบน CSS ที่ resolve จริงจากหน้าเรนเดอร์ (ไม่ใช่ text scan ของ .js
+// source เพราะ CSS ในไฟล์นี้ถูกต่อเป็น string หลายชิ้น ขอบเขต { } จริงอยู่ในผลลัพธ์ที่ evaluate
+// แล้วเท่านั้น) ของทั้งสองแอป
+function findBackgroundShorthandOnSelect(css) {
+  const rules = css.match(/[^{}]+\{[^{}]*\}/g) || [];
+  const offenders = [];
+  rules.forEach((rule) => {
+    const m = /^([^{]+)\{([^}]*)\}$/.exec(rule);
+    if (!m) return;
+    const selectors = m[1].split(',').map((s) => s.trim());
+    // "select" เป็น tag ตรง ๆ เท่านั้น (กันชนกับ .rw-select / .setup-sel ฯลฯ) — ต้องไม่มี
+    // ตัวอักษร/ตัวเลข/`-`/`.`/`#` นำหน้าคำว่า select ทันที
+    const touchesSelectTag = selectors.some((s) => /(^|[^\w.#-])select($|[^\w-])/.test(s));
+    if (!touchesSelectTag) return;
+    // `background:` shorthand เท่านั้น (ไม่ใช่ background-color:/background-image: ฯลฯ)
+    if (/\bbackground\s*:/.test(m[2])) offenders.push(rule.trim());
+  });
+  return offenders;
+}
+console.log('\n── ไม่มี background: shorthand แตะ tag select (กัน chevron หาย — #64 ขั้น 3) ──');
+const costTraceStyle = (page.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '';
+const costTraceOffenders = findBackgroundShorthandOnSelect(costTraceStyle);
+if (costTraceOffenders.length) console.log('     wo-cost-trace เจอ: ' + costTraceOffenders.join(' | '));
+eq('wo-cost-trace ไม่มีกฎ background: shorthand แตะ select', costTraceOffenders.join(' | '), '');
+
+const { module: statusMod } = H.load({
+  file: 'WOStatusTracking.js',
+  libs: [
+    'WOReportTheme.js',
+    'WOStatusTracking_Labels.js',
+    'WOStatusTracking_Queries.js',
+    'WOStatusTracking_Drilldown.js',
+  ],
+  requireRunSQL: false,
+  sqlRows: () => [],
+  quietLog: true,
+});
+const statusChunks = [];
+statusMod.onRequest({
+  request: { parameters: {} },
+  response: { write: (s) => statusChunks.push(String(s)), setHeader: () => {} },
+});
+const statusPage = statusChunks.join('');
+const statusStyle = (statusPage.match(/<style>([\s\S]*?)<\/style>/) || [])[1] || '';
+const statusOffenders = findBackgroundShorthandOnSelect(statusStyle);
+if (statusOffenders.length) console.log('     wo-status เจอ: ' + statusOffenders.join(' | '));
+eq('wo-status ไม่มีกฎ background: shorthand แตะ select', statusOffenders.join(' | '), '');
+
 // โหมด embed ต้องไม่วาดแถบหัวเรื่องซ้อนกับหน้าที่ฝังเราไว้ — ตรวจที่การผูกพารามิเตอร์
 // (EMBED เป็นตัวแปรระดับ module ที่ onRequest ตั้งค่า จึงเรียกตรงจากเทสไม่ได้)
 // ตรวจข้ามทุกไฟล์ของแอป cost trace ไม่ผูกกับว่าโค้ดอยู่ไฟล์ไหน — ก้อน E1/E2 ย้ายของพวกนี้
