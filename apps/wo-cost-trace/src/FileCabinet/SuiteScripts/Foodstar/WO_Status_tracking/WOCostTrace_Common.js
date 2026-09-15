@@ -241,6 +241,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'summary{cursor:pointer;padding:6px var(--sp-2);background:var(--pj-surface-alt);'
     + 'border:1px solid var(--pj-border);border-radius:var(--radius-sm)}'
     + 'summary:hover{background:var(--pj-muted-bg)}'
+    // NetSuite ship CSS reset `:focus{outline:0}` มาด้วย (ท่าเดียวกับ .cal-nav/.cal-day ของ
+    // wo-status ที่ #64 ขั้น 4 ปิดช่องว่างนี้ไว้แล้ว) — <summary> คือ element โฟกัสได้จริงของ
+    // <details> ที่ไม่เคยมีการปิด outline มาก่อนเลยตกหล่นในสองขั้นก่อนหน้า
+    + 'summary:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
     + '.lvl2{margin-left:var(--sp-4);border-left:3px solid var(--pj-info);padding-left:var(--sp-3)}'
     + '.lvl3{margin-left:var(--sp-4);border-left:3px solid var(--pj-warning);padding-left:var(--sp-3)}'
     + '.bad{color:var(--pj-error);font-weight:700}'
@@ -256,9 +260,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.miss{color:var(--pj-warning)}'
     + '.note{font-size:var(--fs-xs);line-height:1.35}'
     // ตารางภาพรวมกว้าง 15 คอลัมน์ และยาวได้ถึงหลักร้อยแถว — ให้เลื่อนในกรอบของตัวเองพร้อมหัวตารางติดบน
+    // (layout-and-controls.md "ตารางกว้าง" ข้อ 2 — thead sticky ในกล่องที่ overflow:auto)
     + '.scroll{overflow:auto;max-height:76vh;border:1px solid var(--pj-border);'
     + 'border-radius:var(--radius-md);background:var(--pj-surface)}'
     + '.scroll table{margin:0;border:0}'
+    // ไม่ประกาศ background ซ้ำที่นี่โดยตั้งใจ — กฎ th{background:var(--pj-muted-bg)} ของ BASE
+    // (WOReportTheme.js) สปีซิฟิซิตี้ต่ำกว่าแต่ยัง "ชนะ" เพราะ .scroll thead th ไม่ได้แตะ
+    // property นี้เลย (cascade ทำงานเป็นรายพร็อพเพอร์ตี้ ไม่ใช่รายบล็อก) หัวตารางที่ลอย
+    // ระหว่างเลื่อนจึงทึบแสง (--pj-muted-bg = --c-surface-3) ไม่ใช่โปร่งใสทับเนื้อหาด้านล่าง —
+    // test/test_table_layout.js ตรวจสองชั้น: (1) รวม body ของทุกกฎที่ selector ลงท้ายด้วย
+    // "th" มาเทียบว่ามี background โทนกลางอยู่จริงสักกฎ (ไม่ได้ resolve cascade เป็นค่าเดียวจริง
+    // ๆ — regex บนกฎที่รวมกันเท่านั้น) (2) ปักหมุดกฎนี้ (.scroll thead th) เองว่ายังไม่มี
+    // background ประกาศอยู่ในตัวมันเอง — ถ้าใครมาเติม background ที่นี่ภายหลัง (เช่น
+    // background:transparent) เทสข้อ (2) จะแดงทันทีให้มารีวิวว่าตั้งใจหรือเผลอ
     + '.scroll thead th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px 0 var(--pj-border)}'
     // เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
     // กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ตัวเดียวติดท้ายเลขที่ตัดบรรทัด)

@@ -156,6 +156,11 @@ define(
       + 'cursor:pointer;font-family:inherit;font-size:var(--fs-sm);font-weight:600;'
       + 'color:var(--pj-text-muted)}'
       + '.langtog button.on{background:var(--pj-primary);color:#fff}'
+      // outline-offset ติดลบ (ไม่ใช่ 2 แบบปุ่มทั่วไป) เพราะ .langtog{overflow:hidden} —
+      // ปุ่มสองปุ่มชิดขอบกล่องพอดี outline ที่ยื่นออกด้านนอกจะโดนกล่องแม่ตัดทิ้งเงียบ ๆ
+      // (ท่าเดียวกับ .datebtn/.cal-day ที่ #64 ขั้น 3/4 ใช้กับกล่อง overflow:hidden เดียวกัน)
+      + '.langtog button:focus-visible{outline:2px solid var(--pj-primary) !important;'
+      + 'outline-offset:-2px}'
       // แถบตัวกรอง = .toolbar ของ template (พื้นเทาอ่อน เส้นล่างเส้นเดียว)
       + '.filterbar{display:flex;gap:var(--sp-4);align-items:flex-end;flex-wrap:wrap;'
       + 'padding:var(--sp-3) var(--sp-5);background:var(--pj-surface-alt);'
@@ -229,6 +234,10 @@ define(
       + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2);'
       + 'transition:background-color .1s ease}'
       + '.cal-today:hover{text-decoration:underline}'
+      // gap ที่ตกหล่นจาก #64 ขั้น 4: .cal-nav/.cal-day ได้ focus-visible ตอนนั้นแล้ว แต่ปุ่ม
+      // Today ในแถวเดียวกันไม่ถูกนับเพราะเป็นคนละ helper call ในโค้ด — ยังอยู่ใน .cal ที่ไม่มี
+      // overflow:hidden จึง offset บวกได้ตามปกติเหมือน .cal-nav
+      + '.cal-today:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
       // prefers-reduced-motion (#64 ขั้น 4, gap 7) — ปฏิทินเปิด/ปิดด้วย appendChild/removeChild
       // ตรง ๆ ไม่มี transition ของการเปิดปิดอยู่แล้ว มีแค่ transition ของ hover/focus-ring ที่
       // เพิ่มเข้ามารอบนี้ (.datewrap ring, .datebtn/.cal-nav/.cal-day/.cal-today hover) ปิดให้
@@ -251,6 +260,8 @@ define(
       + 'border-radius:var(--radius-md);font-family:inherit;font-weight:600;'
       + 'cursor:pointer;font-size:var(--fs-sm)}'
       + '.filterbar>button:hover{background:var(--pj-primary-dark)}'
+      + '.filterbar>button:focus-visible{outline:2px solid var(--pj-primary) !important;'
+      + 'outline-offset:2px}'
       // KPI - คงคลาส .kpi เดิมไว้เพราะ markup มี data-i18n ผูกอยู่ แต่หน้าตาตาม .kpi-card
       // ต่างจาก template จุดเดียว: ค่าตัวใหญ่กว่า เพราะหน้านี้มี 4 การ์ด ไม่ใช่ 10
       + '.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));'
@@ -307,12 +318,22 @@ define(
       + '.drilldown-loading td{padding:10px 34px;color:var(--pj-text-muted);font-style:italic}'
       + '.pagination{display:flex;gap:6px;align-items:center;'
       + 'padding:var(--sp-3) var(--sp-5);flex-wrap:wrap}'
-      + '.pglink,.pgcur{padding:5px 10px;border-radius:var(--radius-sm);'
-      + 'border:1px solid var(--pj-border-strong);text-decoration:none;'
-      + 'font-size:var(--fs-sm);color:var(--pj-primary);background:var(--pj-surface)}'
+      // layout-and-controls.md hit target — pagination 24–28 กว้าง × 32 สูง (วัดของเดิม:
+      // padding:5px 10px + font-size 12px/line-height ปริยาย ≈ 30×30 — ต่ำกว่าเป้า 32 สูง
+      // จึงคุมกล่องตรง ๆ แทนพึ่ง padding+line-height ซึ่งวัดผลจริงในเบราว์เซอร์ไม่ได้แน่นอน)
+      // .pgcur เป็น <span> (หน้าปัจจุบัน กดไม่ได้ ไม่ focusable) — .pglink เป็น <a href> จริง
+      // ดู buildPaginationHtml ด้านล่าง
+      + '.pglink,.pgcur{box-sizing:border-box;display:inline-flex;align-items:center;'
+      + 'justify-content:center;min-width:28px;height:32px;padding:0 var(--sp-2);'
+      + 'border-radius:var(--radius-sm);border:1px solid var(--pj-border-strong);'
+      + 'text-decoration:none;font-size:var(--fs-sm);color:var(--pj-primary);'
+      + 'background:var(--pj-surface);white-space:nowrap}'
       + '.pgcur{background:var(--pj-primary);color:#fff;'
       + 'border-color:var(--pj-primary);font-weight:700}'
       + '.pglink:hover{background:var(--pj-surface-alt)}'
+      // !important เพราะ NetSuite ship CSS reset `:focus{outline:0}` มาด้วย (ท่าเดียวกับ
+      // ปุ่มปฏิทิน/combobox ของขั้น 3/4) — .pgcur ไม่ต้องมีกฎนี้เพราะเป็น span กดไม่ได้จริง
+      + '.pglink:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
       + '.pgellipsis{color:var(--pj-text-muted);padding:0 4px}'
       + '#tip{position:fixed;z-index:50;background:var(--pj-text);'
       + 'border:1px solid var(--pj-text);color:#fff;padding:8px 10px;'
@@ -1695,7 +1716,12 @@ function _isoFromDateInput(el) {
     var box = openCal.box, anchor = openCal.anchor;
     if (!box || !anchor) return;
     var pad = 4;
-    var vw = (typeof window !== 'undefined' && window.innerWidth)  || 0;
+    // documentElement.clientWidth ตัด scrollbar แนวตั้ง (~17px) ออกแล้ว —
+    // window.innerWidth รวม scrollbar เข้าไปด้วย ทำให้ popup ลอยเลยขอบขวาที่มองเห็นจริง
+    // ไปทับ/หลังแถบเลื่อน (layout-and-controls.md "ความกว้างของ container ที่ JS คำนวณ")
+    var vw = (typeof document !== 'undefined' && document.documentElement
+        && document.documentElement.clientWidth)
+      || (typeof window !== 'undefined' && window.innerWidth) || 0;
     var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
       || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
@@ -2033,7 +2059,12 @@ function _isoFromDateInput(el) {
     var list = w._list, anchor = w._input;
     if (!list || !anchor) return;
     var pad = 4;
-    var vw = (typeof window !== 'undefined' && window.innerWidth)  || 0;
+    // documentElement.clientWidth ตัด scrollbar แนวตั้ง (~17px) ออกแล้ว —
+    // window.innerWidth รวม scrollbar เข้าไปด้วย ทำให้ popup ลอยเลยขอบขวาที่มองเห็นจริง
+    // ไปทับ/หลังแถบเลื่อน (layout-and-controls.md "ความกว้างของ container ที่ JS คำนวณ")
+    var vw = (typeof document !== 'undefined' && document.documentElement
+        && document.documentElement.clientWidth)
+      || (typeof window !== 'undefined' && window.innerWidth) || 0;
     var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
       || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
