@@ -101,6 +101,11 @@ define([], function () {
    */
   var BASE = '*{box-sizing:border-box;margin:0;padding:0}'
     + '[hidden]{display:none!important}'
+    // ซ่อนแบบที่ยังโฟกัสได้ (ไม่ใช่ display:none) — ใช้กับ <select> ที่ถูกครอบเป็น searchable
+    // combobox (#64 ขั้น 3) ต้องเหลืออยู่ใน DOM เป็นตัวเก็บค่าและยังรับโฟกัสส่งต่อจาก
+    // `label for=` ได้ (บั๊กจริงที่ MRP เจอ: display:none ตัดช่องทาง label for= ทิ้งไปเลย)
+    + '.sr-only{position:absolute;width:1px;height:1px;padding:0;margin:-1px;overflow:hidden;'
+    + 'clip:rect(0,0,0,0);white-space:nowrap;border:0}'
     + "body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI','Sarabun',sans-serif;"
     + 'background:var(--pj-bg);color:var(--pj-text);font-size:var(--fs-md);line-height:1.5}'
     + 'a{color:var(--pj-primary)}'
@@ -118,10 +123,15 @@ define([], function () {
     + 'th{background:var(--pj-muted-bg);font-weight:600;color:var(--pj-text-label);'
     + 'font-size:var(--fs-xs);letter-spacing:.3px}'
     // ตัวควบคุมฟอร์ม — หน้าตาเดียวกับ .search / .inline-field input ของต้นทาง
+    // background-color: (ไม่ใช่ background: shorthand) เพราะ selector นี้แตะ tag `select` ตรง ๆ
+    // (#64 ขั้น 3 — list field): shorthand จะรีเซ็ต background-image ของทุก .rw-select ที่ผสาน
+    // สปีซิฟิซิตี้แพ้กัน (0,1,1 ของกฎนี้ vs 0,1,0 ของ .rw-select) — chevron จะหายไปเงียบ ๆ
+    // โดยไม่มี error ใด ๆ (กับดักเดียวกับที่ MRP #489 เจอจริง — ดู list-field.md "cascade gotchas")
+    // test/test_theme.js ข้อ 2b เป็นด่านกันไม่ให้ background: shorthand โผล่กลับมาแตะ select อีก
     + 'input[type=text],input[type=date],select,textarea{'
     + "font-family:inherit;font-size:var(--fs-md);padding:7px var(--sp-3);"
     + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
-    + 'background:var(--pj-surface);color:var(--pj-text)}'
+    + 'background-color:var(--pj-surface);color:var(--pj-text)}'
     + 'input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;'
     + 'border-color:var(--pj-primary);box-shadow:0 0 0 2px rgba(24,95,165,.15)}'
     + 'label{font-size:var(--fs-xs);font-weight:600;color:var(--pj-text-label);'
@@ -213,7 +223,86 @@ define([], function () {
     + '.badge.error{background:var(--pj-error-bg);color:var(--pj-error)}'
     + '.badge.muted{background:var(--pj-muted-bg);color:var(--pj-muted)}'
     + '.loading{padding:var(--sp-8);text-align:center;'
-    + 'color:var(--pj-text-muted);font-size:var(--fs-sm)}';
+    + 'color:var(--pj-text-muted);font-size:var(--fs-sm)}'
+    // ── Redwood list field — select-single native + searchable combobox (#64 ขั้น 3) ──────
+    // ที่มา: list-field.md (สเปกกลางของทีม, MRP #489/#500) — ก๊อปเมตริก/พฤติกรรมมาตาม
+    // ต้นฉบับ แต่แทนชื่อ token ที่ต้นฉบับอ้างและเรายังไม่มี (--btn-h · --s-* · --bw-control ·
+    // --focus-ring · --tap-min — สเกลปุ่ม/ระยะ/focus-ring ของ Redwood ที่ยังไม่ได้ทำในขั้นนี้
+    // ดู test_theme.js หัวไฟล์เรื่อง 4a/4b) ด้วยของจริงที่มีอยู่แล้ว (--pj-*/--r-*/--sh-*/--fs-*)
+    // ท่าเดียวกับที่ .datewrap/.datebtn ของ date field (#64 ขั้น 4) ทำมาก่อน — คงเมตริกที่ตั้งใจ
+    // ไม่ใช่คงชื่อ token ที่ไม่มีอยู่จริง
+    //
+    // ใช้ร่วมกันทั้งสองแอป (wo-status: subsidiaryId/locationId/subItemTypeId · wo-cost-trace:
+    // sub/loc) จึงอยู่ที่นี่ตามกติกา "CSS ที่ใช้ร่วม → shared/WOReportTheme.js" ไม่ใช่ REPORT_CSS
+    // ของแอปใดแอปหนึ่ง (ต่างจาก .datewrap/.cal ซึ่งตอนนี้มีแค่ wo-status ใช้จึงยังอยู่ที่นั่น)
+    //
+    // frame ใช้กรอบ/สี/radius เดียวกับ input[type=text] ของ BASE ข้างบน (ไม่ตั้ง height คงที่
+    // เพราะ BASE เองก็ไม่ได้ตั้ง — ยังไม่มี --btn-h ให้ยึด) เว้น padding ขวา 28px ให้ chevron 16px
+    + '.rw-select,.rw-combobox .rw-combobox-input{box-sizing:border-box;'
+    + 'padding:7px 28px 7px var(--sp-3);border:1px solid var(--pj-border-strong);'
+    + 'border-radius:var(--radius-md);background-color:var(--pj-surface);color:var(--pj-text);'
+    + 'font-family:inherit;font-size:var(--fs-md);line-height:normal}'
+    // chevron ของ native <select> — data: URI วาด currentColor ไม่ได้ จึงฝัง hex ตรง ๆ
+    // (ข้อยกเว้นเดียวที่ยอมให้มี hex นอกไฟล์นี้ตาม feedback ของทีม) เลข %23161513 = URL-encode
+    // ของ #161513 ซึ่งคือค่า --c-text ตัวเดียวกับที่ token ประกาศไว้ข้างบนเป๊ะ (ไม่ใช่เลขลอย)
+    // — เป็น %23 (encoded) ไม่ใช่ตัวอักษร # ตรง ๆ จึง regex เช็ค hex ของ test_theme.js ข้อ 2
+    // (`/#[0-9a-fA-F]{3,6}\b/`) ไม่ตรวจจับบรรทัดนี้อยู่แล้ว
+    + '.rw-select{appearance:none;-webkit-appearance:none;-moz-appearance:none;'
+    // svg นี้อยู่ใน background-image ของ CSS ไม่ใช่ DOM จริง — เบราว์เซอร์ไม่ส่งเข้า a11y tree
+    // อยู่แล้วไม่ว่าจะมี aria-hidden หรือไม่ (ต่างจาก svg ทุกตัวของ ICONS ข้างบนซึ่งถูกต่อเข้า
+    // markup จริง) test/test_icons.js สแกนทั้งหน้าเรนเดอร์เพื่อจับ svg ที่ต่อ DOM จริงแล้วลืม
+    // aria-hidden — ตัด <style> block ออกก่อนสแกนที่นั่นแล้ว (ดูคอมเมนต์ในไฟล์เทส) ไม่ต้องเติม
+    // attribute ที่ไม่มีความหมายจริงลงในนี้เพื่อหลอกด่าน
+    + "background-image:url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' "
+    + "width='16' height='16' viewBox='0 0 16 16' fill='none' stroke='%23161513' stroke-opacity='.7' "
+    + "stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4 6l4 4 4-4'/>"
+    + "</svg>\");background-repeat:no-repeat;background-position:right var(--sp-2) center;"
+    + 'background-size:16px 16px}'
+    + '.rw-select:focus,.rw-select:focus-visible,'
+    + '.rw-combobox .rw-combobox-input:focus,.rw-combobox .rw-combobox-input:focus-visible{'
+    + 'outline:none !important;box-shadow:0 0 0 2px var(--pj-primary) !important}'
+    + '.rw-select:disabled,.rw-combobox .rw-combobox-input:disabled{'
+    + 'background-color:var(--pj-muted-bg);color:var(--pj-text-muted);cursor:not-allowed}'
+    + '.rw-combobox{position:relative;display:inline-block;vertical-align:top}'
+    // ช่อง chevron ของ combobox เป็น <span> ห่อ svg จริง (ไม่ใช่ background-image) — ใช้
+    // currentColor ได้ตามปกติ ไม่ต้องฝัง hex ซ้ำแบบของ .rw-select ด้านบน
+    + '.rw-combobox .rw-combobox-chevron{position:absolute;right:var(--sp-2);top:50%;'
+    + 'transform:translateY(-50%);width:16px;height:16px;color:var(--pj-text-muted);'
+    + 'pointer-events:none;display:flex}'
+    + '.rw-combobox .rw-combobox-chevron svg{display:block}'
+    // ไม่มีปุ่ม ✕ ในฟิลด์ list (ผู้ใช้ปฏิเสธแล้ว 2026-09-12 — รกและซ้อนกับ chevron) — กฎนี้
+    // เป็นเกราะกันเผื่ออนาคตมีใครก็อปโครง MRP ที่มีปุ่มนี้มาทั้งชุดโดยไม่ได้อ่าน adoption rule
+    // (ปุ่ม clear ถ้ามีจะยังเป็นลูกของ .rw-combobox จริง ต่างจากสามกลุ่มด้านล่าง — ดูเหตุผลถัดไป)
+    + '.rw-combobox .rw-combobox-clear{display:none !important}'
+    // ⚠ .rw-combobox-list / .rw-combobox-option / .rw-combobox-empty ใช้ selector "คลาสเดียว"
+    // โดยตั้งใจ — ห้ามใส่ ".rw-combobox " นำหน้าอีก (บั๊กจริงที่พบตอน deploy ขึ้น SB1: panel
+    // (list/option/empty) ถูก `document.body.appendChild(list)` ย้ายไปอยู่ใต้ <body> ตรง ๆ
+    // (portal ตามสัญญาของ dropdown ที่อยู่ในกล่อง overflow — ดู enhance() ฝั่ง client) จึง**ไม่ใช่
+    // ลูกของ .rw-combobox อีกต่อไป** — descendant selector `.rw-combobox .rw-combobox-list` ไม่
+    // เคย match เลย พื้น/ขอบ/เงา/max-height/z-index จึงหายหมดเงียบ ๆ (getComputedStyle ตรวจแล้ว
+    // ว่าเป็น initial value ทุกตัว ทั้งที่ inline style ของ JS ยังตั้ง position:fixed ให้ปกติ) —
+    // บั๊กชนิดเดียวกับ `.filterbar button` ของ #45 (selector ไม่ตรงกับ DOM จริงหลัง portal)
+    // test/test_listfield_portal_css.js เป็นด่านกันไม่ให้ย้อนกลับไปเป็น descendant selector
+    + '.rw-combobox-list{position:fixed;z-index:60;max-height:280px;overflow-y:auto;'
+    + 'background-color:var(--pj-surface);border:1px solid var(--pj-border-strong);'
+    + 'border-radius:var(--radius-md);box-shadow:var(--shadow-md);padding:4px 0;margin:0;'
+    + 'list-style:none}'
+    + '.rw-combobox-option{min-height:30px;padding:0 var(--sp-3);'
+    + 'display:flex;align-items:center;font-size:var(--fs-md);color:var(--pj-text);cursor:pointer}'
+    + '.rw-combobox-option:hover{background-color:var(--pj-surface-alt)}'
+    + '.rw-combobox-option.is-active,'
+    + '.rw-combobox-option[aria-selected="true"]{'
+    + 'background-color:var(--c-brand-soft);color:var(--pj-primary)}'
+    + '.rw-combobox-empty{padding:var(--sp-2);font-size:var(--fs-sm);'
+    + 'color:var(--pj-text-muted);font-style:italic;text-align:center}'
+    // ตั้งใจใช้ selector คลาสเดียว (.rw-combobox-input) ไม่ผูก .rw-combobox แม่ — สปีซิฟิซิตี้
+    // (0,1,0) แพ้ .filterbar input ของ wo-status (0,1,1 — มี type selector `input` เพิ่ม) โดย
+    // ไม่ต้องพึ่งลำดับ cascade เลย (ผูกสองคลาสจะกลายเป็น (0,2,0) ซึ่ง**ชนะ**ทุกกรณีไม่ว่าจะมาก่อน
+    // หรือหลัง .filterbar input ก็ตาม — เคยเขียนคอมเมนต์ผิดไว้ตรงนี้ว่า "cascade order" เป็นตัวตัดสิน
+    // ซึ่งไม่จริง สปีซิฟิซิตี้ต่างหาก) ผลคือ wo-status ยังได้ 150px ตามแถวตัวกรองเดิม ส่วน
+    // wo-cost-trace ที่ไม่มี container คุมความกว้างแบบนั้นได้ 170px ของที่นี่แทน กันช่องเล็ก
+    // จนพิมพ์ค้นไม่ถนัด
+    + '.rw-combobox-input{min-width:170px}';
 
   /**
    * ไอคอนสถานะ — inline SVG 16px ตามมาตรฐาน Teibto Redwood (#64 ขั้น 2)
@@ -264,6 +353,13 @@ define([], function () {
       + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
     chevronRight: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
       + 'focusable="false"><path d="M6 3.2L10.4 8 6 12.8" stroke="currentColor" stroke-width="1.5" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // เพิ่มพร้อม list field (#64 ขั้น 3) — ลูกศรของ native <select> (.rw-select ใน COMPONENTS
+    // ด้านล่าง วาดเป็น background-image เพราะ currentColor ใช้กับ data: URI ไม่ได้) และของ
+    // ช่อง combobox (.rw-combobox-chevron ที่นี่เป็น svg จริงจึงใช้ currentColor ได้ตามปกติ)
+    // เป็น path เดียวกัน (M4 6l4 4 4-4) — คงรูปทรงเดียวกันทั้งสองที่ทาง
+    chevronDown: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" '
       + 'stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 

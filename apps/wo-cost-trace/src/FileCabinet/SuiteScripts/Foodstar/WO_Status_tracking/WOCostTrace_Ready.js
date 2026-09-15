@@ -1158,6 +1158,11 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       <input type="text" name="rqty" value="${esc(p.qtyOverride || '')}" placeholder="${esc(fmt(rd.qty_from_wo, 4))}" style="width:100px">
       <br style="line-height:9px">
       <label>คลังที่ใช้เทียบสต๊อก (กด Ctrl เลือกได้หลายคลัง)</label>
+      <!-- #64 ขั้น 3 (list field): จงใจไม่ทำเป็น searchable combobox — สัญญาของ enhance()
+           คือ select-single (select.selectedIndex = i แล้วยิง change ครั้งเดียว) ส่วนที่นี่เป็น
+           select-multiple จริง (s.selectedOptions หลายค่าพร้อมกัน ดู onsubmit ด้านบน) คนละ
+           behavior contract กัน — ยัดเข้า combobox เดิมจะทำให้เลือกได้ทีละคลังเท่านั้น
+           ยังไม่มีสเปก multi-select ของทีมสำหรับ list field นี้ ปล่อยเป็น native ต่อไปก่อน -->
       <select id="rlocsel" multiple size="6" style="min-width:260px;vertical-align:top">
         <option value="all"${p.locAll ? ' selected' : ''}>— ทุกคลัง —</option>${opts}</select>
       &nbsp;<button type="submit" class="btn primary">ตรวจความพร้อม</button>

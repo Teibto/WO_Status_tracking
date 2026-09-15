@@ -406,7 +406,15 @@ eq('ลิงก์ record มีข้อความบอกปลายท�
 eq('ลิงก์ record มีไอคอนลิงก์นอก (inline SVG แทน ↗ เดิม)',
   /เปิดใบสั่งผลิตใน NetSuite<svg[^>]*viewBox="0 0 16 16"[\s\S]*?<\/svg><\/a>/.test(cell ? cell[0] : ''), true);
 eq('ไม่มีตัวอักษร ↗ เหลือในเซลล์นี้', (cell ? cell[0] : '').indexOf('↗') >= 0, false);
-eq('ไม่มี undefined ใน html', html.indexOf('undefined') < 0, true);
+// ตัดเฉพาะ <script> ของ renderListFieldScript() ออกก่อนตรวจ (#64 ขั้น 3 — list field): ก้อนนั้น
+// มีสำนวน JS ปกติ `typeof window !== 'undefined'` ซึ่งมีคำว่า "undefined" เป็นตัวอักษรจริง
+// โดยตั้งใจ — ด่านนี้ต้องการจับ "undefined" ที่หลุดมาจากค่าตัวแปรเข้าไปในเซลล์ตาราง (เช่น
+// template literal ที่ลืม guard ค่า null/undefined) ไม่ใช่ literal string ในโค้ด client
+// ตัดให้แคบเฉพาะ script ที่มี enhanceRwSelect เท่านั้น (ไม่ตัด <script> ของ renderSummaryExport
+// ที่ฝัง `var D=` เป็น JSON ของข้อมูลตาราง — ตรงนั้นแหละคือจุดที่ undefined หลุดมาได้จริงถ้า
+// summaryExportData() ลืม guard ค่า จึงต้องยังอยู่ในขอบเขตที่ด่านนี้ตรวจ)
+const htmlNoListFieldScript = html.replace(/<script>(?:(?!<\/script>)[\s\S])*?enhanceRwSelect[\s\S]*?<\/script>/g, '');
+eq('ไม่มี undefined ใน html', htmlNoListFieldScript.indexOf('undefined') < 0, true);
 eq('ขึ้น "ยังไม่มี" แทนศูนย์', html.indexOf('ยังไม่มี</td>') > 0, true);
 eq('มีแถวรวมต่อสินค้า', html.indexOf('รวม 11010900010') > 0, true);
 eq('มีคอลัมน์วันปิดงานผลิต', html.indexOf('<th>ปิดงานผลิต</th>') > 0, true);

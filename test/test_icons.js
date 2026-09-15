@@ -66,11 +66,15 @@ eq('เจอ ICONS block ใน shared/WOReportTheme.js', !!iconMatch, true);
 const iconBlock = iconMatch ? iconMatch[0] : '';
 // chevronLeft/chevronRight เพิ่มพร้อม date field (#64 ขั้น 4) — ปุ่มเดือนก่อน/ถัดไปของ
 // ปฏิทิน WO Status เดิมเป็นตัวอักษร ‹ › ไม่ถูกนับตอนขั้น 2 ย้ายไอคอนสถานะ
-['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight'].forEach((name) => {
-  eq('ICONS มี ' + name, new RegExp('\\b' + name + ':').test(iconBlock), true);
-});
+// chevronDown เพิ่มพร้อม list field (#64 ขั้น 3) — ลูกศรของ .rw-combobox-chevron (svg จริงที่
+// ต่อ DOM) ส่วนลูกศรของ native .rw-select เป็น background-image คนละก้อน (ดูคอมเมนต์ที่
+// COMPONENTS ของ shared/WOReportTheme.js — ทำไมไม่ใช้ theme.ICONS ตรงนั้นได้)
+['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight', 'chevronDown']
+  .forEach((name) => {
+    eq('ICONS มี ' + name, new RegExp('\\b' + name + ':').test(iconBlock), true);
+  });
 const svgTags = iconBlock.match(/<svg[^>]*>/g) || [];
-eq('มี <svg> ครบ 8 ตัว', svgTags.length, 8);
+eq('มี <svg> ครบ 9 ตัว', svgTags.length, 9);
 eq('ทุก <svg> เป็น viewBox 0 0 16 16', svgTags.every((s) => s.indexOf('viewBox="0 0 16 16"') >= 0), true);
 eq('ทุก <svg> มี width/height=16', svgTags.every((s) => /width="16"/.test(s) && /height="16"/.test(s)), true);
 eq('ทุก <svg> aria-hidden + focusable=false', svgTags.every((s) => /aria-hidden="true"/.test(s) && /focusable="false"/.test(s)), true);
@@ -148,8 +152,17 @@ BAD_GLYPHS.forEach((g) => {
 });
 // STATUS_ICONS ฝั่ง client (dead code — ดูหมายเหตุใน WOStatusTracking.js) ถูกฝังผ่าน
 // JSON.stringify() เข้า <script> จึงมี `"` เป็น `\"` ในเนื้อ HTML ดิบ — ยอมทั้งสองแบบ
+//
+// ตัด <style> block ออกก่อนสแกน (#64 ขั้น 3 — list field): .rw-select ใช้ svg เป็น
+// background-image ของ CSS ล้วน (เหตุผลที่ต้องฝัง hex ตรง ๆ ใน data: URI ก็เพราะจุดนี้เหมือนกัน
+// — currentColor ใช้กับ background-image ไม่ได้) ไม่ได้ต่อเข้า DOM จริงเลย เบราว์เซอร์จึงไม่ส่ง
+// เข้า a11y tree ไม่ว่าจะมี aria-hidden หรือไม่ — เป็นคนละเรื่องกับ svg ที่ enhance() ต่อ DOM จริง
+// (.rw-combobox-chevron ซึ่งมาจาก theme.ICONS.chevronDown ที่มี aria-hidden ติดตัวอยู่แล้วเหมือน
+// ICONS ทุกตัว) ด่านนี้ตั้งใจตรวจเฉพาะ svg ที่ผู้ใช้จริง/screen reader เจอ ไม่ใช่ทุกตัวอักษร
+// "<svg" ที่ปรากฏในหน้า HTML ดิบ
+const htmlNoStyleBlock = html.replace(/<style>[\s\S]*?<\/style>/, '');
 eq('ทุก <svg> ในหน้ามี aria-hidden ครบ (ไม่มีตัวไหนหลุด text)',
-  (html.match(/<svg[^>]*>/g) || []).every((s) => /aria-hidden=\\?"true\\?"/.test(s)), true);
+  (htmlNoStyleBlock.match(/<svg[^>]*>/g) || []).every((s) => /aria-hidden=\\?"true\\?"/.test(s)), true);
 
 // ── 5. accessible name — ไอคอนสื่อความหมายต้องมีชื่อจริงในหน้า HTML (a11y regression #64 ขั้น 2b) ──
 console.log('\n── accessible name: pill/note-icon มี role="img" aria-label · legend ไม่มี (decorative) ──');

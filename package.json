@@ -6,9 +6,9 @@
   "scripts": {
     "check:prod": "node apps/wo-cost-trace/scripts/check-prod-staging.js",
     "sync:theme": "node shared/sync-theme.js",
-    "test:shared": "node test/test_repo_guard.js && node test/test_deploy_manifest.js && node test/test_theme.js && node test/test_theme_sync.js && node test/test_icons.js",
-    "test:trace": "node apps/wo-cost-trace/test/test_qlog_scope.js && node apps/wo-cost-trace/test/test_query_contract.js && node apps/wo-cost-trace/test/test_trace_parity.js && node apps/wo-cost-trace/test/test_summary_math.js && node apps/wo-cost-trace/test/test_ready_master.js && node apps/wo-cost-trace/test/test_summary_export.js && node apps/wo-cost-trace/test/test_summary_filters.js",
-    "test:status": "node apps/wo-status/test/test_wostatus_datefilter.js && node apps/wo-status/test/test_wostatus_subitemtype.js && node apps/wo-status/test/test_wostatus_scope.js",
+    "test:shared": "node test/test_repo_guard.js && node test/test_deploy_manifest.js && node test/test_theme.js && node test/test_theme_sync.js && node test/test_icons.js && node test/test_listfield_sync.js && node test/test_listfield_portal_css.js",
+    "test:trace": "node apps/wo-cost-trace/test/test_qlog_scope.js && node apps/wo-cost-trace/test/test_query_contract.js && node apps/wo-cost-trace/test/test_trace_parity.js && node apps/wo-cost-trace/test/test_summary_math.js && node apps/wo-cost-trace/test/test_ready_master.js && node apps/wo-cost-trace/test/test_summary_export.js && node apps/wo-cost-trace/test/test_summary_filters.js && node apps/wo-cost-trace/test/test_summary_listfield.js",
+    "test:status": "node apps/wo-status/test/test_wostatus_datefilter.js && node apps/wo-status/test/test_wostatus_subitemtype.js && node apps/wo-status/test/test_wostatus_scope.js && node apps/wo-status/test/test_wostatus_listfield.js",
     "test": "npm run test:shared && npm run test:trace && npm run test:status"
   }
 }
