@@ -64,11 +64,13 @@ const themeSrc = fs.readFileSync(path.join(__dirname, '../shared/WOReportTheme.j
 const iconMatch = themeSrc.match(/var ICONS = \{[\s\S]*?\n  \};/);
 eq('เจอ ICONS block ใน shared/WOReportTheme.js', !!iconMatch, true);
 const iconBlock = iconMatch ? iconMatch[0] : '';
-['check', 'cross', 'clock', 'warn', 'help', 'extLink'].forEach((name) => {
+// chevronLeft/chevronRight เพิ่มพร้อม date field (#64 ขั้น 4) — ปุ่มเดือนก่อน/ถัดไปของ
+// ปฏิทิน WO Status เดิมเป็นตัวอักษร ‹ › ไม่ถูกนับตอนขั้น 2 ย้ายไอคอนสถานะ
+['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight'].forEach((name) => {
   eq('ICONS มี ' + name, new RegExp('\\b' + name + ':').test(iconBlock), true);
 });
 const svgTags = iconBlock.match(/<svg[^>]*>/g) || [];
-eq('มี <svg> ครบ 6 ตัว', svgTags.length, 6);
+eq('มี <svg> ครบ 8 ตัว', svgTags.length, 8);
 eq('ทุก <svg> เป็น viewBox 0 0 16 16', svgTags.every((s) => s.indexOf('viewBox="0 0 16 16"') >= 0), true);
 eq('ทุก <svg> มี width/height=16', svgTags.every((s) => /width="16"/.test(s) && /height="16"/.test(s)), true);
 eq('ทุก <svg> aria-hidden + focusable=false', svgTags.every((s) => /aria-hidden="true"/.test(s) && /focusable="false"/.test(s)), true);

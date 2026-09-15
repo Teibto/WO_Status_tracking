@@ -163,38 +163,60 @@ define(
       + '.filterbar .fld{display:flex;flex-direction:column;gap:var(--sp-1)}'
       + '.filterbar select,.filterbar input{min-width:150px}'
       // ช่องวันที่เป็นช่องข้อความ (dd/mm/yyyy) — เลขความกว้างเท่ากันเหมือนตารางตัวเลข
-      + '.dateinput{font-variant-numeric:tabular-nums;padding-right:30px}'
-      // ── ปฏิทินของหน้านี้เอง (issue #45) ─────────────────────────────
-      // เขียนเองแทนปฏิทินของเบราว์เซอร์ เพราะช่อง input แบบ date ของเบราว์เซอร์แสดงรูปแบบและปี
-      // ตาม locale ของเครื่อง (en-US เห็น mm/dd/yyyy · th-TH เห็นปี พ.ศ.) บังคับไม่ได้
-      + '.datewrap{position:relative;display:inline-flex;align-items:center}'
-      + '.datebtn{position:absolute;right:4px;top:50%;transform:translateY(-50%);'
-      + 'display:flex;align-items:center;justify-content:center;width:22px;height:22px;'
-      + 'padding:0;background:none;border:0;border-radius:var(--radius-sm);cursor:pointer;'
-      + 'color:var(--pj-text-muted)}'
+      + '.dateinput{font-variant-numeric:tabular-nums}'
+      // ── กรอบช่องวันที่ (#64 ขั้น 4 — Teibto Redwood date field) ──────────
+      // เดิมปุ่มปฏิทินเป็น position:absolute ลอยทับในช่อง (กันที่ด้วย padding-right ของ input)
+      // ตอนนี้กรอบทั้งก้อนอยู่ที่ .datewrap ใบเดียว (border + focus-ring) — input กับปุ่ม
+      // ข้างในไม่มีกรอบของตัวเอง ปุ่มมีแค่เส้นคั่น border-left เป็นลูกแถวปกติ ไม่ใช่ของลอย
+      + '.datewrap{position:relative;display:flex;align-items:stretch;min-width:150px;'
+      + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
+      + 'background:var(--pj-surface);overflow:hidden;transition:box-shadow .1s ease}'
+      + '.datewrap:focus-within{box-shadow:0 0 0 2px var(--pj-primary)}'
+      // ให้ min-width ของ .filterbar input (150px) ตกที่ .datewrap แทน — ตัว input ข้างใน
+      // ต้องหดได้ (min-width:0) ไม่งั้นบวกความกว้างปุ่ม 28px แล้วล้นกรอบที่ overflow:hidden ตัด
+      + '.datewrap input[type=text]{flex:1 1 auto;min-width:0;border:0;border-radius:0;'
+      + 'background:transparent;box-shadow:none}'
+      + '.datewrap input[type=text]:focus{outline:none;border-color:transparent;box-shadow:none}'
+      + '.datebtn{position:relative;flex:0 0 28px;width:28px;padding:0;'
+      + 'display:flex;align-items:center;justify-content:center;'
+      + 'background:none;border:0;border-left:1px solid var(--pj-border-strong);border-radius:0;'
+      + 'cursor:pointer;color:var(--pj-text-muted);'
+      + 'transition:background-color .1s ease,color .1s ease}'
       + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
       + '.datebtn:disabled{cursor:default;opacity:.5}'
       // !important เพราะ NetSuite ship CSS reset `:focus{outline:0}` มาด้วย — ไม่งั้นปุ่มนี้
       // จะไม่มี outline ให้เห็นเวลา keyboard focus เลย
-      + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
-      + '.cal{position:absolute;z-index:40;top:calc(100% + 4px);left:0;width:238px;'
+      + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
+      // ปฏิทิน — append ที่ <body> เสมอ (ฟังก์ชัน _open ฝั่ง JS) เพราะการ์ด/ตารางของหน้านี้
+      // เป็น overflow:hidden/auto หลายชั้น ปฏิทินที่ยังเป็นลูกของ .datewrap จะถูกตัดขอบ
+      // ตำแหน่งจริง (top/left) คำนวณจาก getBoundingClientRect ที่ฝั่ง JS (ฟังก์ชัน _position) —
+      // ที่นี่จึงเป็นแค่ position:fixed เฉย ๆ ไม่ประกาศ top/left ตายตัว
+      + '.cal{position:fixed;z-index:40;width:238px;'
       + 'background:var(--pj-surface);border:1px solid var(--pj-border-strong);'
       + 'border-radius:var(--radius-md);box-shadow:var(--shadow-lg);'
       + 'padding:var(--sp-2);font-size:var(--fs-sm)}'
       + '.cal[hidden]{display:none}'
-      + '.cal-head{display:flex;align-items:center;justify-content:space-between;'
-      + 'gap:var(--sp-1);margin-bottom:var(--sp-1)}'
-      + '.cal-title{font-weight:700;color:var(--pj-text);font-size:var(--fs-sm)}'
+      + '.cal-head{display:flex;align-items:center;gap:var(--sp-1);margin-bottom:var(--sp-1)}'
+      // ปุ่มก่อน/ถัดไปเป็น chevron SVG (#64 ขั้น 3 ไม่ได้นับสองตัวนี้ไว้ — เพิ่มรอบนี้)
       + '.cal-nav{background:none;border:1px solid var(--pj-border);color:var(--pj-text-dim);'
-      + 'width:24px;height:24px;line-height:1;border-radius:var(--radius-sm);cursor:pointer;'
-      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:700;padding:0}'
+      + 'width:24px;height:24px;flex:0 0 24px;padding:0;'
+      + 'display:inline-flex;align-items:center;justify-content:center;'
+      + 'border-radius:var(--radius-sm);cursor:pointer;'
+      + 'transition:background-color .1s ease,color .1s ease}'
       + '.cal-nav:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+      + '.cal-nav:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
+      // select เดือน/ปี แทนหัวข้อความล้วน (#64 ขั้น 4 — ตาม oj-c-input-date-picker)
+      + '.cal-month,.cal-year{font-family:inherit;font-size:var(--fs-sm);font-weight:700;'
+      + 'color:var(--pj-text);background:var(--pj-surface);border:1px solid var(--pj-border);'
+      + 'border-radius:var(--radius-sm);padding:2px;cursor:pointer;min-width:0}'
+      + '.cal-month{flex:1 1 auto}'
+      + '.cal-year{flex:0 0 60px;width:60px}'
       + '.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}'
       + '.cal-dow{text-align:center;font-size:10px;font-weight:700;padding:2px 0;'
       + 'color:var(--pj-text-label);text-transform:uppercase}'
       + '.cal-day{border:0;background:none;font-family:inherit;font-size:var(--fs-sm);'
       + 'color:var(--pj-text);padding:5px 0;border-radius:var(--radius-sm);cursor:pointer;'
-      + 'font-variant-numeric:tabular-nums}'
+      + 'font-variant-numeric:tabular-nums;transition:background-color .1s ease}'
       + '.cal-day:hover{background:var(--pj-surface-alt)}'
       + '.cal-day.muted{color:var(--pj-text-muted)}'
       + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
@@ -204,8 +226,16 @@ define(
       + '.cal-foot{display:flex;justify-content:flex-end;margin-top:var(--sp-1);'
       + 'border-top:1px solid var(--pj-border);padding-top:var(--sp-1)}'
       + '.cal-today{background:none;border:0;color:var(--pj-primary);cursor:pointer;'
-      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2)}'
+      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2);'
+      + 'transition:background-color .1s ease}'
       + '.cal-today:hover{text-decoration:underline}'
+      // prefers-reduced-motion (#64 ขั้น 4, gap 7) — ปฏิทินเปิด/ปิดด้วย appendChild/removeChild
+      // ตรง ๆ ไม่มี transition ของการเปิดปิดอยู่แล้ว มีแค่ transition ของ hover/focus-ring ที่
+      // เพิ่มเข้ามารอบนี้ (.datewrap ring, .datebtn/.cal-nav/.cal-day/.cal-today hover) ปิดให้
+      // เมื่อผู้ใช้ตั้งค่าไว้ที่ระบบปฏิบัติการ
+      + '@media (prefers-reduced-motion: reduce){'
+      + '.datewrap,.datebtn,.cal-nav,.cal-day,.cal-today{transition:none}'
+      + '}'
       // สาเหตุเดิม (บั๊กที่เจอบน SB1, issue #45): `.filterbar button{` เป็น descendant
       // selector สปีซิฟิซิตี้ (0,1,1) ชนะกฎ background:none ของปฏิทิน (.datebtn/.cal-nav/
       // .cal-day/.cal-today ทุกตัวสปีซิฟิซิตี้แค่ (0,1,0)) — ปุ่มปฏิทินทั้งหมดที่อยู่ลึกใน
@@ -1544,6 +1574,10 @@ ${gridHtml ? legendHtml : ''}
 const I18N = ${i18nJson};
 const STATUS_ICONS = ${statusIconsJson};
 let LANG = ${JSON.stringify(lang)};
+// ปุ่มเดือนก่อน/ถัดไปของปฏิทิน (issue #64 ขั้น 4) — svg เดียวกับ theme.ICONS.chevronLeft/Right
+// ฝังเป็นสตริงตอน render (เหมือน I18N/STATUS_ICONS ข้างบน) เพราะ ICONS อยู่ฝั่งเซิร์ฟเวอร์
+const CAL_PREV_SVG = ${JSON.stringify(theme.ICONS.chevronLeft)};
+const CAL_NEXT_SVG = ${JSON.stringify(theme.ICONS.chevronRight)};
 
 // ── Language toggle ───────────────────────────────────────────────
 // Toggling language does a full page reload (GET) so server re-renders
@@ -1633,7 +1667,7 @@ function _isoFromDateInput(el) {
 // _isoFromDateInput เป็นด่านแปลงด่านเดียวเหมือนเดิม — ปุ่มค้นหาไม่เคยอ่านค่าจากปฏิทินตรง ๆ
 // สัญญา ISO ที่วิ่งต่อไปถึง SQL จึงไม่เปลี่ยนเลย
 (function() {
-  var openCal = null;   // { input, btn, box, y, m, focus }
+  var openCal = null;   // { input, btn, box, anchor, y, m, focus }
 
   function _p2(n) { return ('0' + n).slice(-2); }
   function _ddmmyyyy(y, m, d) { return _p2(d) + '/' + _p2(m + 1) + '/' + y; }
@@ -1647,10 +1681,48 @@ function _isoFromDateInput(el) {
     return { y: +p[0], m: +p[1] - 1, d: +p[2] };
   }
 
+  // ตำแหน่งจริงของ popup (issue #64 ขั้น 4 — gap 1): ลอยที่ <body> เสมอ (position:fixed)
+  // เพราะการ์ด/ตารางของหน้านี้เป็น overflow:hidden/auto หลายชั้น — popup ที่ยังเป็นลูกของ
+  // .datewrap จะโดนกล่องนั้นตัดขอบ ต้องคำนวณเองจาก getBoundingClientRect ของ anchor
+  // (ไม่มี anchor/getBoundingClientRect ในสภาพแวดล้อมทดสอบ = เงียบ ๆ ไม่ throw)
+  function _position() {
+    if (!openCal) return;
+    var box = openCal.box, anchor = openCal.anchor;
+    if (!box || !anchor) return;
+    var pad = 4;
+    var vw = (typeof window !== 'undefined' && window.innerWidth)  || 0;
+    var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
+    var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
+      || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+    var boxRect = (box.getBoundingClientRect && box.getBoundingClientRect()) || {};
+    var width  = boxRect.width  || 238;
+    var height = boxRect.height || 280;
+
+    var left = rect.left;
+    if (vw && left + width > vw - pad) left = vw - pad - width;
+    if (left < pad) left = pad;
+
+    // พลิกขึ้นเมื่อด้านล่างไม่พอ **และ** ด้านบนพอจริง ๆ (ไม่งั้นทั้งบนล่างไม่พอ ให้เปิดลงเหมือนเดิม)
+    var spaceBelow = vh ? (vh - rect.bottom) : (height + pad);
+    var flipUp = !!(vh && spaceBelow < (height + pad) && rect.top > (height + pad));
+    var top = flipUp ? (rect.top - pad - height) : (rect.bottom + pad);
+
+    box.style.position = 'fixed';
+    box.style.left = left + 'px';
+    box.style.top  = top  + 'px';
+    box.setAttribute('data-flip', flipUp ? 'up' : 'down');
+  }
+
+  function _reposition() { _position(); }
+
   function _close(refocus) {
     if (!openCal) return;
     var cur = openCal;
     openCal = null;
+    if (typeof window !== 'undefined' && window.removeEventListener) {
+      window.removeEventListener('scroll', _reposition, true);
+      window.removeEventListener('resize', _reposition);
+    }
     if (cur.box && cur.box.parentNode) cur.box.parentNode.removeChild(cur.box);
     if (cur.btn) cur.btn.setAttribute('aria-expanded', 'false');
     if (refocus && cur.input) cur.input.focus();
@@ -1674,11 +1746,29 @@ function _isoFromDateInput(el) {
     _draw(true);
   }
 
+  // Home/End = ต้น/ท้ายสัปดาห์ของวันที่โฟกัสอยู่ (gap 6)
+  function _shiftToWeekEdge(targetDow) {
+    if (!openCal) return;
+    var f = openCal.focus;
+    var dow = new Date(f.y, f.m, f.d).getDay();
+    _shift(targetDow - dow);
+  }
+
   function _shiftMonth(delta) {
     if (!openCal) return;
     var dt = new Date(openCal.y, openCal.m + delta, 1);
     openCal.y = dt.getFullYear();
     openCal.m = dt.getMonth();
+    var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+    openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+    _draw(true);
+  }
+
+  // Shift+PageUp/PageDown = ปี (gap 6)
+  function _shiftYear(delta) {
+    if (!openCal) return;
+    var dt = new Date(openCal.y + delta, openCal.m, 1);
+    openCal.y = dt.getFullYear();
     var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
     openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
     _draw(true);
@@ -1692,6 +1782,24 @@ function _isoFromDateInput(el) {
     if (title) { b.title = title; b.setAttribute('aria-label', title); }
     b.addEventListener('click', onClick);
     return b;
+  }
+
+  // ปุ่มก่อน/ถัดไปเป็น chevron SVG แทนตัวอักษร ‹ › (gap 3 — ขั้น 2 ไม่ได้นับสองตัวนี้)
+  function _mkIconBtn(cls, svg, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = cls;
+    b.innerHTML = svg;
+    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+    b.addEventListener('click', onClick);
+    return b;
+  }
+
+  function _mkSelect(cls, label) {
+    var s = document.createElement('select');
+    s.className = cls;
+    if (label) s.setAttribute('aria-label', label);
+    return s;
   }
 
   // วาดใหม่ทั้งกล่องทุกครั้ง — เดือนหนึ่งไม่เกิน 42 ปุ่ม ถูกกว่าการไล่แก้ทีละใบ
@@ -1709,19 +1817,55 @@ function _isoFromDateInput(el) {
 
     var head = document.createElement('div');
     head.className = 'cal-head';
-    head.appendChild(_mkBtn('cal-nav', '‹', t.calPrev, function() { _shiftMonth(-1); }));
-    var title = document.createElement('div');
-    title.className = 'cal-title';
-    title.textContent = (months[openCal.m] || (openCal.m + 1)) + ' ' + openCal.y;
-    head.appendChild(title);
-    head.appendChild(_mkBtn('cal-nav', '›', t.calNext, function() { _shiftMonth(1); }));
+    head.appendChild(_mkIconBtn('cal-nav', CAL_PREV_SVG, t.calPrev, function() { _shiftMonth(-1); }));
+
+    // select เดือน/ปี แทนหัวข้อความล้วน (gap 4 — ตาม oj-c-input-date-picker)
+    var monthSel = _mkSelect('cal-month', t.calMonthLabel || 'Month');
+    for (var mi = 0; mi < 12; mi++) {
+      var mOpt = document.createElement('option');
+      mOpt.value = String(mi);
+      mOpt.textContent = months[mi] || String(mi + 1);
+      if (mi === openCal.m) mOpt.selected = true;
+      monthSel.appendChild(mOpt);
+    }
+    monthSel.addEventListener('change', function() {
+      openCal.m = +monthSel.value;
+      var lastM = new Date(openCal.y, openCal.m + 1, 0).getDate();
+      openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, lastM) };
+      _draw(true);
+    });
+    head.appendChild(monthSel);
+
+    // ปีให้ครอบคลุมทั้งช่วง ±10 ปีรอบวันนี้ และปีที่กำลังดูอยู่เสมอ (กันกรณีค่าเดิมในช่องเก่ากว่านั้น)
+    var yearSel = _mkSelect('cal-year', t.calYearLabel || 'Year');
+    var yStart = Math.min(today.y - 10, openCal.y - 1);
+    var yEnd   = Math.max(today.y + 10, openCal.y + 1);
+    for (var yy = yStart; yy <= yEnd; yy++) {
+      var yOpt = document.createElement('option');
+      yOpt.value = String(yy);
+      yOpt.textContent = String(yy);
+      if (yy === openCal.y) yOpt.selected = true;
+      yearSel.appendChild(yOpt);
+    }
+    yearSel.addEventListener('change', function() {
+      openCal.y = +yearSel.value;
+      var lastY = new Date(openCal.y, openCal.m + 1, 0).getDate();
+      openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, lastY) };
+      _draw(true);
+    });
+    head.appendChild(yearSel);
+
+    head.appendChild(_mkIconBtn('cal-nav', CAL_NEXT_SVG, t.calNext, function() { _shiftMonth(1); }));
     box.appendChild(head);
 
     var grid = document.createElement('div');
     grid.className = 'cal-grid';
+    grid.setAttribute('role', 'grid');
+    grid.setAttribute('aria-label', (months[openCal.m] || (openCal.m + 1)) + ' ' + openCal.y);
     for (var i = 0; i < 7; i++) {
       var dow = document.createElement('div');
       dow.className = 'cal-dow';
+      dow.setAttribute('role', 'columnheader');
       dow.textContent = dows[i] || '';
       grid.appendChild(dow);
     }
@@ -1733,15 +1877,20 @@ function _isoFromDateInput(el) {
       var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + c);
       var y = dt.getFullYear(), m = dt.getMonth(), d = dt.getDate();
       var cls = 'cal-day';
+      var isToday = (y === today.y && m === today.m && d === today.d);
       if (m !== openCal.m) cls += ' muted';
-      if (y === today.y && m === today.m && d === today.d) cls += ' today';
+      if (isToday) cls += ' today';
       var isSel = !!(sel && sel.y === y && sel.m === m && sel.d === d);
       if (isSel) cls += ' sel';
       var b = _mkBtn(cls, String(d), '', (function(yy, mm, dd) {
         return function() { _pick(yy, mm, dd); };
       })(y, m, d));
+      b.setAttribute('role', 'gridcell');
       b.setAttribute('aria-label', _ddmmyyyy(y, m, d));
-      if (isSel) b.setAttribute('aria-current', 'date');
+      // gap 5: เดิม aria-current ติดที่วันที่ "เลือก" (isSel) ไม่ใช่ "วันนี้" (isToday) — สลับกัน
+      // มาตั้งแต่แรก · aria-selected คือตัวที่ต้องบอกวันที่เลือก ไม่ใช่ aria-current
+      if (isToday) b.setAttribute('aria-current', 'date');
+      b.setAttribute('aria-selected', isSel ? 'true' : 'false');
       var isFocus = (y === openCal.focus.y && m === openCal.focus.m && d === openCal.focus.d);
       b.tabIndex = isFocus ? 0 : -1;
       if (isFocus) focusBtn = b;
@@ -1767,13 +1916,28 @@ function _isoFromDateInput(el) {
     box.setAttribute('role', 'dialog');
     box.setAttribute('aria-label', _L().calOpen || 'Calendar');
     box.addEventListener('keydown', _onKey);
-    input.parentNode.appendChild(box);
 
+    // append ที่ <body> เสมอ ไม่ใช่ input.parentNode (gap 1) — ตำแหน่งจริงคำนวณเองด้านล่าง
+    var host = (document.body || document);
+    host.appendChild(box);
+
+    var anchor = input.parentNode || input;
     var now = new Date();
     var view = _valueOf(input) || { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
-    openCal = { input: input, btn: btn, box: box, y: view.y, m: view.m, focus: view };
+    openCal = { input: input, btn: btn, box: box, anchor: anchor, y: view.y, m: view.m, focus: view };
     btn.setAttribute('aria-expanded', 'true');
+    // จัดตำแหน่งคร่าว ๆ ก่อน _draw() — _draw() จบด้วย focusBtn.focus() และถ้ากล่องยังไม่มี
+    // top/left (นั่งอยู่ที่ static default ของ position:fixed) เบราว์เซอร์จะเลื่อนหน้าให้
+    // เห็น element ที่โฟกัส ก่อนที่เราจะคำนวณตำแหน่งจริงเสีย แล้วพิกัดที่ได้จะอิง viewport
+    // เก่าก่อนเลื่อน — จัดคร่าว ๆ ก่อน (ยังไม่รู้ความสูงจริงของกล่อง ใช้ค่า fallback ใน
+    // _position()) แล้วจัดอีกทีหลัง _draw() ด้วยความสูงจริง
+    _position();
     _draw(true);
+    _position();
+    if (typeof window !== 'undefined' && window.addEventListener) {
+      window.addEventListener('scroll', _reposition, true);   // capture — เลื่อนกล่องลูกก็ต้องขยับตาม
+      window.addEventListener('resize', _reposition);
+    }
   }
 
   function _onKey(e) {
@@ -1784,8 +1948,10 @@ function _isoFromDateInput(el) {
     else if (k === 'ArrowRight') { e.preventDefault(); _shift(1); }
     else if (k === 'ArrowUp')    { e.preventDefault(); _shift(-7); }
     else if (k === 'ArrowDown')  { e.preventDefault(); _shift(7); }
-    else if (k === 'PageUp')     { e.preventDefault(); _shiftMonth(-1); }
-    else if (k === 'PageDown')   { e.preventDefault(); _shiftMonth(1); }
+    else if (k === 'Home')       { e.preventDefault(); _shiftToWeekEdge(0); }
+    else if (k === 'End')        { e.preventDefault(); _shiftToWeekEdge(6); }
+    else if (k === 'PageUp')     { e.preventDefault(); if (e.shiftKey) _shiftYear(-1); else _shiftMonth(-1); }
+    else if (k === 'PageDown')   { e.preventDefault(); if (e.shiftKey) _shiftYear(1);  else _shiftMonth(1); }
   }
 
   document.addEventListener('mousedown', function(e) {
@@ -2099,6 +2265,8 @@ window.addEventListener('resize', fixStickyHeader);
           calPrev:   'เดือนก่อนหน้า',
           calNext:   'เดือนถัดไป',
           calToday:  'วันนี้',
+          calMonthLabel: 'เดือน',
+          calYearLabel:  'ปี',
           calMonths: ['มกราคม', 'กุมภาพันธ์', 'มีนาคม', 'เมษายน', 'พฤษภาคม', 'มิถุนายน',
                       'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'],
           calDow:    ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'],
@@ -2152,6 +2320,8 @@ window.addEventListener('resize', fixStickyHeader);
           calPrev:   'Previous month',
           calNext:   'Next month',
           calToday:  'Today',
+          calMonthLabel: 'Month',
+          calYearLabel:  'Year',
           calMonths: ['January', 'February', 'March', 'April', 'May', 'June',
                       'July', 'August', 'September', 'October', 'November', 'December'],
           calDow:    ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],

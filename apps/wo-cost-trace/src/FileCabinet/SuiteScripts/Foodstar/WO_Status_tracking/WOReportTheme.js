@@ -256,7 +256,15 @@ define([], function () {
     extLink: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
       + 'focusable="false"><path d="M6.2 9.8L13 3M8 3h5v5M12.2 8.6V12a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 '
       + '1 0 011-1h3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
-      + 'stroke-linejoin="round"/></svg>'
+      + 'stroke-linejoin="round"/></svg>',
+    // เพิ่มพร้อม date field (#64 ขั้น 4 — เดิมปุ่มเดือนก่อน/ถัดไปของปฏิทิน WO Status
+    // เป็นตัวอักษร ‹ › ไม่ใช่ SVG จึงไม่ถูกนับใน #64 ขั้น 2 ตอนย้ายไอคอนสถานะ)
+    chevronLeft: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M10 3.2L5.6 8l4.4 4.8" stroke="currentColor" stroke-width="1.5" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    chevronRight: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M6 3.2L10.4 8 6 12.8" stroke="currentColor" stroke-width="1.5" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
 
   /**

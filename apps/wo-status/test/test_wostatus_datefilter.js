@@ -185,11 +185,20 @@ eq('ปฏิทินอ่านค่าเดิมผ่าน _isoFromDate
 // และต้องเขียนค่ากลับลง "ช่องข้อความ" ไม่ใช่ยิงค่าเข้าตัวค้นหาตรง ๆ
 eq('ปฏิทินเขียนค่าลงช่องข้อความ', /input\.value = _ddmmyyyy\(/.test(form), true);
 
-// ── รันปฏิทินจริง ๆ ด้วย DOM ปลอม (issue #45) ──────────────────────────
+// ── รันปฏิทินจริง ๆ ด้วย DOM ปลอม (issue #45 · ขยายที่ #64 ขั้น 4) ──────────
 // เทสข้างบนพิสูจน์แค่ว่าโค้ด parse ผ่านและตัวเขียนค่าให้รูปแบบถูก — ยังไม่มีอะไร
 // "กด" ปฏิทินสักครั้ง · บล็อกนี้รันโค้ดปฏิทินทั้งก้อนบน DOM ปลอมขั้นต่ำ แล้วกดวันจริง
 // เพื่อยันว่า เปิด → วาด → เลือก → เขียนค่าลงช่อง ทำงานครบวง ไม่ใช่แค่คอมไพล์ผ่าน
+//
+// #64 ขั้น 4 ปิดช่องว่างของ date-field.md เพิ่ม: popup ต้อง append ที่ <body> (ไม่ใช่ลูกของ
+// .datewrap อีกต่อไป) + position:fixed คำนวณเองจาก getBoundingClientRect + พลิกขึ้นเมื่อล่างไม่พอ ·
+// หัวปฏิทินเป็น select เดือน/ปี ไม่ใช่ข้อความ (เทสเดิมเช็ค .cal-title ตรง ๆ ใช้ไม่ได้แล้ว — เปลี่ยน
+// มาเช็ค option ที่ selected ของ select แทน สาระเดิม คือ "หัวปฏิทินตรงกับค่าที่อยู่ในช่อง") ·
+// role="dialog"/"grid" · Home/End/Shift+PageUp/PageDown · Escape/คลิกนอก "กับช่องที่มีค่าอยู่แล้ว"
+// ต้องไม่แตะค่า (ทดสอบกับช่องว่างผ่านฟรีตามที่สเปกเตือนไว้ — ต้องใช้ช่องที่มีค่าจริงเท่านั้น)
 console.log('\n── กดปฏิทินบน DOM ปลอม ──');
+
+const DEFAULT_RECT = { top: 100, bottom: 132, left: 20, right: 258, width: 238, height: 280 };
 
 function makeDom() {
   const listeners = [];
@@ -197,6 +206,7 @@ function makeDom() {
     const node = {
       tagName: tag, className: '', textContent: '', value: '', type: '',
       title: '', tabIndex: 0, disabled: false, attrs: {}, children: [], parentNode: null,
+      style: {}, _rect: null,
       get firstChild() { return this.children.length ? this.children[0] : null; },
       setAttribute(k, v) { this.attrs[k] = String(v); },
       getAttribute(k) { return Object.prototype.hasOwnProperty.call(this.attrs, k) ? this.attrs[k] : null; },
@@ -214,7 +224,10 @@ function makeDom() {
         return this.children.some((c) => c.contains(other));
       },
       focus() { dom.activeElement = this; },
-      click() { (this._h && this._h.click ? this._h.click : []).forEach((fn) => fn({})); },
+      // trigger() จำลอง event จริง (click/change/keydown) — click() เดิมยังอยู่เพื่อความเข้ากันได้
+      trigger(type, evt) { ((this._h && this._h[type]) || []).forEach((fn) => fn(evt || {})); },
+      click() { this.trigger('click', {}); },
+      getBoundingClientRect() { return this._rect || DEFAULT_RECT; },
       querySelectorAll(sel) { return dom._collect(this, sel); },
     };
     return node;
@@ -224,6 +237,7 @@ function makeDom() {
     _all: [],
     createElement(tag) { const n = el(tag); dom._all.push(n); return n; },
     addEventListener(type, fn) { listeners.push([type, fn]); },
+    _fire(type, evt) { listeners.filter((l) => l[0] === type).forEach((l) => l[1](evt || {})); },
     _collect(root, sel) {
       const want = sel.replace('.', '');
       const out = [];
@@ -234,14 +248,36 @@ function makeDom() {
       return out;
     },
   };
+  dom.body = el('div');
+  dom._all.push(dom.body);
   return { dom, el };
+}
+
+// window ปลอม — ต้องมี add/removeEventListener จริง (ไม่ใช่ {} เฉย ๆ) ให้ scroll/resize
+// tracking (gap 1) ทำงานได้จริง และปรับ innerWidth/innerHeight ได้เพื่อจำลอง viewport เล็ก (พลิกขึ้น)
+function makeWindow() {
+  const handlers = {};
+  return {
+    innerWidth: 1024,
+    innerHeight: 768,
+    addEventListener(type, fn) { (handlers[type] = handlers[type] || []).push(fn); },
+    removeEventListener(type, fn) {
+      if (!handlers[type]) return;
+      const i = handlers[type].indexOf(fn);
+      if (i >= 0) handlers[type].splice(i, 1);
+    },
+    _handlers: handlers,
+  };
 }
 
 const calSrc = (form.match(/\/\/ ── ปฏิทินของหน้านี้เอง[\s\S]*?\n\}\)\(\);/) || [])[0];
 eq('ดึงโค้ดปฏิทินออกมาได้', !!calSrc, true);
+eq('ปฏิทินไม่เขียนทับ input.value เอง (มีจุดเดียวคือตอนเลือกวันใน _pick — gap 8)',
+  (calSrc.match(/\binput\.value\s*=/g) || []).length, 1);
 
 if (calSrc) {
   const { dom, el } = makeDom();
+  const win   = makeWindow();
   const wrap  = el('div');
   const input = el('input');
   const btn   = el('button');
@@ -250,33 +286,172 @@ if (calSrc) {
   wrap.appendChild(input);
   wrap.appendChild(btn);
   input.value = '09/09/2026';
+  wrap._rect = { top: 100, bottom: 132, left: 20, right: 258, width: 238, height: 32 };
 
   dom.getElementById = (id) => (id === 'dateFrom' ? input : null);
   dom.querySelectorAll = (sel) => dom._collect(wrap, sel);
 
   const i18n = JSON.parse((form.match(/const I18N = ([\s\S]*?);\n/) || [])[1] || '{}');
-  const run = new Function('document', 'window', 'I18N', 'LANG', '_isoFromDateInput', 'Event', calSrc);
-  run(dom, {}, i18n, 'th', new Function('return ' + (clientSrc || 'function(){}'))(), function () {});
+  // chevron SVG ของปุ่มก่อน/ถัดไป (gap 3) ถูกฝังเป็น const แยกก่อนปฏิทิน ต้องส่งเข้า sandbox
+  // เดียวกันด้วย ไม่งั้น _draw() อ้างชื่อที่ไม่มีอยู่จริง
+  const calPrevSvg = (form.match(/const CAL_PREV_SVG = ([\s\S]*?);\n/) || [])[1];
+  const calNextSvg = (form.match(/const CAL_NEXT_SVG = ([\s\S]*?);\n/) || [])[1];
+  eq('ดึง CAL_PREV_SVG/CAL_NEXT_SVG ออกมาได้', !!(calPrevSvg && calNextSvg), true);
+  const run = new Function(
+    'document', 'window', 'I18N', 'LANG', '_isoFromDateInput', 'Event', 'CAL_PREV_SVG', 'CAL_NEXT_SVG',
+    calSrc
+  );
+  run(
+    dom, win, i18n, 'th', new Function('return ' + (clientSrc || 'function(){}'))(), function () {},
+    JSON.parse(calPrevSvg || '""'), JSON.parse(calNextSvg || '""')
+  );
 
-  btn.click();                                  // เปิดปฏิทิน
-  const box = wrap.children.filter((c) => c.className === 'cal')[0];
-  eq('กดปุ่มแล้วปฏิทินโผล่', !!box, true);
+  // ── เปิดปฏิทิน — ต้องลอยที่ <body> ไม่ใช่ลูกของ .datewrap อีกต่อไป (gap 1) ──
+  btn.click();
+  eq('ปฏิทินไม่ใช่ลูกของ .datewrap อีกต่อไป', wrap.children.filter((c) => c.className === 'cal').length, 0);
+  const box = dom.body.children.filter((c) => c.className === 'cal')[0];
+  eq('กดปุ่มแล้วปฏิทินโผล่ที่ <body>', !!box, true);
+  eq('popup เป็น role=dialog', box && box.getAttribute('role'), 'dialog');
 
-  const title = box ? dom._collect(box, '.cal-title')[0] : null;
-  eq('หัวปฏิทินเป็นเดือนของค่าที่อยู่ในช่อง', title && title.textContent, 'กันยายน 2026');
+  // ── ตำแหน่ง: viewport ปกติ → เปิดลง (gap 1) ──────────────────────────────
+  eq('เปิดลง (data-flip=down) เมื่อพื้นที่ล่างพอ', box && box.getAttribute('data-flip'), 'down');
+  eq('position เป็น fixed', box && box.style.position, 'fixed');
+  eq('top = ขอบล่างของช่อง + 4', box && box.style.top, '136px');
+  eq('left = ขอบซ้ายของช่อง', box && box.style.left, '20px');
+
+  // ── หัวปฏิทินเป็น select เดือน/ปี ไม่ใช่ข้อความ (gap 4) ───────────────────
+  const monthSel = box ? dom._collect(box, '.cal-month')[0] : null;
+  const yearSel  = box ? dom._collect(box, '.cal-year')[0]  : null;
+  eq('มี select เดือน', !!monthSel, true);
+  eq('มี select ปี', !!yearSel, true);
+  eq('ไม่มีหัวข้อความ .cal-title แบบเดิมอีกแล้ว', box ? dom._collect(box, '.cal-title').length : -1, 0);
+  const monthPicked = monthSel ? monthSel.children.filter((o) => o.selected)[0] : null;
+  const yearPicked  = yearSel  ? yearSel.children.filter((o) => o.selected)[0]  : null;
+  eq('เดือนที่เลือกไว้ตรงกับค่าในช่อง (กันยายน = index 8)', monthPicked && monthPicked.value, '8');
+  eq('ปีที่เลือกไว้ตรงกับค่าในช่อง', yearPicked && yearPicked.value, '2026');
+  const gridInit = box ? dom._collect(box, '.cal-grid')[0] : null;
+  eq('grid aria-label บอกเดือน/ปีที่แสดงตรงกับค่าในช่อง', gridInit && gridInit.getAttribute('aria-label'), 'กันยายน 2026');
+
+  // ── ปุ่มก่อน/ถัดไปเป็น svg ไม่ใช่ตัวอักษร ‹ › (gap 3) ────────────────────
+  const navBtns = box ? dom._collect(box, '.cal-nav') : [];
+  eq('มีปุ่ม cal-nav สองปุ่ม (ก่อน/ถัดไป)', navBtns.length, 2);
+  eq('ปุ่ม cal-nav ไม่ใช้ตัวอักษร ‹ › เป็นเนื้อ (ใช้ svg แทน)',
+    navBtns.every((b) => b.textContent !== '‹' && b.textContent !== '›'), true);
+  eq('ปุ่ม cal-nav มี svg จริงใน markup', navBtns.every((b) => /<svg/.test(b.innerHTML || '')), true);
+
+  // ── grid + วัน — role ตาม ARIA grid pattern (gap 6) ──────────────────────
+  const grid = gridInit;
+  eq('grid มี role=grid', grid && grid.getAttribute('role'), 'grid');
+  const dows = box ? dom._collect(box, '.cal-dow') : [];
+  eq('ชื่อวันครบเจ็ดช่อง', dows.length, 7);
+  eq('ชื่อวันมี role=columnheader', dows.every((d) => d.getAttribute('role') === 'columnheader'), true);
 
   const days = box ? dom._collect(box, '.cal-day') : [];
   eq('วาดครบ 6 สัปดาห์', days.length, 42);
-  eq('วันที่เลือกอยู่ถูกไฮไลต์', days.filter((d) => d.className.indexOf('sel') >= 0).length, 1);
-  eq('ชื่อวันครบเจ็ดช่อง', box ? dom._collect(box, '.cal-dow').length : 0, 7);
+  eq('วันเป็น role=gridcell', days.every((d) => d.getAttribute('role') === 'gridcell'), true);
+  const selDays = days.filter((d) => d.className.indexOf('sel') >= 0);
+  eq('วันที่เลือกอยู่ถูกไฮไลต์ 1 วัน (9 กันยายน)', selDays.length, 1);
+  eq('วันที่เลือกมี aria-selected=true', selDays[0] && selDays[0].getAttribute('aria-selected'), 'true');
+  const nonSelSample = days.filter((d) => d.className.indexOf('sel') < 0)[0];
+  eq('วันอื่นมี aria-selected=false', nonSelSample && nonSelSample.getAttribute('aria-selected'), 'false');
 
-  // กดวันที่ 15 ของเดือนที่กำลังแสดง (ไม่ใช่วันของเดือนข้างเคียงที่จาง)
-  const d15 = days.filter((d) => d.textContent === '15' && d.className.indexOf('muted') < 0)[0];
+  // gap 5: aria-current ต้องอยู่ที่ "วันนี้" ไม่ใช่ "วันที่เลือก" — เดิมสลับกัน (ติดที่ isSel)
+  // ทดสอบได้จริงเฉพาะตอนที่วันนี้จริงตกอยู่ในเดือน/ปีที่กำลังแสดง (กันยายน 2026 ตามค่าที่พิมพ์ไว้)
+  const realToday = new Date();
+  if (realToday.getFullYear() === 2026 && realToday.getMonth() === 8) {
+    const todayDays = days.filter((d) => d.className.indexOf('today') >= 0);
+    eq('มีวันนี้ในตาราง 1 วัน', todayDays.length, 1);
+    eq('วันนี้มี aria-current=date', todayDays[0] && todayDays[0].getAttribute('aria-current'), 'date');
+    eq('วันนี้ไม่ใช่วันที่ "เลือก" ในเคสนี้ (คนละวันกับ 9 กันยายน)', todayDays[0] === selDays[0], false);
+    eq('วันที่เลือก (9 กันยายน) ไม่มี aria-current ติดมาแบบบั๊กเดิม',
+      selDays[0] && selDays[0].getAttribute('aria-current'), null);
+  } else {
+    console.log('     (ข้าม aria-current: วันนี้จริงไม่ได้อยู่ในเดือนกันยายน 2026 ที่ fixture ใช้)');
+  }
+
+  // ── คีย์บอร์ด: Home/End (ต้น/ท้ายสัปดาห์) + Shift+PageUp/PageDown (ปี) — gap 6 ──
+  // อ่านเดือน/ปีที่ _draw() วาดจริง ๆ จาก select แทนการฝัง 8 (กันยายน) ตรง ๆ — ถ้าวันโฟกัส
+  // เผลอข้ามเดือน (ค่าที่พิมพ์ไว้เปลี่ยนไปในอนาคต) เทสนี้ต้องยังเทียบ day-of-week ถูกเดือน
+  function _viewYM() {
+    const y = +dom._collect(box, '.cal-year')[0].children.filter((o) => o.selected)[0].value;
+    const m = +dom._collect(box, '.cal-month')[0].children.filter((o) => o.selected)[0].value;
+    return { y, m };
+  }
+  box.trigger('keydown', { key: 'Home', preventDefault() {} });
+  let focusNow = dom._collect(box, '.cal-day').filter((d) => d.tabIndex === 0)[0];
+  let ym = _viewYM();
+  eq('Home พาโฟกัสไปวันอาทิตย์ต้นสัปดาห์', focusNow && new Date(ym.y, ym.m, +focusNow.textContent).getDay(), 0);
+
+  box.trigger('keydown', { key: 'End', preventDefault() {} });
+  focusNow = dom._collect(box, '.cal-day').filter((d) => d.tabIndex === 0)[0];
+  ym = _viewYM();
+  eq('End พาโฟกัสไปวันเสาร์ท้ายสัปดาห์', focusNow && new Date(ym.y, ym.m, +focusNow.textContent).getDay(), 6);
+
+  const yearBefore = dom._collect(box, '.cal-year')[0].children.filter((o) => o.selected)[0].value;
+  box.trigger('keydown', { key: 'PageUp', shiftKey: true, preventDefault() {} });
+  const yearAfterUp = dom._collect(box, '.cal-year')[0].children.filter((o) => o.selected)[0].value;
+  eq('Shift+PageUp ถอยปี', String(+yearBefore - 1), yearAfterUp);
+  box.trigger('keydown', { key: 'PageDown', shiftKey: true, preventDefault() {} });
+  const yearAfterDown = dom._collect(box, '.cal-year')[0].children.filter((o) => o.selected)[0].value;
+  eq('Shift+PageDown กลับปีเดิม', yearAfterDown, yearBefore);
+
+  // ── เปลี่ยนเดือนผ่าน select โดยตรง (gap 4) ───────────────────────────────
+  const monthSelA = dom._collect(box, '.cal-month')[0];
+  monthSelA.value = '0'; // มกราคม
+  monthSelA.trigger('change', {});
+  const gridJan = dom._collect(box, '.cal-grid')[0];
+  eq('เปลี่ยน select เดือนแล้ว grid วาดใหม่ตามเดือนนั้น', (gridJan.getAttribute('aria-label') || '').indexOf('มกราคม'), 0);
+  const monthSelB = dom._collect(box, '.cal-month')[0]; // ต้อง query ใหม่ — _draw() สร้าง node ใหม่ทั้งชุด
+  monthSelB.value = '8'; // กลับกันยายนก่อนเทสต่อ
+  monthSelB.trigger('change', {});
+
+  // ── Escape กับช่องที่ "มีค่าอยู่แล้ว" ต้องไม่แตะค่า (สเปกเตือนว่าเทสกับช่องว่างผ่านฟรี) ──
+  const valueBeforeEscape = input.value;
+  box.trigger('keydown', { key: 'Escape', preventDefault() {} });
+  eq('Escape ปิดปฏิทิน', dom.body.children.filter((c) => c.className === 'cal').length, 0);
+  eq('Escape ไม่แตะค่าที่มีอยู่แล้วในช่อง', input.value, valueBeforeEscape);
+  eq('scroll/resize listener ถูกถอดหลังปิด (gap 1 — กัน listener ค้าง)',
+    Object.keys(win._handlers).every((k) => (win._handlers[k] || []).length === 0), true);
+
+  // ── เปิดใหม่แล้วคลิกนอกกับช่องที่ "มีค่าอยู่แล้ว" ต้องไม่แตะค่าเหมือนกัน ────
+  btn.click();
+  eq('เปิดใหม่ได้อีกครั้ง', dom.body.children.filter((c) => c.className === 'cal').length, 1);
+  const outside = el('div'); // element ที่ไม่ใช่ทั้งกล่องปฏิทินและปุ่ม
+  dom._fire('mousedown', { target: outside });
+  eq('คลิกนอกปิดปฏิทิน', dom.body.children.filter((c) => c.className === 'cal').length, 0);
+  eq('คลิกนอกไม่แตะค่าที่มีอยู่แล้วในช่อง', input.value, valueBeforeEscape);
+
+  // ── ตำแหน่ง: viewport เล็ก ด้านล่างไม่พอ แต่ด้านบนพอ → พลิกขึ้น (gap 1) ─────
+  win.innerHeight = 400;
+  wrap._rect = { top: 350, bottom: 380, left: 20, right: 258, width: 238, height: 32 };
+  btn.click();
+  const box3 = dom.body.children.filter((c) => c.className === 'cal')[0];
+  eq('พลิกขึ้นเมื่อด้านล่างไม่พอและด้านบนพอ (data-flip=up)', box3 && box3.getAttribute('data-flip'), 'up');
+  eq('top พลิกขึ้น = ขอบบนของช่อง - 4 - สูงกล่อง (280)', box3 && box3.style.top, '66px');
+  box3.trigger('keydown', { key: 'Escape', preventDefault() {} });
+
+  // ── กลับ viewport ปกติ เปิดใหม่ แล้วกดวันที่ 15 (ปิดปฏิทิน + ค่าลงช่อง) ────
+  win.innerHeight = 768;
+  wrap._rect = { top: 100, bottom: 132, left: 20, right: 258, width: 238, height: 32 };
+  btn.click();
+  const box4 = dom.body.children.filter((c) => c.className === 'cal')[0];
+  const days4 = dom._collect(box4, '.cal-day');
+  const d15 = days4.filter((d) => d.textContent === '15' && d.className.indexOf('muted') < 0)[0];
   eq('เจอปุ่มวันที่ 15', !!d15, true);
   if (d15) d15.click();
   eq('กดวันแล้วค่าลงช่องเป็น dd/mm/yyyy', input.value, '15/09/2026');
-  eq('ปิดปฏิทินหลังเลือก', wrap.children.filter((c) => c.className === 'cal').length, 0);
+  eq('ปิดปฏิทินหลังเลือก', dom.body.children.filter((c) => c.className === 'cal').length, 0);
 }
+
+// ── gap 8: ปุ่มค้นหาต้องไม่เขียนทับช่องวันที่เมื่อ parse ไม่ผ่าน (caller :1818/:1819) ──
+// ตรวจแบบ static แทนการจำลอง click จริง (handler เรียก fetchResults/alert ของ global scope
+// เต็มไปหมด) — ยืนยันเชิงโครงสร้างว่า handler นี้ไม่มีจุดไหนเขียนกลับ .value ของช่องไหนเลย
+// (ทางที่มันเลือกคือ alert แล้ว return เฉย ๆ) ตรงกับพฤติกรรมที่สเปกต้องการ: พิมพ์ผิดรูปแบบ
+// แล้วต้องคืนค่าเดิม ไม่ล้าง ไม่เดา
+console.log('\n── gap 8: ปุ่มค้นหาไม่เขียนทับช่องวันที่เมื่อ parse ไม่ผ่าน ──');
+const searchHandlerSrc = (form.match(/document\.getElementById\('btnSearch'\)\.addEventListener\('click', function\(\) \{[\s\S]*?\n\}\);/) || [])[0];
+eq('ดึงโค้ดปุ่มค้นหาออกมาได้', !!searchHandlerSrc, true);
+eq('ปุ่มค้นหาไม่เขียนทับ .value ของช่องไหนเลย', /\.value\s*=/.test(searchHandlerSrc || 'x.value = 1'), false);
 
 // ── ชั้น 3: param ที่ถึง SQL ต้องเป็น ISO ───────────────────────────────
 console.log('\n── ค้นหาด้วย dd/mm/yyyy ──');
