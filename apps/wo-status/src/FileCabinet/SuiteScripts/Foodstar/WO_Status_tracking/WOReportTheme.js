@@ -190,6 +190,11 @@ define([], function () {
     + '.btn.active{background:var(--pj-primary);color:#fff;border-color:var(--pj-primary)}'
     + '.btn:disabled{background:var(--pj-muted-bg);color:var(--pj-text-muted);'
     + 'border-color:var(--pj-border);cursor:default}'
+    // NetSuite ship CSS reset `:focus{outline:0}` มาด้วย — ต้อง !important เหมือนปุ่มปฏิทิน/
+    // combobox ของขั้น 3/4 ก่อนหน้า (#64) ไม่งั้นปุ่มนี้กดคีย์บอร์ดแล้วไม่เห็นโฟกัสอยู่ตรงไหน
+    // (#64 ขั้น 5 — .btn ใช้จริงเฉพาะ wo-cost-trace ตอนนี้ แต่ประกาศไว้ที่ shared เพราะคลาสนี้
+    // อยู่ใน COMPONENTS ก้อนเดียวกับที่สองแอปใช้ร่วม — ดูกติกาไฟล์นี้)
+    + '.btn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
     // ── การ์ด KPI ──
     // ต้นทางย่อการ์ดให้เตี้ย (~60px) โดยตั้งใจ: แถบสรุปต้องไม่เบียดตารางที่มันสรุป
     + '.kpi-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(150px,1fr));'

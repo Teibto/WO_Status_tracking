@@ -1757,7 +1757,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     var list = w._list, anchor = w._input;
     if (!list || !anchor) return;
     var pad = 4;
-    var vw = (typeof window !== 'undefined' && window.innerWidth)  || 0;
+    // documentElement.clientWidth ตัด scrollbar แนวตั้ง (~17px) ออกแล้ว —
+    // window.innerWidth รวม scrollbar เข้าไปด้วย ทำให้ popup ลอยเลยขอบขวาที่มองเห็นจริง
+    // ไปทับ/หลังแถบเลื่อน (layout-and-controls.md "ความกว้างของ container ที่ JS คำนวณ")
+    var vw = (typeof document !== 'undefined' && document.documentElement
+        && document.documentElement.clientWidth)
+      || (typeof window !== 'undefined' && window.innerWidth) || 0;
     var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
       || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
