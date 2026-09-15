@@ -193,6 +193,18 @@ const BASE = {
     // ของมีพอแต่ถูกจองไว้เกือบหมด — ต้องเป็นข้อสังเกต ไม่ใช่ของขาด
     { item_id: 705, loc_id: 10, loc_name: 'PD_B1', on_hand: 100, avail: 5, committed: 95 }
     // 603 ไม่มีของเลย
+  ],
+  // ── ความพร้อม stock ตามวันที่ (#65) ─────────────────────────────────────
+  // ปิดงานวันเดียว 2026-08-08 (WO เปิด 2026-08-07) — ใช้ MIN เมื่อมีหลายใบ (self-decision ที่ล็อกไว้)
+  'วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้': [
+    { woc_count: 1, min_date_iso: '2026-08-08', max_date_iso: '2026-08-08' }
+  ],
+  // 701 รับเข้าก่อนปิดงาน = ผ่าน · 703 รับเข้าหลังปิดงานเท่านั้น = เตือน (มีเลขที่ใบรับให้กดดู)
+  // 704 รับเข้าก่อนปิดงาน = ผ่าน · 702/705/603 ไม่มี Item Receipt เลย = ตรวจไม่ได้ (ไม่ใช่ผ่าน)
+  'วันรับเข้า (Item Receipt) เทียบวันปิดงาน': [
+    { item_id: 701, tran_id: 5001, doc_no: 'IR-0001', min_date_iso: '2026-07-20', has_ontime: 1 },
+    { item_id: 703, tran_id: 5002, doc_no: 'IR-0002', min_date_iso: '2026-08-15', has_ontime: 0 },
+    { item_id: 704, tran_id: 5003, doc_no: 'IR-0003', min_date_iso: '2026-08-01', has_ontime: 1 }
   ]
 };
 
@@ -210,7 +222,7 @@ const T = H.load({
   libExports: {
     [READY_LIB]: ['buildReady', 'readReadyParams', 'renderReadyPage', 'bomVerdictText',
       'revVerdictText', 'routingVerdictText', 'costRefVerdictText', 'stockVerdictText',
-      'compVerdictText']
+      'compVerdictText', 'stockDateVerdict']
   }
 }).libT[READY_LIB];
 
@@ -468,6 +480,102 @@ FX = Object.assign({}, BASE, { 'WO header': [] });
 const rd4 = run({});
 eq('บอกว่าไม่พบ', rd4.ok, false);
 eq('ยังมีตัวเลือกคลังให้แก้ต่อ', rd4.locations.length, 3);
+
+// ── ความพร้อม stock ตามวันที่ (#65) ──────────────────────────────────────────
+// วันปิดงาน = WOC.trandate เสมอ (2026-08-08 ใน BASE) ห้ามอ่านจาก completion log
+console.log('\n── ความพร้อม stock ตามวันที่ (#65) — ทางเข้าด้วยเลขที่ WO ──');
+FX = BASE;
+const rd65 = run({ rloc: '10,23' });
+eq('applicable เมื่อมี WOC จริง', rd65.stock_date_shown, true);
+eq('ใช้วันปิดงานที่เร็วที่สุด', rd65.stock_date_woc_iso, '2026-08-08');
+
+eq('701 รับเข้าก่อนปิดงาน = ผ่าน', T.stockDateVerdict(rd65, 701).cls, 'ok');
+eq('701 บอกวันรับเข้าและวันปิดงานในข้อความ',
+  T.stockDateVerdict(rd65, 701).text.indexOf('2026-07-20') >= 0
+  && T.stockDateVerdict(rd65, 701).text.indexOf('2026-08-08') >= 0, true);
+
+eq('703 มีแต่ใบที่รับเข้าหลังปิดงาน = เตือน ไม่ใช่ผ่าน', T.stockDateVerdict(rd65, 703).cls, 'bad');
+eq('703 บอกว่าช้ากว่าวันปิดงาน',
+  T.stockDateVerdict(rd65, 703).text.indexOf('ช้ากว่าวันปิดงาน') >= 0, true);
+eq('703 ติดเลขที่ใบรับไว้ให้กดไปดู', T.stockDateVerdict(rd65, 703).doc_no, 'IR-0002');
+
+eq('702 ไม่มี Item Receipt เลย = ตรวจไม่ได้ ไม่ใช่ผ่าน', T.stockDateVerdict(rd65, 702).cls, 'unk');
+eq('702 บอกเหตุผลว่าอาจผลิตเอง',
+  T.stockDateVerdict(rd65, 702).text.indexOf('อาจผลิตเอง') >= 0, true);
+eq('603 ไม่มี Item Receipt เลย = ตรวจไม่ได้เหมือนกัน', T.stockDateVerdict(rd65, 603).cls, 'unk');
+
+const html65 = T.renderReadyPage(rd65);
+eq('มีหัวข้อความพร้อม stock', html65.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)') >= 0, true);
+eq('มีลิงก์ไปเปิดใบรับเข้าที่ช้า (เลขที่ใบรับกดไปดูได้)',
+  html65.indexOf('itemrcpt.nl?id=5002') >= 0, true);
+eq('เห็นเลขที่ใบรับที่ช้าบนหน้า', html65.indexOf('IR-0002') >= 0, true);
+eq('KPI นับวัตถุดิบรับเข้าหลังวันปิดงาน = 1 (703)',
+  html65.indexOf('วัตถุดิบรับเข้าหลังวันปิดงาน (#65)') >= 0
+  && /วัตถุดิบรับเข้าหลังวันปิดงาน \(#65\)[\s\S]{0,120}?>1</.test(html65), true);
+eq('ปัญหานี้ถูกดันเข้า "ต้องเคลียร์ก่อนเริ่มทดสอบ" ด้วย',
+  html65.indexOf('ความพร้อม stock (#65)') >= 0, true);
+
+console.log('\n── SQL จริงที่ยิงออกไป — ล็อกคำตัดสินข้อ 2/3 ของ #65 ไว้ในเทส ไม่ใช่แค่ในคอมเมนต์ ──');
+const sqlWoc = H.sqlOf('วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้');
+eq('อ่านวันที่จาก WOC.trandate', sqlWoc.indexOf('WOC.trandate') >= 0, true);
+eq('กรอง recordtype = workordercompletion', sqlWoc.indexOf("recordtype = 'workordercompletion'") >= 0, true);
+eq('ไม่ได้อ่านจาก completion log (task management) เด็ดขาด — กับดักที่เคยพังมาแล้ว',
+  sqlWoc.indexOf('customrecord_mfg_task_management') >= 0, false);
+
+const sqlIr = H.sqlOf('วันรับเข้า (Item Receipt) เทียบวันปิดงาน');
+eq('กรอง recordtype = itemreceipt (ระดับ Item Receipt ไม่ใช่ระดับล็อต)',
+  sqlIr.indexOf("recordtype = 'itemreceipt'") >= 0, true);
+eq('ไม่มี inventoryassignment (ระดับล็อต) ปนเข้ามา', sqlIr.indexOf('inventoryassignment') >= 0, false);
+eq('ใช้ window function ตรวจ "มีอย่างน้อยหนึ่งใบที่ทันเวลา" จากทุกใบของสินค้านั้น',
+  sqlIr.indexOf('OVER (PARTITION BY TL.item)') >= 0, true);
+eq('กรองบริษัทด้วยเมื่อรู้ subId (กัน fail-open ข้ามบริษัท)',
+  sqlIr.indexOf('TL.subsidiary IN (2)') >= 0, true);
+
+console.log('\n── ไม่ applicable: เปิดด้วยรหัสสินค้า (ไม่มี WO เลย) ต้องซ่อน ไม่ใช่ขึ้นว่าผ่าน ──');
+eq('ไม่ยิง query วันปิดงานเลยเมื่อไม่มี WO', rdi.stock_date_shown, false);
+eq('หน้าไม่มีหัวข้อความพร้อม stock', htmlI.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน') >= 0, false);
+
+console.log('\n── WO ยังไม่ปิดงานเลย (ไม่มี WOC) — แสดงว่า "ตรวจไม่ได้" ไม่ใช่ซ่อนเงียบ ๆ (ห้ามเงียบตามร่าง issue) ──');
+FX = Object.assign({}, BASE, {
+  'วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้': [{ woc_count: 0, min_date_iso: null, max_date_iso: null }]
+});
+const rd65b = run({ rloc: '10,23' });
+eq('ยังแสดงส่วนนี้ (ไม่ใช่ซ่อนเหมือนทางเข้าด้วยรหัสสินค้า)', rd65b.stock_date_shown, true);
+eq('ติดธงว่ายังไม่ปิดงาน', rd65b.stock_date_not_completed, true);
+eq('ไม่ใช่ query พัง', rd65b.stock_date_completion_failed, false);
+eq('verdict ต่อวัตถุดิบเป็น info ไม่ใช่ ok/bad/unk', T.stockDateVerdict(rd65b, 701).cls, 'info');
+const html65b = T.renderReadyPage(rd65b);
+eq('หน้ามีหัวข้อความพร้อม stock อยู่ (ไม่เงียบ)',
+  html65b.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)') >= 0, true);
+eq('บอกตรง ๆ ว่ายังไม่ปิดงาน', html65b.indexOf('ใบสั่งผลิตนี้ยังไม่ปิดงาน') >= 0, true);
+eq('ไม่ถูกนับเป็นปัญหาใน KPI (ยังไม่ถึงเวลาตรวจ ไม่ใช่ของเสีย)',
+  /วัตถุดิบรับเข้าหลังวันปิดงาน \(#65\)[\s\S]{0,120}?>0</.test(html65b), true);
+
+console.log('\n── query ล้มตอนอ่านวันปิดงาน (WOC) — ห้ามขึ้นว่าผ่าน (กับดัก fail-open #54 · #29) ──');
+FX = Object.assign({}, BASE, { 'วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้': 'THROW' });
+const rd65c = run({ rloc: '10,23' });
+eq('ยังคงแสดงส่วนนี้ (ไม่ใช่ซ่อนแบบเงียบ ๆ)', rd65c.stock_date_shown, true);
+eq('ติดธง query พัง', rd65c.stock_date_completion_failed, true);
+eq('ไม่มีช่องไหนขึ้นว่าผ่าน',
+  rd65c.need_rows.every(r => T.stockDateVerdict(rd65c, r.item_id).cls !== 'ok'), true);
+eq('ทุกช่องเป็นตรวจไม่ได้', T.stockDateVerdict(rd65c, 701).cls, 'unk');
+const html65c = T.renderReadyPage(rd65c);
+eq('ขึ้นข้อความอ่านวันปิดงานไม่สำเร็จ',
+  html65c.indexOf('อ่านวันปิดงาน (WOC.trandate) ไม่สำเร็จ') >= 0, true);
+
+console.log('\n── query ล้มตอนอ่านวันรับเข้า (Item Receipt) — ห้ามขึ้นว่าผ่าน ──');
+FX = Object.assign({}, BASE, { 'วันรับเข้า (Item Receipt) เทียบวันปิดงาน': 'THROW' });
+const rd65d = run({ rloc: '10,23' });
+eq('ยังคงแสดงส่วนนี้', rd65d.stock_date_shown, true);
+eq('ติดธง query พังของ Item Receipt', rd65d.stock_date_failed, true);
+eq('ไม่มีช่องไหนขึ้นว่าผ่าน',
+  rd65d.need_rows.every(r => T.stockDateVerdict(rd65d, r.item_id).cls !== 'ok'), true);
+eq('701 ที่ปกติผ่าน กลายเป็นตรวจไม่ได้เมื่อ query พัง', T.stockDateVerdict(rd65d, 701).cls, 'unk');
+const html65d = T.renderReadyPage(rd65d);
+eq('ขึ้นข้อความอ่านวันรับเข้าไม่สำเร็จ',
+  html65d.indexOf('อ่านวันรับเข้า (Item Receipt) ไม่สำเร็จ') >= 0, true);
+
+FX = BASE;
 
 console.log(H.fails() ? '\n' + H.fails() + ' รายการไม่ผ่าน\n' : '\nผ่านทั้งหมด\n');
 process.exit(H.fails() ? 1 : 0);

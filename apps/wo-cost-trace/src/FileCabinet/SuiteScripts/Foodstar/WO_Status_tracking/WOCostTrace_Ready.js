@@ -241,6 +241,91 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     `));
   }
 
+  /**
+   * ความพร้อม stock ตามวันที่ (issue #65) — วันที่รับเข้าต้อง <= วันที่ completion
+   *
+   * ─── คำตัดสินที่ล็อกไว้ในตัว issue (2026-09-15) ─────────────────────────
+   * 1) ส่วนนี้ตอบว่า "ของที่ใช้ไปมาถึงทันหรือเปล่า" — ตรวจย้อนหลังว่าต้นทุน ณ วันปิดงานเชื่อได้ไหม
+   *    ไม่ใช่ "ของจะมาทันไหม" (คนละคำถามกับ M-02…M-09 ที่เหลือของชั้นนี้ซึ่งมองไปข้างหน้า)
+   * 2) วันที่ completion = WOC.trandate เสมอ ห้ามอ่านจาก completion log เด็ดขาด
+   *    (ของเก่าเคย error เพราะ completion log ไม่มี date แต่ WOC.trandate มีเสมอ)
+   * 3) "วันที่รับเข้า" เอาที่ระดับ Item Receipt ไม่ใช่ระดับล็อต
+   *
+   * ใช้เกณฑ์ "มีอย่างน้อยหนึ่งใบที่ทันเวลา" ไม่ใช่ "ทุกใบต้องทัน" เพราะที่ระดับ Item Receipt
+   * ผูกไม่ได้ว่าล็อตไหนถูกใช้จริง — "ทุกใบต้องทัน" จะเตือนผิดทุกครั้งที่มีการรับของรอบถัดไปตามปกติ
+   */
+
+  /**
+   * วันปิดงาน (WOC.trandate) ของใบสั่งผลิตนี้ — ยิงครั้งเดียวต่อการเปิดหน้า (ไม่ใช่ต่อวัตถุดิบ)
+   *
+   * ใบสั่งผลิตหนึ่งใบอาจมี WOC มากกว่า 1 ใบ (ปิดงานเป็นรอบ/หลาย batch) — ใช้ใบที่ **เร็วที่สุด**
+   * เป็นเกณฑ์เข้มสุด: ถ้าวัตถุดิบมาทันใบปิดงานใบแรก ก็มาทันใบปิดงานใบหลัง ๆ ทุกใบโดยอัตโนมัติ
+   * (self-decision — เจ้าของ issue ไม่ได้พูดถึงเคสหลาย WOC ต่อ WO ไว้ตรง ๆ ขอให้ตรวจซ้ำ)
+   *
+   * ไม่มี WOC เลย (ใบสั่งผลิตยังไม่ปิดงาน) = ไม่มีวันที่ให้ตรวจ ไม่ใช่ query พัง — ต้องซ่อนส่วนนี้
+   * เหมือนกับทางเข้าด้วยรหัสสินค้า ไม่ใช่ขึ้นว่า "ผ่าน" (self-decision เดียวกัน ขอให้ตรวจซ้ำ)
+   */
+  function qReadyWocDate(woId) {
+    return tracked(() => runSQL('วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้', `
+      SELECT COUNT(*)                                 AS woc_count,
+             TO_CHAR(MIN(WOC.trandate), 'YYYY-MM-DD') AS min_date_iso,
+             TO_CHAR(MAX(WOC.trandate), 'YYYY-MM-DD') AS max_date_iso
+      FROM transaction WOC
+      JOIN transactionline TLM ON TLM.transaction = WOC.id AND TLM.mainline = 'T'
+      WHERE WOC.recordtype = 'workordercompletion' AND TLM.createdfrom = ?
+    `, [woId]));
+  }
+
+  /**
+   * ความพร้อม stock ต่อวัตถุดิบ — วันรับเข้า (Item Receipt) เทียบวันปิดงาน
+   *
+   * ยิง **ครั้งเดียว aggregate ทุกวัตถุดิบพร้อมกัน** ไม่ใช่ยิงต่อสินค้า (งบ governance)
+   * ต่อวัตถุดิบ 1 ตัว เอาใบรับเข้าที่ trandate **เร็วที่สุด** มา 1 แถว (ROW_NUMBER ต่อ item)
+   * พร้อมธง has_ontime ที่คำนวณจาก**ทุกใบ**ของสินค้านั้น (window MAX ก่อนตัดเหลือแถวเดียว)
+   * ว่ามีใบไหนบ้างที่ trandate <= วันปิดงาน — ไม่ใช่แค่ใบที่เร็วที่สุด
+   *
+   * ใบที่เร็วที่สุดพอดีเป็นตัวแทนได้ทั้งสองผล: ผ่าน (has_ontime=1) → ใบนี้คือใบที่ทันเวลาที่เร็วที่สุด
+   * ไม่ผ่าน (has_ontime=0) → ทุกใบช้ากว่าวันปิดงานทั้งหมด ใบนี้คือใบที่ **เร็วที่สุด** ที่ยังช้าอยู่ดี
+   * ตรงกับที่ issue ต้องการโชว์ตอนเตือน ("แสดงวันรับเข้าที่เร็วที่สุด")
+   *
+   * ไม่มีแถวกลับมาของสินค้าไหน = ไม่มี Item Receipt เลย → "ตรวจไม่ได้" ไม่ใช่ "ผ่าน" (ของอาจผลิตเอง)
+   *
+   * กรองด้วยบริษัท (subId) เมื่อรู้ — ใบรับเข้าของบริษัทอื่นไม่ควรถือว่า "ของมาถึงแล้ว" สำหรับ
+   * ใบสั่งผลิตของบริษัทนี้ (fail-open vector เดียวกับที่ข้อเท็จจริงข้อ 6 ของไฟล์นี้เตือนเรื่อง subsidiary
+   * ว่าง = ข้ามด่าน) ไม่กรองเมื่อ subId ว่าง (ทางเข้าด้วยรหัสสินค้าไม่มีเอกสารให้อ่านบริษัท)
+   *
+   * ⚠ นี่คือ query แรกของไฟล์นี้ที่ใช้ window function (ROW_NUMBER/OVER PARTITION BY) —
+   * ยืนยันแล้วว่า SuiteQL รองรับเต็มรูปแบบ (skill netsuite-suiteql §Window/Analytic Functions)
+   * แต่ยังไม่เคยยิงจริงบนบัญชีนี้มาก่อน ต่างจาก pattern อื่นในไฟล์นี้ที่ verify กับ SB1 แล้วทุกตัว —
+   * ต้องเปิดบน SB1 จริงก่อนเชื่อว่าใช้ได้ 100% (ตาม anti-pattern เรื่อง ORDER BY ambiguous ใน
+   * ROW_NUMBER ที่ป้องกันไว้แล้วด้วยการ qualify T.id แทนการปล่อย id เปล่า ๆ)
+   */
+  function qReadyStockDates(itemIds, wocDateIso, subId) {
+    if (!itemIds.length) return { rows: [], failed: false };
+    const subFilter = asStr(subId) ? `AND TL.subsidiary IN (${inList([subId])})` : '';
+    return tracked(() => runSQL('วันรับเข้า (Item Receipt) เทียบวันปิดงาน', `
+      SELECT R.item_id      AS item_id,
+             R.tran_id      AS tran_id,
+             R.doc_no       AS doc_no,
+             R.min_date_iso AS min_date_iso,
+             R.has_ontime   AS has_ontime
+      FROM (
+        SELECT TL.item                                                       AS item_id,
+               T.id                                                          AS tran_id,
+               T.tranid                                                      AS doc_no,
+               TO_CHAR(T.trandate, 'YYYY-MM-DD')                             AS min_date_iso,
+               MAX(CASE WHEN T.trandate <= TO_DATE(?, 'YYYY-MM-DD') THEN 1 ELSE 0 END)
+                 OVER (PARTITION BY TL.item)                                 AS has_ontime,
+               ROW_NUMBER() OVER (PARTITION BY TL.item ORDER BY T.trandate, T.id) AS rn
+        FROM transaction T
+        JOIN transactionline TL ON TL.transaction = T.id
+        WHERE T.recordtype = 'itemreceipt' AND TL.mainline = 'F' AND TL.taxline = 'F'
+          AND TL.item IN (${inList(itemIds)}) ${subFilter}
+      ) R
+      WHERE R.rn = 1
+    `, [wocDateIso]));
+  }
+
   /** คลังทั้งหมดที่ใช้งานอยู่ — ใส่ในช่องเลือกคลัง พร้อมธงว่าเป็นคลังผลิตไหม */
   function qReadyLocations() {
     return tracked(() => runSQL('รายการคลัง', `
@@ -685,6 +770,43 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       };
     }).sort((a, b) => (b.short - a.short) || asStr(a.code).localeCompare(asStr(b.code)));
 
+    // ─── ความพร้อม stock ตามวันที่ (#65) — วันรับเข้าต้อง <= วันปิดงาน (WOC.trandate) ───
+    // เปิดด้วยรหัสสินค้า (ไม่มี WO เลย) = ไม่มีวันปิดงานให้เทียบ → ไม่ applicable ซ่อนทั้งส่วน
+    // ไม่ใช่ query พัง จึงไม่นับเป็น unk — ต่างจากกรณี qReadyWocDate ยิงแล้วพังจริง (ดูล่าง)
+    // ทางเข้าด้วยรหัสสินค้า (ไม่มี WO เลย) เท่านั้นที่ซ่อนทั้งส่วนแบบเงียบ ๆ — ตามคำตัดสินข้อ 2 ของ
+    // #65 ตรง ๆ ("ไม่ applicable → ซ่อน") ส่วน WO ที่มีจริงแต่ยังไม่ปิดงาน (ไม่มี WOC เลย) ยังต้อง
+    // "ไม่เงียบ" ตามร่างเดิมของ issue จึงแสดงเป็นข้อความ "ตรวจไม่ได้" แทนการซ่อนทั้งดุ้น (stockDateNotCompleted)
+    let stockDateShown = false;
+    let stockDateNotCompleted = false;
+    let stockDateCompletionFailed = false;
+    let stockDateWocIso = '';
+    let stockDateFailed = false;
+    const stockDateByItem = {};
+    if (basis === 'wo' && woId) {
+      const wocDate = qReadyWocDate(woId);
+      const wocRow = (wocDate.rows || [])[0] || null;
+      stockDateCompletionFailed = wocDate.failed;
+      if (wocDate.failed) {
+        // query ล้ม — ต้องขึ้นว่าตรวจไม่ได้ ห้ามซ่อนแบบเงียบ ๆ (กับดัก fail-open เดียวกับ #54 · #29)
+        stockDateShown = true;
+      } else if (wocRow && asNum(wocRow.woc_count) > 0 && asStr(wocRow.min_date_iso)) {
+        // มี WOC จริง — ใช้ใบที่เร็วที่สุดเป็นวันปิดงานอ้างอิง (ดูเหตุผลที่ qReadyWocDate)
+        stockDateShown = true;
+        stockDateWocIso = asStr(wocRow.min_date_iso);
+        const dateItemIds = needRows.map(r => r.item_id);
+        if (dateItemIds.length) {
+          const stockDates = qReadyStockDates(dateItemIds, stockDateWocIso, subId);
+          stockDateFailed = stockDates.failed;
+          (stockDates.rows || []).forEach(r => { stockDateByItem[asStr(r.item_id)] = r; });
+        }
+      } else {
+        // ใบสั่งผลิตนี้ยังไม่ปิดงานเลย (ไม่มี WOC) — ไม่มีวันที่ให้ตรวจ ไม่ใช่ query พัง
+        // แสดงข้อความ "ตรวจไม่ได้" แทนการซ่อน (ต่างจากทางเข้าด้วยรหัสสินค้าที่ไม่มี WO เลย)
+        stockDateShown = true;
+        stockDateNotCompleted = true;
+      }
+    }
+
     // ตรวจยันกับบรรทัด component บนใบสั่งผลิตเอง — ยอดชั้นที่ 1 ต้องตรงกัน
     // ไม่ตรง = BOM ถูกแก้หลังเปิด WO (หรือสูตรระเบิดของรายงานผิด) ทั้งสองอย่างต้องรู้
     const woComp = {};
@@ -742,7 +864,14 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       wo_check: woCheck,
       wo_extra: woExtra,
       routing_failed: routings.failed,
-      cost_ref_failed: costRefs.failed
+      cost_ref_failed: costRefs.failed,
+      // ความพร้อม stock ตามวันที่ (#65) — ดูคำตัดสินที่ล็อกไว้ที่ qReadyWocDate/qReadyStockDates
+      stock_date_shown: stockDateShown,
+      stock_date_not_completed: stockDateNotCompleted,
+      stock_date_completion_failed: stockDateCompletionFailed,
+      stock_date_woc_iso: stockDateWocIso,
+      stock_date_failed: stockDateFailed,
+      stock_date_by_item: stockDateByItem
     };
   }
 
@@ -934,6 +1063,39 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     return readyVerdict('ok', 'มี ' + fmt(row.on_hand, 4) + ' ' + asStr(row.unit_name));
   }
 
+  /**
+   * ความพร้อม stock ตามวันที่ (#65) — วันรับเข้าต้อง <= วันปิดงาน (WOC.trandate)
+   * รับ item_id ตรง ๆ (ไม่ใช่ node) เพราะใช้กับ rd.need_rows ในตารางแยกต่างหาก — ดู
+   * renderReadyStockDates() ว่าทำไมต้องแยกตาราง ไม่ยุบเข้า readyRowVerdicts/readyCell()
+   *
+   * คืน null เมื่อไม่ applicable (rd.stock_date_shown = false) — ผู้เรียกต้องซ่อนทั้งส่วนนี้
+   * ไม่ใช่แสดง "—" (คำตัดสินข้อ 2 ของ #65: เปิดด้วยรหัสสินค้า หรือ WO ยังไม่ปิดงาน = ไม่มีวันที่ให้เทียบ)
+   */
+  function stockDateVerdict(rd, itemId) {
+    if (!rd.stock_date_shown) return null;
+    if (rd.stock_date_not_completed) {
+      // ไม่ใช่ปัญหา แค่ยังไม่ถึงเวลาตรวจ — cls 'info' จึงไม่ถูกนับเป็น bad/unk ใน KPI/todo
+      return readyVerdict('info', 'ใบสั่งผลิตนี้ยังไม่ปิดงาน — ยังไม่มีวันปิดงานให้เทียบ');
+    }
+    if (rd.stock_date_completion_failed) {
+      return readyVerdict('unk', 'อ่านวันปิดงาน (WOC) ไม่สำเร็จ — ดูท้ายหน้า');
+    }
+    if (rd.stock_date_failed) {
+      return readyVerdict('unk', 'อ่านวันรับเข้าไม่สำเร็จ — ดูท้ายหน้า');
+    }
+    const row = rd.stock_date_by_item[asStr(itemId)];
+    if (!row) {
+      return readyVerdict('unk', 'ไม่มี Item Receipt ให้ตรวจ — สินค้านี้อาจผลิตเอง ไม่ได้ซื้อ');
+    }
+    const ontime = asNum(row.has_ontime) === 1;
+    const v = readyVerdict(ontime ? 'ok' : 'bad',
+      (ontime ? 'รับเข้า ' : 'รับเข้าเร็วที่สุด ') + asStr(row.min_date_iso)
+      + (ontime ? ' ก่อนวันปิดงาน ' : ' ช้ากว่าวันปิดงาน ') + asStr(rd.stock_date_woc_iso));
+    v.tran_id = row.tran_id;
+    v.doc_no = asStr(row.doc_no) || String(row.tran_id);
+    return v;
+  }
+
   /** ลำดับความรุนแรงของทั้งหน้า — bad สำคัญกว่า unk สำคัญกว่า warn */
   function readyRowVerdicts(n, rd) {
     return [bomVerdictText(n), revVerdictText(n), compVerdictText(n),
@@ -1021,6 +1183,18 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     const madeCount = rd.nodes.filter(n => n.made && n.bom && n.bom.bom).length;
     const woBad = rd.wo_check.filter(c => !c.match).length;
 
+    // ความพร้อม stock ตามวันที่ (#65) — ไม่ผ่าน readyRowVerdicts (ดู renderReadyStockDates)
+    // จึงต้องรวมเข้า bad/unk เองที่นี่ ไม่งั้น "คำตัดสินรวม" จะไม่รู้จักปัญหานี้เลย
+    let stockDateBad = 0, stockDateUnk = 0;
+    if (rd.stock_date_shown) {
+      rd.need_rows.forEach(r => {
+        const v = stockDateVerdict(rd, r.item_id);
+        if (v.cls === 'bad') stockDateBad++; else if (v.cls === 'unk') stockDateUnk++;
+      });
+    }
+    bad += stockDateBad;
+    unk += stockDateUnk;
+
     // ทางเข้าด้วยรหัสสินค้าที่ไม่เลือกคลัง = ข้าม M-02/M-05 ส่วนที่ตัดสินตามคลังไปทั้งดุ้น
     // ต้องไม่สรุปว่า "พร้อม" เพราะคนทดสอบที่ลืมเลือกคลังจะได้หน้าที่เขียวเกินความจริง
     const skipLoc = rd.basis === 'item' && !rd.loc_id;
@@ -1039,6 +1213,9 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       + (rd.basis === 'wo'
         ? kpi('ยอดชั้นที่ 1 ไม่ตรงบรรทัดบน WO', esc(String(woBad)), woBad ? 'warn' : 'ok')
         : kpi('ยันยอดกับใบสั่งผลิต', 'ยังไม่มีใบ', 'info'))
+      + (rd.stock_date_shown
+        ? kpi('วัตถุดิบรับเข้าหลังวันปิดงาน (#65)', esc(String(stockDateBad)), stockDateBad ? 'bad' : 'ok')
+        : '')
       + '</div>';
   }
 
@@ -1058,6 +1235,17 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         if (t.cls === 'bad') items.push({ cls: 'bad', text: label + ' — ' + t.text });
       });
     });
+    // ความพร้อม stock ตามวันที่ (#65) — ไม่ได้อยู่ใน readyRowVerdicts (ดู renderReadyStockDates)
+    // ต้องเติมเข้า todo เองไม่งั้นปัญหาต้นทุนย้อนหลังจะไม่โผล่ในรายการที่ต้องเคลียร์เลย
+    if (rd.stock_date_shown) {
+      rd.need_rows.forEach(r => {
+        const v = stockDateVerdict(rd, r.item_id);
+        if (v.cls === 'bad' || v.cls === 'unk') {
+          items.push({ cls: v.cls, text: asStr(r.code) + ' · ความพร้อม stock (#65) — ' + v.text
+            + (v.cls === 'bad' ? ' (เลขที่ใบรับดูที่ตาราง "ความพร้อม stock" ด้านล่าง)' : '') });
+        }
+      });
+    }
     if (!items.length) {
       return '<div class="card ok">ไม่พบงานค้างที่ต้องแก้ก่อนเริ่มทดสอบ '
         + '(ข้อสังเกตสีเหลืองในตารางยังควรอ่านก่อน)</div>';
@@ -1121,6 +1309,58 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         + numCell(r.avail, 4)
         + numCell(r.short, 4, r.short > 0 ? 'bad' : '')
         + '<td class="note">' + (locs || '<span class="miss">ไม่มีของในคลังที่เลือก</span>') + '</td>'
+        + '</tr>';
+    });
+    h += '</table>';
+    return h;
+  }
+
+  /**
+   * ความพร้อม stock ตามวันที่ (#65) — ตารางแยกจาก "ของที่ต้องมีในคลัง" โดยตั้งใจ
+   * ("มีพอแต่มาช้า" กับ "ของไม่พอ" เป็นคนละเรื่อง — ห้ามยุบรวมกับคอลัมน์ short เดิม)
+   * และไม่ผ่าน readyCell()/readyRowVerdicts เพราะต้องมีลิงก์กดไปดูเลขที่ใบรับเข้าได้
+   * (readyCell() escape ข้อความทั้งเซลล์ ใส่ <a> ไม่ได้) จึงประกอบลิงก์เองจาก tranLink() ตรงนี้
+   *
+   * ไม่ applicable (เปิดด้วยรหัสสินค้า หรือ WO ยังไม่ปิดงานเลย ไม่มี WOC) = ไม่มีวันที่ให้เทียบ
+   * → ไม่แสดงส่วนนี้เลย (คำตัดสินข้อ 2 ของ #65 — "ซ่อน" ไม่ใช่ขึ้นว่าผ่าน)
+   */
+  function renderReadyStockDates(rd) {
+    if (!rd.stock_date_shown) return '';
+    let h = '<h2>ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)</h2>';
+    h += '<p class="sub">ตรวจย้อนหลังว่าวัตถุดิบที่ใช้ไปมาถึงคลังก่อนวันปิดงานหรือไม่ '
+      + '— ถ้ามาหลังวันปิดงาน ต้นทุนเฉลี่ยที่คิด ณ วันปิดงานยังไม่รวมของล็อตนี้ '
+      + 'ใช้เกณฑ์ "มีอย่างน้อยหนึ่งใบที่ทันเวลา" เพราะที่ระดับใบรับเข้าผูกไม่ได้ว่าล็อตไหนถูกใช้จริง'
+      + (rd.stock_date_woc_iso
+        ? ' · วันปิดงานที่ใช้เทียบ: <b>' + esc(rd.stock_date_woc_iso)
+          + '</b> (ใบปิดงานที่เร็วที่สุด ถ้ามีหลายใบ)' : '') + '</p>';
+    if (rd.stock_date_not_completed) {
+      // ไม่ใช่ query พัง แค่ยังไม่มีวันปิดงานให้เทียบ — บอกตรง ๆ ว่า "ตรวจไม่ได้" ไม่ใช่ซ่อนแบบเงียบ ๆ
+      // (ต่างจากทางเข้าด้วยรหัสสินค้าที่ไม่มี WO เลย ซึ่งซ่อนทั้งส่วนตามคำตัดสินข้อ 2 ของ #65)
+      h += '<div class="card">ใบสั่งผลิตนี้ยังไม่ปิดงาน (ไม่มี Work Order Completion เลย) '
+        + '— ยังไม่มีวันปิดงานให้เทียบ ตรวจส่วนนี้ไม่ได้จนกว่าจะปิดงาน</div>';
+      return h;
+    }
+    if (rd.stock_date_completion_failed) {
+      h += '<div class="err">อ่านวันปิดงาน (WOC.trandate) ไม่สำเร็จ — ตรวจความพร้อม stock ไม่ได้ '
+        + 'ห้ามถือว่าผ่าน ดูรายละเอียดท้ายหน้า</div>';
+      return h;
+    }
+    if (rd.stock_date_failed) {
+      h += '<div class="err">อ่านวันรับเข้า (Item Receipt) ไม่สำเร็จ — ทุกแถวด้านล่างถือว่าตรวจไม่ได้ '
+        + 'ไม่ใช่ผ่าน ดูรายละเอียดท้ายหน้า</div>';
+    }
+    h += '<table><tr><th>รหัส</th><th>ชื่อ</th><th class="n">ต้องใช้</th>'
+      + '<th>วันรับเข้าเร็วที่สุด</th><th>เลขที่ใบรับ</th><th>ผล</th></tr>';
+    rd.need_rows.forEach(r => {
+      const v = stockDateVerdict(rd, r.item_id);
+      const row = rd.stock_date_by_item[asStr(r.item_id)] || null;
+      h += '<tr>'
+        + '<td>' + itemLink(r.item_id, r.code) + '</td>'
+        + '<td>' + esc(r.name) + '</td>'
+        + numCell(r.need, 5)
+        + '<td>' + (row ? esc(asStr(row.min_date_iso)) : '—') + '</td>'
+        + '<td>' + (row ? tranLink('itemreceipt', row.tran_id, asStr(v.doc_no)) : '—') + '</td>'
+        + readyCell(v)
         + '</tr>';
     });
     h += '</table>';
@@ -1207,6 +1447,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     }
     h += '<h2>สายการผลิตตามชั้น BOM</h2>' + renderReadyTree(rd);
     h += '<h2>ของที่ต้องมีในคลัง</h2>' + renderReadyStock(rd);
+    h += renderReadyStockDates(rd);
     if (rd.basis === 'wo') {
       h += '<h2>ยันยอดกับใบสั่งผลิต</h2>' + renderReadyWoCheck(rd);
     } else {
