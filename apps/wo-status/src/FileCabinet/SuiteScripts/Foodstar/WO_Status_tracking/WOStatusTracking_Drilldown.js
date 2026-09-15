@@ -16,7 +16,7 @@
  * @NApiVersion 2.1
  * @NModuleScope Public
  */
-define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) => {
+define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (query, log, Labels, theme) => {
 
   // ─────────────────────────────────────────────────────────────
   // UTILITIES
@@ -26,8 +26,19 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) =
   const RANK = { na: 0, ok: 1, wait: 2, err: 3 };
   const RANK_INV = ['na', 'ok', 'wait', 'err'];
 
-  /** Symbol map (matches mockup) */
-  const SYM = { ok: '✓', wait: '◷', err: '✕', na: '–' };
+  /**
+   * ไอคอนของ pill (cpCell) ไม่มีข้อความอื่นบอกความหมายอยู่ข้างๆ เลย (ต่างจาก legend ของ
+   * WOStatusTracking.js ที่มีข้อความสถานะเต็มติดข้างอยู่แล้ว) จึงต้องห่อด้วย theme.iconImg()
+   * ให้มี accessible name เสมอ (#64 ขั้น 2b) — NA ยังเป็นข้อความล้วนเหมือนเดิม (ตัดสินใจเดียวกับ
+   * WOStatusTracking.js: "–" เป็นเครื่องหมายวรรคตอน ไม่ใช่ไอคอนที่ต้องมีชื่อ)
+   *
+   * ICON_NAME คือคีย์ใน theme.ICONS (แหล่งเดียวกับ WOStatusTracking.js ให้ path ตรงกันทุกหน้า)
+   * LEGEND_IDX คือตำแหน่งข้อความสถานะใน Labels.getLabels(lang).legend — ต้องตรงลำดับเดียวกับ
+   * ที่ buildLegendHtml ของ WOStatusTracking.js ใช้ (0=ok 1=wait 2=err) ไม่ hardcode ข้อความเอง
+   */
+  const NA = '–';
+  const ICON_NAME = { ok: 'check', wait: 'clock', err: 'cross' };
+  const LEGEND_IDX = { ok: 0, wait: 1, err: 2 };
 
   /**
    * Minimal HTML escape for DB-derived strings injected into HTML.
@@ -602,9 +613,16 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) =
   // HTML RENDERING
   // ─────────────────────────────────────────────────────────────
 
-  /** Render one CP cell (td.cp > span.pill) */
-  function cpCell(status) {
-    const sym = SYM[status] || '–';
+  /**
+   * Render one CP cell (td.cp > span.pill)
+   * @param {string} status
+   * @param {string} lang  'th'|'en' — ต้องมีเพื่อดึงชื่อสถานะจาก Labels ให้ตรงภาษาของหน้า
+   */
+  function cpCell(status, lang) {
+    const name = ICON_NAME[status];
+    const sym = name
+      ? theme.iconImg(name, esc(Labels.getLabels(lang).legend[LEGEND_IDX[status]]))
+      : NA;
     return `<td class="cp"><span class="pill ${esc(status)}">${sym}</span></td>`;
   }
 
@@ -617,7 +635,9 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) =
     if (!text) return `<td></td>`;
     const worst = worstStatus(cpStatuses || []);
     const cls   = (worst === 'err' || worst === 'wait') ? worst : '';
-    const sym   = worst === 'err' ? '⚠' : '◷';
+    // ไม่มีข้อความอื่นบอกความหมายไอคอนนี้ในเซลล์ — ห่อด้วย iconImg() ใช้ text เดียวกับที่ขึ้น
+    // data-tip เป็นชื่อ (ผ่าน Labels.getCheckpointNote(lang) มาแล้ว ไม่ hardcode คำใหม่)
+    const sym   = theme.iconImg(worst === 'err' ? 'warn' : 'clock', esc(text));
     return `<td style="text-align:center"><span class="note-icon ${cls}" data-tip="${esc(text)}">${sym}</span></td>`;
   }
 
@@ -659,8 +679,10 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) =
       const batchQtyStr = `${batch.releasedQty}${unitName ? ' ' + esc(unitName) : ''}`;
       html += `<tr class="batch">`;
       html += `<td>${esc(batch.batchName)}<div style="font-size:11px;color:var(--muted);margin-top:2px">${batchQtyLabel}: ${batchQtyStr}</div></td><td></td><td></td>`;
-      batchCpStatuses.forEach(st => { html += cpCell(st); });
-      const batchNoteSym = batchWorst === 'err' ? '⚠' : '◷';
+      batchCpStatuses.forEach(st => { html += cpCell(st, lang); });
+      // ไม่มีข้อความอื่นบอกความหมายไอคอนนี้ในเซลล์ — ห่อด้วย iconImg() ใช้ batchNoteText เอง
+      // เป็นชื่อ (ข้อความเดียวกับที่ขึ้น data-tip อยู่แล้ว ผ่านการเลือกภาษามาแล้ว ไม่ hardcode ใหม่)
+      const batchNoteSym = batchWorst === 'err' ? theme.iconImg('warn', esc(batchNoteText)) : theme.iconImg('clock', esc(batchNoteText));
       html += `<td style="text-align:center">${batchNoteText ? `<span class="note-icon ${batchNoteCls}" data-tip="${esc(batchNoteText)}">${batchNoteSym}</span>` : ''}</td>`;
       html += `</tr>\n`;
 
@@ -671,7 +693,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels'], (query, log, Labels) =
         );
         html += `<tr class="task">`;
         html += `<td>${esc(task.taskName)}${task.taskAltName ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(task.taskAltName)}</div>` : ''}</td><td></td><td></td>`;
-        task.cpStatuses.forEach(st => { html += cpCell(st); });
+        task.cpStatuses.forEach(st => { html += cpCell(st, lang); });
         html += noteCell(localNotes, task.cpStatuses);
         html += `</tr>\n`;
       });

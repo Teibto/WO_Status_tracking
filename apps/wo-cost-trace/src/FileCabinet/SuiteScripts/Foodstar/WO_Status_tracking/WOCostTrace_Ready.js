@@ -942,7 +942,29 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
 
   // ─── render ชั้นความพร้อม ──────────────────────────────────────────────────
 
-  const READY_ICON = { ok: '✓', bad: '✕', warn: '!', unk: '?', info: '–' };
+  /**
+   * ไอคอนต่อระดับความพร้อม — inline SVG ตามมาตรฐาน Teibto Redwood (#64 ขั้น 2), มาจาก
+   * C.ICONS (= theme.ICONS ที่ WOCostTrace_Common.js เปิดผ่านให้ ไม่ต้องเพิ่ม require ที่นี่)
+   * `warn` ใช้ path สามเหลี่ยมเดียวกับ ⚠ ที่อื่นในระบบ (คือแนวคิด "ต้องระวัง" เดียวกัน)
+   * `unk` (อ่านค่าไม่สำเร็จ) ใช้ไอคอนวงกลม-เครื่องหมายคำถามแทน "?" เดิม
+   * `info` (ไม่มีสถานะ ยังไม่ถึง node นี้) คงเป็นขีดข้อความ — เหตุผลเดียวกับ `na` ของ wo-status
+   *
+   * accessible name (#64 ขั้น 2b): ไอคอนนี้เป็นตัวบอกระดับความพร้อม**เพียงตัวเดียว**ในเซลล์ —
+   * `v.text` ที่ตามหลัง (เช่น "มี 500.0000 กก.") เป็นข้อมูลประกอบ ไม่ได้บอกระดับ (ok/bad/warn/
+   * unk) ซ้ำ จึงต้องห่อด้วย C.iconImg() ให้มีชื่อ (ต่างจาก legend/audit ✓ ตรง ของ WOCostTrace.js
+   * ที่มีข้อความสถานะเต็มติดข้างอยู่แล้วเลยปล่อย aria-hidden ได้) · ป้ายใช้คำเดิมที่ renderReadyKpis()
+   * เรียกสถานะเดียวกันอยู่แล้ว (kpi 'รายการที่ต้องแก้' / 'ข้อสังเกต' / 'ตรวจไม่ได้ (query พัง)' และ
+   * verdict 'พร้อม') ไม่ตั้งคำใหม่ — ไฟล์นี้ไม่มีระบบสองภาษาอยู่แล้วทั้งไฟล์ (ไม่มี lang param ที่ไหน
+   * เลยในแอปนี้) ป้ายจึงเป็นไทยล้วนเหมือนทุก label/title/tooltip อื่นในรายงานนี้ ไม่ใช่ข้อยกเว้นใหม่
+   */
+  const READY_ICON_LABEL = { ok: 'พร้อม', bad: 'ยังไม่พร้อม', warn: 'ข้อสังเกต', unk: 'ตรวจไม่ได้' };
+  const READY_ICON = {
+    ok: C.iconImg('check', esc(READY_ICON_LABEL.ok)),
+    bad: C.iconImg('cross', esc(READY_ICON_LABEL.bad)),
+    warn: C.iconImg('warn', esc(READY_ICON_LABEL.warn)),
+    unk: C.iconImg('help', esc(READY_ICON_LABEL.unk)),
+    info: '–'
+  };
 
   function readyCell(v) {
     return '<td class="rv ' + v.cls + '"><b>' + READY_ICON[v.cls] + '</b> '
@@ -1201,7 +1223,10 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
   /** CSS เฉพาะชั้นความพร้อม — ต่อท้ายบล็อกกลาง เขียนด้วย token เหมือนกัน */
   const READY_CSS = '<style>'
     + 'td.rv{font-size:var(--fs-xs);line-height:1.35;max-width:230px}'
-    + 'td.rv b{font-family:var(--pj-mono);font-size:var(--fs-sm)}'
+    // display:inline-flex + vertical-align กันไอคอน svg ตกไปนั่งบน text baseline
+    // (ตัวอักษรเดิม ✓ ✕ ! ? ไม่มีปัญหานี้เพราะสูงเท่าบรรทัด — #64 ขั้น 2)
+    + 'td.rv b{font-family:var(--pj-mono);font-size:var(--fs-sm);display:inline-flex;'
+    + 'align-items:center;vertical-align:-2px}'
     + 'td.rv.ok{background:var(--pj-success-bg)}td.rv.ok b{color:var(--pj-success)}'
     + 'td.rv.bad{background:var(--pj-error-bg)}td.rv.bad b{color:var(--pj-error)}'
     + 'td.rv.warn{background:var(--pj-warning-bg)}td.rv.warn b{color:var(--pj-warning)}'

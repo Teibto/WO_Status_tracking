@@ -97,10 +97,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     return REC_LABEL[rt] || rt;
   }
 
-  function tranLink(recordtype, id, label) {
+  /**
+   * @param {string} recordtype
+   * @param {string|number} id
+   * @param {string} label      ข้อความลิงก์ — escape ให้ในนี้
+   * @param {string} [iconHtml] ไอคอน (เช่น theme.ICONS.extLink) ต่อท้าย label แบบไม่ escape ซ้ำ —
+   *                            เดิมผู้เรียกพิมพ์ "↗" ต่อท้าย label เองแล้วปล่อยให้ esc() กลืนเป็นตัวอักษร
+   *                            ธรรมดา (#64 ขั้น 2 เปลี่ยนเป็น inline SVG จึงต้องแยกช่องไม่ให้ถูก escape)
+   */
+  function tranLink(recordtype, id, label, iconHtml) {
     const base = REC_URL[asStr(recordtype).toLowerCase()];
-    if (!id || !base) return esc(label);
-    return '<a target="_blank" href="' + base + encodeURIComponent(id) + '">' + esc(label) + '</a>';
+    if (!id || !base) return esc(label) + (iconHtml || '');
+    return '<a target="_blank" href="' + base + encodeURIComponent(id) + '">' + esc(label)
+      + (iconHtml || '') + '</a>';
   }
 
   function itemLink(id, label) {
@@ -258,7 +267,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.xnote{font-size:var(--fs-xs);color:var(--pj-text-muted)}'
     + '.nsrec{margin-top:2px}'
     + '.nsrec a{font-size:10px;color:var(--pj-text-muted);text-decoration:none}'
-    + '.nsrec a:hover{color:var(--pj-primary);text-decoration:underline}';
+    + '.nsrec a:hover{color:var(--pj-primary);text-decoration:underline}'
+    // ไอคอนลิงก์นอก (#64 ขั้น 2) — markup ยังเป็น svg 16px ตามมาตรฐาน แต่ตัวอักษรข้างเคียงแค่
+    // 10px จึงย่อการ์แสดงผลด้วย CSS ให้สัดส่วนเข้ากัน (ไม่ใช่แก้ viewBox/attribute ของไอคอน)
+    + '.nsrec svg{width:11px;height:11px;vertical-align:-1px;margin-left:2px}';
 
   const CSS = theme.css(REPORT_CSS);
 
@@ -507,6 +519,10 @@ ${costCols}
     docTypeLabel: docTypeLabel,
     tranLink: tranLink,
     itemLink: itemLink,
+    // ไอคอนสถานะ (#64 ขั้น 2) — ให้ lib ที่ไม่ได้ require WOReportTheme เอง (เช่น _Ready.js
+    // ที่ require ไฟล์นี้อยู่แล้ว) เข้าถึง path เดียวกับที่ entry ใช้ ไม่ต้องเพิ่ม dependency ใหม่
+    ICONS: theme.ICONS,
+    iconImg: theme.iconImg,
     // SQL runner + query log
     runSQL: runSQL,
     QLOG: QLOG,

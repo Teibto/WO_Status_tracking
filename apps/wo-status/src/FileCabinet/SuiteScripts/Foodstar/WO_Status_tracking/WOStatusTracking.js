@@ -271,7 +271,9 @@ define(
       + 'padding:var(--sp-3) var(--sp-5);color:var(--pj-text-muted);font-size:var(--fs-sm);'
       + 'border-top:1px solid var(--pj-border);margin-top:var(--sp-2)}'
       + '.legend span{display:inline-flex;align-items:center;gap:6px}'
-      + '.legend-icon{font-size:var(--fs-md);line-height:1}'
+      // display:inline-flex กันไอคอน svg ตกไปนั่งบน text baseline (ตัวอักษรเดิมไม่มีปัญหานี้
+      // เพราะสูงเท่าบรรทัด — #64 ขั้น 2 เปลี่ยนเป็น svg ต้องจัดกลางแนวตั้งเอง)
+      + '.legend-icon{font-size:var(--fs-md);line-height:1;display:inline-flex;align-items:center}'
       + '.drilldown-loading td{padding:10px 34px;color:var(--pj-text-muted);font-style:italic}'
       + '.pagination{display:flex;gap:6px;align-items:center;'
       + 'padding:var(--sp-3) var(--sp-5);flex-wrap:wrap}'
@@ -1236,11 +1238,14 @@ define(
 
     function buildLegendHtml(lang) {
       const t = getI18nLabels(lang);
+      // ไอคอนตรงนี้ตั้งใจปล่อยเป็น ICONS.xxx ดิบ (aria-hidden) ไม่ห่อ iconImg() — ต่างจาก pill/
+      // note-icon ข้างล่าง เพราะ**มีข้อความสถานะเต็มๆ ต่อท้ายอยู่ในสแปนเดียวกันแล้ว**
+      // (t.legend[i]) การห่อ role="img" aria-label ซ้ำจะทำให้ screen reader อ่านสองรอบ (#64 ขั้น 2b)
       return `
 <div class="legend" id="legend">
-  <span><span class="legend-icon" style="color:var(--ok)">✓</span> ${escapeHtml(t.legend[0])}</span>
-  <span><span class="legend-icon" style="color:var(--wait)">◷</span> ${escapeHtml(t.legend[1])}</span>
-  <span><span class="legend-icon" style="color:var(--err)">✕</span> ${escapeHtml(t.legend[2])}</span>
+  <span><span class="legend-icon" style="color:var(--ok)">${theme.ICONS.check}</span> ${escapeHtml(t.legend[0])}</span>
+  <span><span class="legend-icon" style="color:var(--wait)">${theme.ICONS.clock}</span> ${escapeHtml(t.legend[1])}</span>
+  <span><span class="legend-icon" style="color:var(--err)">${theme.ICONS.cross}</span> ${escapeHtml(t.legend[2])}</span>
   <span><span class="legend-icon" style="color:var(--na)">–</span> ${escapeHtml(t.legend[3])}</span>
   <span style="margin-left:auto">${escapeHtml(t.rollup)}</span>
 </div>`;
@@ -1271,7 +1276,15 @@ define(
 
     function buildGridHtml(pageRows, lang) {
       const t = getI18nLabels(lang);
-      const S = { ok: '✓', wait: '◷', err: '✕', na: '–' };
+      // pill ไม่มีข้อความอื่นบอกความหมายอยู่ข้างๆ (ต่างจาก legend ที่มี t.legend[i] ติดข้างอยู่แล้ว
+      // จึงปล่อยไอคอน legend เป็น aria-hidden ล้วนได้) — ต้องห่อด้วย iconImg() ให้มี accessible
+      // name เอง ใช้ t.legend ชุดเดียวกับ legend เพื่อไม่ hardcode ข้อความสถานะอีกชุด (#64 ขั้น 2b)
+      const S = {
+        ok: theme.iconImg('check', escapeAttr(t.legend[0])),
+        wait: theme.iconImg('clock', escapeAttr(t.legend[1])),
+        err: theme.iconImg('cross', escapeAttr(t.legend[2])),
+        na: '–'
+      };
 
       // Table header
       const cpHeaders = t.cols.map((c, i) =>
@@ -1317,7 +1330,10 @@ define(
         // Note cell: worst-status note as tooltip icon
         const noteInfo = pickWorstNote(wo.cpStatus, lang);
         const noteHtml = noteInfo.note
-          ? `<span class="note-icon ${noteInfo.status}" data-tip="${escapeAttr(noteInfo.note)}">${noteInfo.status === 'err' ? '⚠' : '◷'}</span>`
+          // ไอคอนนี้ไม่มีข้อความอื่นบอกความหมายในเซลล์เลย (ไม่เหมือน legend) — ห่อด้วย iconImg()
+          // ใช้ noteInfo.note (ข้อความเดียวกับที่ขึ้น data-tip) เป็นชื่อ ไม่ hardcode คำใหม่ และ
+          // เป็นข้อความที่ผ่านการเลือกภาษาแล้วจาก pickWorstNote()/Labels.getCheckpointNote (#64 ขั้น 2b)
+          ? `<span class="note-icon ${noteInfo.status}" data-tip="${escapeAttr(noteInfo.note)}">${theme.iconImg(noteInfo.status === 'err' ? 'warn' : 'clock', escapeAttr(noteInfo.note))}</span>`
           : '';
 
         const qtyDisplay = `${formatNumber(wo.qty)} ${escapeHtml(wo.qtyUnit || '')}`.trim();
@@ -1414,6 +1430,15 @@ ${thead}
 
       // Inline i18n for client-side lang toggle (chrome only; notes re-render server-side)
       const i18nJson = JSON.stringify(getI18nForClient());
+
+      // STATUS_ICONS ฝั่ง client (ปัจจุบันไม่มีใครอ่าน — เก็บไว้เผื่ออนาคตต้องเทียบ status)
+      // ต้องมาจาก theme.ICONS แหล่งเดียวกับ S/legend ข้างบน ไม่ใช่พิมพ์ตัวอักษรเองอีกชุด (Refs #64)
+      // ตั้งใจเก็บเป็น svg ดิบ (ไม่ห่อ iconImg) เพราะที่นี่เป็นแค่ตารางอ้างอิง ยังไม่มี markup จริง
+      // ให้ห่อ — ถ้าถูกเอาไปต่อ DOM จริงในอนาคต ผู้ที่ต่อโค้ดต้องห่อด้วย iconImg()/เทียบเท่าเอง
+      // (ดูกติกา decorative vs สื่อความหมาย ที่ shared/WOReportTheme.js หัวฟังก์ชัน iconImg)
+      const statusIconsJson = JSON.stringify(
+        { ok: theme.ICONS.check, wait: theme.ICONS.clock, err: theme.ICONS.cross, na: '–' }
+      );
 
       return `<!DOCTYPE html>
 <html lang="${lang}">
@@ -1517,7 +1542,7 @@ ${gridHtml ? legendHtml : ''}
 <script>
 // ── i18n data (both languages, chrome strings only) ──────────────
 const I18N = ${i18nJson};
-const STATUS_ICONS = {ok:'✓',wait:'◷',err:'✕',na:'–'};
+const STATUS_ICONS = ${statusIconsJson};
 let LANG = ${JSON.stringify(lang)};
 
 // ── Language toggle ───────────────────────────────────────────────

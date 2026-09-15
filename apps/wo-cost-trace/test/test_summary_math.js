@@ -402,6 +402,10 @@ eq('ลิงก์ record อยู่ใน .nsrec แยกบรรทัด
   /<div class="nsrec">[\s\S]*workord\.nl/.test(cell ? cell[0] : ''), true);
 eq('ลิงก์ record มีข้อความบอกปลายทาง',
   (cell ? cell[0] : '').indexOf('เปิดใบสั่งผลิตใน NetSuite') > 0, true);
+// เดิมท้ายข้อความเป็นตัวอักษร "↗" ตรงๆ — #64 ขั้น 2 เปลี่ยนเป็น inline SVG (theme.ICONS.extLink)
+eq('ลิงก์ record มีไอคอนลิงก์นอก (inline SVG แทน ↗ เดิม)',
+  /เปิดใบสั่งผลิตใน NetSuite<svg[^>]*viewBox="0 0 16 16"[\s\S]*?<\/svg><\/a>/.test(cell ? cell[0] : ''), true);
+eq('ไม่มีตัวอักษร ↗ เหลือในเซลล์นี้', (cell ? cell[0] : '').indexOf('↗') >= 0, false);
 eq('ไม่มี undefined ใน html', html.indexOf('undefined') < 0, true);
 eq('ขึ้น "ยังไม่มี" แทนศูนย์', html.indexOf('ยังไม่มี</td>') > 0, true);
 eq('มีแถวรวมต่อสินค้า', html.indexOf('รวม 11010900010') > 0, true);
@@ -412,7 +416,15 @@ const headCols = (html.match(/<th[ >]/g) || []).length;
 eq('หัวตาราง 16 คอลัมน์ (รวมไลน์ผลิต #51)', headCols, 16);
 eq('ตารางอยู่ในกรอบเลื่อนได้', html.indexOf('<div class="scroll"><table><thead>') > 0, true);
 // ใบที่ไม่มีใบเบิกวัตถุดิบ ต้องทำเครื่องหมายที่ตัวเลขต้นทุน/หน่วยเอง ไม่รอคอลัมน์หมายเหตุที่หลุดจอ
-eq('ต้นทุนที่ไม่รวมวัตถุดิบมีธง ⚠ ที่ตัวเลข', html.indexOf('⚠</td>') > 0, true);
+// เดิมธงเป็นตัวอักษร "⚠" ตรงๆ ในเซลล์ (`⚠</td>`) — #64 ขั้น 2 เปลี่ยนเป็น inline SVG (theme.ICONS.warn)
+// ขั้น 2b ห่อด้วย role="img" aria-label เพิ่ม (a11y — ไอคอนนี้ไม่มีข้อความอื่นบอกความหมายในเซลล์
+// title attribute ไม่นับเพราะ screen reader ส่วนใหญ่ไม่อ่านให้อัตโนมัติ) — เช็คทั้งคู่ไม่งั้น
+// revert กลับไปเป็นตัวอักษร หรือลบ role="img" ทิ้ง จะไม่แดง
+eq('ต้นทุนที่ไม่รวมวัตถุดิบมีไอคอนเตือน (inline SVG) ที่ตัวเลข',
+  /class="n warn"[^>]*>[\s\S]{0,120}?<svg[^>]*viewBox="0 0 16 16"[\s\S]*?<\/svg>[\s\S]{0,20}?<\/td>/.test(html), true);
+eq('ไอคอนเตือนนั้นมี role="img" + aria-label ที่ไม่ว่าง (accessible name — #64 ขั้น 2b)',
+  /class="n warn"[^>]*>[\s\S]{0,60}?role="img" aria-label="[^"]+"/.test(html), true);
+eq('ไม่มีตัวอักษร ⚠ เหลือเป็นไอคอนในตาราง (ต้องเป็น svg ล้วน)', html.indexOf('⚠') >= 0, false);
 eq('มี title อธิบายว่าเป็นแปรสภาพล้วน', html.indexOf('เป็นต้นทุนแปรสภาพล้วน') > 0, true);
 
 // ใบ MFG Summary Cost ซ้ำแบบมูลค่า 0 ต้องเป็น warn ไม่ใช่ bad (SB1 มีแบบนี้เยอะ ถ้าเป็น bad จะกลายเป็น noise)

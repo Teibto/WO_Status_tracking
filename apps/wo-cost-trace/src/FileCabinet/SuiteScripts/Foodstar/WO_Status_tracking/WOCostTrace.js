@@ -1740,8 +1740,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     if (v == null) return '<td class="n miss" title="ยังไม่มีปริมาณผลิตได้จริงมาเป็นตัวหาร">ยังไม่มี</td>';
     if (!partialNote) return numCell(v, dp);
     if (!isFinite(v)) return '<td class="n z"></td>';
+    // ไอคอนนี้เป็นตัวบอกความหมาย "ค่านี้ไม่ครบ" ตัวเดียวในเซลล์ — ไม่มีข้อความอื่นบอกซ้ำ (ต่างจาก
+    // title attribute ที่ screen reader ส่วนใหญ่ไม่อ่านให้อัตโนมัติ) ต้องห่อด้วย theme.iconImg()
+    // ใช้ partialNote เดียวกับที่ขึ้น title อยู่แล้วเป็นชื่อ ไม่ตั้งคำใหม่ — แอปนี้ไม่มีระบบสองภาษา
+    // อยู่แล้วทั้งไฟล์ (#64 ขั้น 2b)
     return '<td class="n warn" title="' + esc(partialNote + ' · ค่าดิบ ' + rawNum(v)) + '">'
-      + esc(fmt(v, dp)) + ' ⚠</td>';
+      + esc(fmt(v, dp)) + ' ' + theme.iconImg('warn', esc(partialNote)) + '</td>';
   }
 
   /** ต้นทุนที่ยังไม่รวมวัตถุดิบ = อ่านเป็นต้นทุนเต็มไม่ได้ */
@@ -1792,12 +1796,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const gapBad = Math.abs(r.sc_gap) > 0.01;
       h += '<tr>'
         // สองลิงก์คนละปลายทางในเซลล์เดียว ต้องแยกให้ชัด — ของเดิมวางติดกันแล้วเลข WO ตัดบรรทัด
-        // ทำให้ ↗ ไปอยู่ต่อท้ายเลขพอดี กดโดนลิงก์ record แทนรายงานเป็นประจำ
+        // ทำให้ไอคอนลิงก์นอกไปอยู่ต่อท้ายเลขพอดี กดโดนลิงก์ record แทนรายงานเป็นประจำ
         + `<td><a class="drill" href="${selfUrl(Object.assign(filterParams(sm.filters), { wo: r.wo_no }))}"
               title="ดูที่มาของต้นทุนใบนี้ — เปิดหน้าเจาะลึกในรายงานนี้">${esc(r.wo_no)}</a>`
         + `<div class="nsrec"><a href="${selfUrl(Object.assign(filterParams(sm.filters), { ready: r.wo_no }))}"
               title="ตรวจว่า master ของสายการผลิตใบนี้ตั้งครบหรือยัง">ตรวจความพร้อม master</a></div>`
-        + `<div class="nsrec">${tranLink('workorder', r.wo_id, 'เปิดใบสั่งผลิตใน NetSuite ↗')}</div></td>`
+        // ไอคอน ↗ เดิมเป็นตัวอักษรต่อท้าย label ตรงๆ (esc() กลืนเป็นข้อความธรรมดา) — เปลี่ยนเป็น
+        // inline SVG (#64 ขั้น 2) ต้องส่งแยกช่อง iconHtml เพราะ tranLink() escape เฉพาะ label
+        // ตั้งใจไม่ห่อ iconImg() (ปล่อย aria-hidden ตามเดิม) — label "เปิดใบสั่งผลิตใน NetSuite"
+        // ที่อยู่ในลิงก์เดียวกันบอกปลายทางไว้ครบแล้ว ห่อซ้ำจะกลายเป็นอ่านสองรอบ (#64 ขั้น 2b)
+        + `<div class="nsrec">${tranLink('workorder', r.wo_id, 'เปิดใบสั่งผลิตใน NetSuite', theme.ICONS.extLink)}</div></td>`
         + `<td>${esc(r.wo_date)}</td>`
         + `<td>${r.woc_last ? esc(r.woc_last) : '<span class="miss">ยังไม่ปิด</span>'}</td>`
         + `<td>${itemLink(r.item_id, r.item_code)}</td>`
@@ -2663,9 +2671,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + `<td>${g.posts_asset === 'Y' ? 'ใช่' : 'ไม่'}</td>`
           + numCell(g.qty_ok, 4) + numCell(g.amt_ok, 2) + numCell(g.famt, 2)
           + '<td>' + (g.counted ? '<span class="ok">นับ</span>' : '<span class="bad">ไม่นับ</span>') + '</td>'
+          // ตั้งใจไม่ห่อ iconImg() (ปล่อย aria-hidden ตามเดิม) — คำว่า "ตรง" ต่อท้ายอยู่ในสแปน
+          // เดียวกันบอกความหมายไว้ครบแล้ว ห่อซ้ำจะกลายเป็นอ่านสองรอบ (#64 ขั้น 2b)
           + (g.counted ? '<td class="n z"></td>'
             : `<td class="n${g.hits ? ' bad' : ''}" title="${esc(rawNum(g.whatif))}">`
-              + esc(fmt(g.whatif, 8)) + (g.hits ? ' ✓ ตรง' : '') + '</td>')
+              + esc(fmt(g.whatif, 8)) + (g.hits ? ' ' + theme.ICONS.check + ' ตรง' : '') + '</td>')
           + '</tr>';
       });
       h += `<tr class="tot"><td colspan="4">ที่ ledger นับอยู่ตอนนี้</td>`
