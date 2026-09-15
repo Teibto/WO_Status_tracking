@@ -12,13 +12,17 @@
  *   1. token block ประกาศที่เดียวในแต่ละแอป — ไฟล์ theme เท่านั้น
  *   2. ไม่มี hex สีในไฟล์อื่น (ยกเว้น `#fff` ซึ่ง template เองก็เขียนตรง ๆ)
  *   3. หน้าที่ render ออกมาจริงมี token + คลาสคอมโพเนนต์ของ template
- *   4. ค่าทุก token ตรงกับ builder.css ของ repo ต้นทาง — แยกเป็นสองชั้น (ปรับที่ #49
- *      เพราะต้นทางเปลี่ยนไปเขียน `var(--c-*)` แทน hex ตรง ๆ ตั้งแต่ 034724c):
- *        4a. เทียบกับ BASELINE ที่ pin ไว้ในไฟล์นี้ (ค่าก่อน 034724c) — เป็น gate ของ
+ *   4. ค่าทุก token ตรงกับ builder.css ของ repo ต้นทาง — แยกเป็นสองชั้น (ปรับที่ #49 · ตัดสินใจ
+ *      แล้วที่ #64/#56: ยึด Teibto Redwood ตั้งแต่ commit 034724c เป็นต้นไป ไม่ใช่รอการตัดสินใจ
+ *      อีกต่อไป — `shared/WOReportTheme.js` ฝัง `--c-*` ของ Redwood เข้ามาแล้วและให้ `--pj-*`
+ *      ชี้ `var(--c-*)` ตามที่ builder.css นิยาม ขั้นนี้ (#64 ขั้น 1) ทำเฉพาะสี — สเกลระยะ/รัศมี/
+ *      ตัวอักษร (`--sp-*` `--radius-*` `--shadow-*` `--fs-*`) ยังเป็นค่าเดิมของขั้นก่อน Redwood):
+ *        4a. เทียบกับ BASELINE ที่ pin ไว้ในไฟล์นี้ (ตอนนี้ค่า --pj-* ใน BASELINE คือ
+ *            `var(--c-*)` ตาม Redwood แล้ว ไม่ใช่ hex ก่อน 034724c อีกต่อไป) — เป็น gate ของ
  *            npm test จริง ไม่ง้อว่าเครื่องนี้จะมี repo ต้นทางวางข้าง ๆ หรือเปล่า
  *        4b. ถ้ามี repo ต้นทางวางข้าง ๆ ด้วย resolve `var(--x)`/`calc()` ของไฟล์สด ๆ
- *            แล้วพิมพ์รายงานว่าต่างจาก BASELINE ตรงไหน — ไม่กระทบ exit code เพราะ
- *            ต้นทาง redesign ทั้งยวงไปแล้ว (Teibto Redwood) ต้องรอคนตัดสินใจว่าจะตามไหม
+ *            แล้วพิมพ์รายงานว่าต่างจาก BASELINE ตรงไหน — ไม่กระทบ exit code เพราะยังมีของที่
+ *            ตั้งใจไม่ตามในขั้นนี้อยู่จริง (สเกลระยะ/รัศมี/ตัวอักษรข้างต้น) ไม่ใช่เพราะรอตัดสินใจ
  */
 const fs = require('fs');
 const path = require('path');
@@ -53,7 +57,9 @@ apps.forEach((app) => {
   eq(entry + ' require theme', entrySrc.indexOf("'./WOReportTheme'") > 0, true);
 
   // ── 2. ห้ามมี hex สีในไฟล์ไหนก็ตาม ยกเว้นไฟล์ theme ──────────────────────
-  // `#fff` ปล่อยผ่านเพราะ builder.css ต้นทางก็เขียน `color:#fff` ตรง ๆ บนพื้นสีเข้ม
+  // `#fff` ปล่อยผ่านเพราะไฟล์ของเราเองก็เขียน `color:#fff` ตรง ๆ บนพื้นสีเข้มอยู่หลายจุด
+  // (ต้นทางตอนนี้เขียน `var(--c-brand-on)` แทนแล้วหลัง Redwood — ไม่ใช่ #fff ตรง ๆ อีกต่อไป
+  // แต่ของเรายังไม่ตามจุดนี้ในขั้นนี้ จึงยังต้อง whitelist #fff ไว้)
   // ตรวจ **ทุกไฟล์** ไม่ใช่แค่ entry — lib อย่าง `_Drilldown.js` / `_Labels.js`
   // ก็ประกอบ markup ที่ผู้ใช้เห็น จึงเติมสีของตัวเองได้เหมือนกัน
   styled.forEach((f) => {
@@ -93,7 +99,7 @@ const { T } = H.load({
 });
 const page = T.renderSummaryPage(T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31' })));
 
-eq('มี token block', page.indexOf('--pj-primary:#185FA5') > 0, true);
+eq('มี token block', page.indexOf('--pj-primary:var(--c-brand)') > 0, true);
 eq('token ประกาศครั้งเดียวในหน้า', page.split('--pj-primary:').length - 1, 1);
 eq('font stack มี Sarabun', page.indexOf("'Sarabun'") > 0, true);
 eq('KPI ใช้คลาสของ template', page.indexOf('class="kpi-grid"') > 0, true);
@@ -118,48 +124,75 @@ eq('มีที่ข้ามแถบหัวเรื่องเมื่�
 // ── 4. เทียบค่า token กับ builder.css ของ repo ต้นทาง ───────────────────────
 // ต้นทางอยู่นอก repo นี้ (repo คนละใบ) จึงเป็นการตรวจแบบมีก็ตรวจ ไม่มีก็บอก
 //
-// (issue #49) ต้นทางเปลี่ยน theme ทั้งยวงไปแล้วที่ commit
+// (issue #49 → ตัดสินใจแล้วที่ #64/#56) ต้นทางเปลี่ยน theme ทั้งยวงไปแล้วที่ commit
 // 034724c8551babd4e6f5d26a7664fae00680945b ("feat(ui): adopt Teibto Redwood theme"
 // PR #293/#294, merged 2026-09-09 — `git log` ใน teibto-report-builder) จาก hex ตรง ๆ
 // (palette เดิมชื่อ "Porjai") เปลี่ยนไปเขียน `var(--c-*)` ที่ชี้ table ใหม่
-// `00-teibto-tokens.css` (สี/ระยะ/เงาคนละชุดจริง ไม่ใช่แค่เปลี่ยนวิธีเขียน) เทสเดิมเทียบ
-// สตริง `var(--c-surface)` ตรง ๆ กับ `#FFFFFF` จึงพังทุกตัวที่เกี่ยวกับ token เหล่านี้แม้ค่า
-// จริงจะตรงกันก็ตาม — เพราะงั้นแยกเป็นสองชั้น:
+// `00-teibto-tokens.css` (สี/ระยะ/เงาคนละชุดจริง ไม่ใช่แค่เปลี่ยนวิธีเขียน)
+//
+// เรายึด Redwood แล้ว (ขั้น 1 ของ #64 — เฉพาะสี): `shared/WOReportTheme.js` ฝัง `--c-*`
+// ของ 00-teibto-tokens.css เข้ามาทั้ง 33 ตัว แล้วให้ `--pj-*` ทุกตัวชี้ `var(--c-*)` ตามที่
+// builder.css นิยามไว้ตรง ๆ — ยังคงแยกเป็นสองชั้นเหมือนเดิม แต่เปลี่ยนความหมาย:
 //
 //   4a (gate ของ npm test — ต้องผ่านเสมอ ไม่ง้อ repo ต้นทาง) เทียบกับ BASELINE ด้านล่าง
-//        ซึ่งคือค่า **ก่อน** commit 034724c จะเปลี่ยน (`git show 034724c^:ui-src/styles/builder.css`)
-//        เท่ากับค่าที่ shared/WOReportTheme.js ใช้อยู่จริงทุกตัวตอนเขียนเทสนี้ (byte ต่อ byte)
-//        จับได้จริงถ้าใครเผลอแก้ token ในไฟล์นี้ให้ต่างจากที่ตั้งใจไว้ — และรันได้แม้เครื่อง
-//        ไม่มี teibto-report-builder วางข้าง ๆ เลย (ข้อจำกัดเดิมที่ comment บรรทัด 15-16 บอกไว้)
+//        ซึ่งตอนนี้คือค่า **หลัง** ยึด Redwood แล้ว (`--pj-*` เป็น `var(--c-*)`, `--c-*` เป็น
+//        hex ของ 00-teibto-tokens.css) เท่ากับค่าที่ shared/WOReportTheme.js ใช้อยู่จริงทุกตัว
+//        ตอนเขียนเทสนี้ (byte ต่อ byte) จับได้จริงถ้าใครเผลอแก้ token ในไฟล์นี้ให้ต่างจากที่
+//        ตั้งใจไว้ — และรันได้แม้เครื่องไม่มี teibto-report-builder วางข้าง ๆ เลย
 //   4b (รายงานอย่างเดียว — ไม่ทำให้ npm test แดง) resolve `var(--x)` ของ builder.css ตัวจริง
 //        ในเครื่อง (ถ้ามี) โดยไล่ค่าจาก 00-teibto-tokens.css แล้วพิมพ์ดัง ๆ ว่าต่างจากของเรา
-//        ตรงไหนบ้าง ให้คนตัดสินใจว่าจะย้ายตาม Redwood หรือไม่ (ตาม #49 ข้อ 3 — ห้ามแก้
-//        shared/WOReportTheme.js เองโดยพลการเพราะกระทบหน้าตารายงานจริงสองใบ)
-console.log('\n── 4a. ค่า token ตรงกับ baseline ก่อน commit 034724c (Redwood adoption) ──');
+//        ตรงไหนบ้าง — ตอนนี้ไม่ใช่ "รอคนตัดสินใจว่าจะตามไหม" อีกต่อไป (ตัดสินแล้ว) แต่เป็น
+//        การเตือนดริฟต์ + บอกว่าขั้นนี้ตั้งใจตามเฉพาะสี ยังไม่ตามสเกลระยะ/รัศมี/ตัวอักษร
+//        (`--sp-*` `--radius-*` `--shadow-*` `--fs-*` ยังเป็น literal ของขั้นก่อน Redwood) —
+//        เพราะงั้น 4b จะยังพิมพ์ต่างสำหรับกลุ่มนี้ต่อไปจนกว่าจะทำขั้นถัดไป ไม่ใช่ของหาย
+console.log('\n── 4a. ค่า token ตรงกับ baseline หลังยึด Teibto Redwood (สี — #64 ขั้น 1) ──');
 
-// BASELINE = ค่าจาก builder.css **ก่อนคอมมิต** 034724c (คัดลอกจาก
-// `git show 034724c^:ui-src/styles/builder.css` ที่ teibto-report-builder — 21 คีย์เดียวกับ
-// TOKENS ด้านบนทุกตัว) เกิดขึ้นก่อนต้นทางเปลี่ยนไปใช้ var(--c-*) จึงเป็นเลขคงที่ ไม่ผูกกับ
-// ว่าเครื่องนี้มี repo ต้นทางวางข้าง ๆ หรือเปล่า
+// BASELINE = ค่าจริงที่ shared/WOReportTheme.js ประกาศตอนเขียนเทสนี้ (byte ต่อ byte)
+//   - --sp-* / --radius-* / --shadow-* / --fs-* : ยังเป็น literal ของขั้นก่อน Redwood
+//     (ต้นทางย้ายไป --s-* / --r-* / --sh-* / --t-* แล้ว แต่ขั้นนี้ทำเฉพาะสี — ดู comment ด้านบน)
+//   - --c-* (33 ตัว) : คัดลอกตรงจาก `00-teibto-tokens.css` ของ teibto-report-builder
+//     ซึ่งยืนยันแล้วว่าชื่อตรงกับ `00-tokens.css` ของ teibto-ui-workspace ทุกตัว
+//   - --pj-* : alias layer ที่ชี้ `var(--c-*)` ตามที่ builder.css นิยามไว้ตรง ๆ (22 ตัว —
+//     ไม่มีตัวไหนที่ builder.css นิยามไม่ได้ ยกเว้น --pj-mono ซึ่งเป็นของเราเพิ่มเอง ไม่ผูก --c-*)
 const BASELINE = {
   '--sp-1': '4px', '--sp-2': '8px', '--sp-3': '12px', '--sp-4': '16px',
   '--sp-5': '20px', '--sp-6': '24px', '--sp-7': '28px', '--sp-8': '32px',
-  '--radius-sm': '4px', '--radius-md': '6px', '--radius-lg': '10px',
-  '--shadow-sm': '0 1px 2px rgba(0,0,0,0.04)',
-  '--shadow-md': '0 2px 8px rgba(0,0,0,0.08)',
-  '--shadow-lg': '0 4px 16px rgba(0,0,0,0.12)',
-  '--fs-xs': '11px', '--fs-sm': '12px', '--fs-md': '13px',
-  '--fs-lg': '15px', '--fs-xl': '18px', '--fs-xxl': '24px',
-  '--pj-primary': '#185FA5', '--pj-primary-light': '#3A86CF', '--pj-primary-dark': '#0F3F74',
-  '--pj-success': '#0A8F6D', '--pj-success-bg': '#E5F5F0',
-  '--pj-info': '#1E88E5', '--pj-info-bg': '#E3F2FD',
-  '--pj-warning': '#E5921D', '--pj-warning-bg': '#FFF6E5',
-  '--pj-error': '#D32F2F', '--pj-error-bg': '#FFEBEE',
-  '--pj-muted': '#6B7280', '--pj-muted-bg': '#F3F4F6',
-  '--pj-bg': '#F7F8FA', '--pj-surface': '#FFFFFF', '--pj-surface-alt': '#F4F6F8',
-  '--pj-border': '#E5E7EB', '--pj-border-strong': '#D1D5DB',
-  '--pj-text': '#1F2937', '--pj-text-dim': '#4B5563',
-  '--pj-text-muted': '#6B7280', '--pj-text-label': '#6B7280'
+  '--radius-sm': 'var(--r-sm)', '--radius-md': 'var(--r-md)', '--radius-lg': 'var(--r-lg)',
+  '--shadow-sm': 'var(--sh-sm)',
+  '--shadow-md': 'var(--sh-md)',
+  // ต้นทางยุบ --shadow-lg ให้ชี้ --sh-md ตัวเดียวกับ --shadow-md = เหลือเงาระดับเดียว
+  '--shadow-lg': 'var(--sh-md)',
+  '--fs-xs': 'var(--t-xs)', '--fs-sm': 'var(--t-sm)', '--fs-md': 'var(--t-base)',
+  '--fs-lg': 'var(--t-md)', '--fs-xl': 'var(--t-lg)', '--fs-xxl': 'var(--t-2xl)',
+  // ตระกูลสเกลของ Redwood ที่ตัวข้างบนชี้ไปหา — ยกจาก 00-teibto-tokens.css
+  '--r-sm': '2px', '--r-md': '4px', '--r-lg': '6px', '--r-pill': '999px',
+  '--sh-sm': '0 1px 4px 0 rgba(0,0,0,.12)', '--sh-md': '0 4px 8px 0 rgba(0,0,0,.16)',
+  '--t-xs': '11px', '--t-sm': '12px', '--t-base': '14px', '--t-md': '16px',
+  '--t-lg': '18px', '--t-xl': '20px', '--t-2xl': '24px',
+  '--c-brand': '#36677d', '--c-brand-strong': '#325c72', '--c-brand-on': '#ffffff', '--c-brand-soft': '#e7f2f5',
+  '--c-sidebar': '#325c72', '--c-sidebar-text': '#ffffff',
+  '--c-sidebar-hover': 'rgba(255,255,255,.08)', '--c-sidebar-active': 'rgba(255,255,255,.16)',
+  '--c-sidebar-border': 'rgba(255,255,255,.12)',
+  '--c-bg': '#f5f4f2', '--c-surface': '#ffffff', '--c-surface-2': '#fbf9f8', '--c-surface-3': '#f1efed',
+  '--c-text': '#161513', '--c-text-subtle': 'rgba(22,21,19,.7)', '--c-text-muted': 'rgba(22,21,19,.7)',
+  '--c-border': 'rgba(22,21,19,.12)', '--c-border-control': 'rgba(22,21,19,.5)',
+  '--c-success': '#436b1d', '--c-success-soft': '#f4fceb',
+  '--c-warning': '#8f520a', '--c-warning-soft': '#fef9f2',
+  '--c-danger': '#b3311f', '--c-danger-soft': '#fff8f7',
+  '--c-info': '#00688c', '--c-info-soft': '#f6fafc', '--c-link': '#00688c',
+  '--c-console': '#201e1c', '--c-console-text': '#f1efed',
+  '--c-console-ok': '#6ea73a', '--c-console-warn': '#eca452', '--c-console-err': '#ee7362',
+  '--c-scrim': 'rgba(22,21,19,.5)',
+  '--pj-primary': 'var(--c-brand)', '--pj-primary-light': 'var(--c-brand)', '--pj-primary-dark': 'var(--c-brand-strong)',
+  '--pj-success': 'var(--c-success)', '--pj-success-bg': 'var(--c-success-soft)',
+  '--pj-info': 'var(--c-info)', '--pj-info-bg': 'var(--c-info-soft)',
+  '--pj-warning': 'var(--c-warning)', '--pj-warning-bg': 'var(--c-warning-soft)',
+  '--pj-error': 'var(--c-danger)', '--pj-error-bg': 'var(--c-danger-soft)',
+  '--pj-muted': 'var(--c-text-muted)', '--pj-muted-bg': 'var(--c-surface-3)',
+  '--pj-bg': 'var(--c-bg)', '--pj-surface': 'var(--c-surface)', '--pj-surface-alt': 'var(--c-surface-2)',
+  '--pj-border': 'var(--c-border)', '--pj-border-strong': 'var(--c-border-control)',
+  '--pj-text': 'var(--c-text)', '--pj-text-dim': 'var(--c-text-subtle)',
+  '--pj-text-muted': 'var(--c-text-muted)', '--pj-text-label': 'var(--c-text-muted)'
 };
 
 function rootVars(css) {
@@ -267,18 +300,26 @@ if (!fs.existsSync(UPSTREAM) || !fs.existsSync(TOKENS_CSS)) {
   const upKeys = Object.keys(up);
   const missing = upKeys.filter((k) => !(ours || {})[k] && KNOWN_UPSTREAM_ONLY_ALIASES.indexOf(k) < 0);
   const differ = [];
+  // ตั้งแต่ #64 ขั้น 1: ฝั่งเราเองก็เขียน --pj-* เป็น var(--c-*) แล้ว ไม่ใช่ hex ตรง ๆ อีกต่อไป
+  // resolveValue(up[k], dict) เพียงอย่างเดียวจึงเทียบไม่ตรง (hex ที่ resolve แล้ว vs สตริง
+  // var(--c-x) ดิบของเรา) ต้อง resolve ทั้งสองฝั่งด้วยพจนานุกรมเดียวกัน — dict ของต้นทาง
+  // (00-teibto-tokens.css) ก่อน แล้วเสริมด้วย --c-* ที่เราฝังเองเผื่อกรณีมันต่างจากต้นทางจริง
+  // (ถ้าต่าง อยากให้ resolveValue ใช้ของเรา แล้วปล่อยให้ differ จับที่ตัว --c-* เอง ไม่ใช่ปิดบัง)
+  const oursDict = Object.assign({}, dict, ours);
   upKeys.forEach((k) => {
     if (!(ours || {})[k]) return;
     const resolved = resolveValue(up[k], dict);
-    if (normalizeForCompare(resolved) !== normalizeForCompare(ours[k])) {
-      differ.push({ k: k, resolved: resolved, ours: ours[k] });
+    const oursResolved = resolveValue(ours[k], oursDict);
+    if (normalizeForCompare(resolved) !== normalizeForCompare(oursResolved)) {
+      differ.push({ k: k, resolved: resolved, ours: oursResolved });
     }
   });
   if (missing.length) console.log('     token ที่ต้นทางมีแต่เราไม่มี (นอกเหนือจาก alias ที่รู้แล้ว): ' + missing.join(' '));
   if (differ.length) {
     console.log('     ต้นทางย้ายไป Teibto Redwood theme ที่ 034724c (PR #293/#294, 2026-09-09) ·'
-      + ' ' + differ.length + ' token ต่างจาก shared/WOReportTheme.js จริง · รอคำตัดสินว่าจะตามหรือไม่ (#49 ข้อ 3):');
-    differ.forEach((d) => console.log('       ' + d.k + ' ต้นทาง(resolve แล้ว)=' + d.resolved + ' เรา=' + d.ours));
+      + ' ' + differ.length + ' token ยังต่างจาก shared/WOReportTheme.js (ตัดสินใจแล้วที่ #64/#56 ว่ายึด'
+      + ' Redwood — ขั้นนี้ทำเฉพาะสี ตัวที่เหลือคือสเกลระยะ/รัศมี/ตัวอักษรที่ตั้งใจยังไม่ทำรอบนี้):');
+    differ.forEach((d) => console.log('       ' + d.k + ' ต้นทาง(resolve แล้ว)=' + d.resolved + ' เรา(resolve แล้ว)=' + d.ours));
     // หมายเหตุความหมาย ไม่ใช่แค่ค่า: ต้นทางยุบ --shadow-lg ให้ชี้ตัวเดียวกับ --shadow-md แล้ว
     // (`--shadow-lg:var(--sh-md)`) ไม่ได้แค่เปลี่ยนตัวเลข — ของเรายังมี --shadow-lg เป็นเงาที่
     // เข้มกว่า --shadow-md ชัดเจน และ `.kpi-card:hover` ใช้ --shadow-md อยู่แล้ว จุดนี้ไม่กระทบ
