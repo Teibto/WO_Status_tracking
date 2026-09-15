@@ -42,12 +42,21 @@ define([], function () {
   var TOKENS = ':root{'
     + '--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;'
     + '--sp-5:20px;--sp-6:24px;--sp-7:28px;--sp-8:32px;'
-    + '--radius-sm:4px;--radius-md:6px;--radius-lg:10px;'
-    + '--shadow-sm:0 1px 2px rgba(0,0,0,0.04);'
-    + '--shadow-md:0 2px 8px rgba(0,0,0,0.08);'
-    + '--shadow-lg:0 4px 16px rgba(0,0,0,0.12);'
-    + '--fs-xs:11px;--fs-sm:12px;--fs-md:13px;'
-    + '--fs-lg:15px;--fs-xl:18px;--fs-xxl:24px;'
+    // สเกล radius / เงา / ตัวอักษร — ยึด Redwood เช่นเดียวกับสี (#64) · ชี้ผ่านตระกูล
+    // --r-* / --sh-* / --t-* ตามที่ builder.css ของต้นทาง map ไว้ ไม่ได้เลือกค่าเอง
+    // ⚠ --shadow-lg ต้นทางยุบให้เท่า --sh-md แล้ว = เหลือเงาระดับเดียว ไม่ใช่แค่ตัวเลขต่าง
+    + '--radius-sm:var(--r-sm);--radius-md:var(--r-md);--radius-lg:var(--r-lg);'
+    + '--shadow-sm:var(--sh-sm);'
+    + '--shadow-md:var(--sh-md);'
+    + '--shadow-lg:var(--sh-md);'
+    + '--fs-xs:var(--t-xs);--fs-sm:var(--t-sm);--fs-md:var(--t-base);'
+    + '--fs-lg:var(--t-md);--fs-xl:var(--t-lg);--fs-xxl:var(--t-2xl);'
+    // ── Redwood สเกล --r-* / --sh-* / --t-* — ยกมาจาก 00-teibto-tokens.css ตัวเดียวกัน ──
+    + '--t-xs:11px;--t-sm:12px;--t-base:14px;'
+    + '--t-md:16px;--t-lg:18px;--t-xl:20px;'
+    + '--t-2xl:24px;--r-sm:2px;--r-md:4px;'
+    + '--r-lg:6px;--r-pill:999px;--sh-sm:0 1px 4px 0 rgba(0,0,0,.12);'
+    + '--sh-md:0 4px 8px 0 rgba(0,0,0,.16);'
     // ── Teibto Redwood --c-* — ยกมาทั้งบล็อกจาก 00-teibto-tokens.css (33 ตัว) ──────────
     // แหล่งความจริง: `Foodstar/Reports/General_report/teibto-report-builder/ui-src/styles/
     // 00-teibto-tokens.css` ซึ่งยืนยันแล้วว่าชื่อ token ตรงกับ `00-tokens.css` ของ
