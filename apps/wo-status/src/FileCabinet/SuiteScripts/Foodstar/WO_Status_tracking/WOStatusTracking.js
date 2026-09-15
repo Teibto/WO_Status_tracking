@@ -174,7 +174,9 @@ define(
       + 'color:var(--pj-text-muted)}'
       + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
       + '.datebtn:disabled{cursor:default;opacity:.5}'
-      + '.datebtn:focus-visible{outline:2px solid var(--pj-primary);outline-offset:1px}'
+      // !important เพราะ NetSuite ship CSS reset `:focus{outline:0}` มาด้วย — ไม่งั้นปุ่มนี้
+      // จะไม่มี outline ให้เห็นเวลา keyboard focus เลย
+      + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
       + '.cal{position:absolute;z-index:40;top:calc(100% + 4px);left:0;width:238px;'
       + 'background:var(--pj-surface);border:1px solid var(--pj-border-strong);'
       + 'border-radius:var(--radius-md);box-shadow:var(--shadow-lg);'
@@ -197,7 +199,8 @@ define(
       + '.cal-day.muted{color:var(--pj-text-muted)}'
       + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
       + '.cal-day.sel{background:var(--pj-primary);color:#fff;font-weight:700}'
-      + '.cal-day:focus-visible{outline:2px solid var(--pj-primary);outline-offset:-2px}'
+      // !important เพราะ NetSuite ship CSS reset `:focus{outline:0}` มาด้วย
+      + '.cal-day:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
       + '.cal-foot{display:flex;justify-content:flex-end;margin-top:var(--sp-1);'
       + 'border-top:1px solid var(--pj-border);padding-top:var(--sp-1)}'
       + '.cal-today{background:none;border:0;color:var(--pj-primary);cursor:pointer;'

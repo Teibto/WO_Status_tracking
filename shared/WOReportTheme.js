@@ -6,6 +6,10 @@
  * (UI brand ที่นั่นคือ *Teibto · Universal Report Engine*) · ยกค่ามาตรง ๆ ไม่ปรับสี
  * ห้ามแก้ค่า token ที่นี่ให้ต่างจากต้นทาง — รายงานที่สีเพี้ยนไปทีละนิดคือเหตุผลที่ไฟล์นี้มีอยู่
  *
+ * ยึด Teibto Redwood แล้ว (ขั้น 1 · #64/#56 — เฉพาะสี): `--c-*` ฝังมาจาก `00-teibto-tokens.css`
+ * ทั้ง 33 ตัว · `--pj-*` เป็น alias ชี้ `var(--c-*)` ตาม builder.css ตรง ๆ (คงชื่อ --pj-* ไว้ทั้งหมด)
+ * สเกลระยะ/รัศมี/ตัวอักษรยังเป็นค่าเดิม (ขั้นถัดไป) — ดู test/test_theme.js ข้อ 4a/4b
+ *
  * ใครใช้: `WOCostTrace.js` และ `WOStatusTracking.js` · เพิ่มรายงานใหม่ในตระกูลนี้ให้ require ไฟล์นี้
  * ทำไมต้องเป็นไฟล์กลาง: token block ที่ก็อปไว้สองที่จะ drift และไม่มีใครรู้ตัว
  *
@@ -32,7 +36,8 @@ define([], function () {
 
   /**
    * design token — ยกมาจาก builder.css บล็อก DESIGN TOKENS ทั้งบล็อก
-   * ชื่อ `--pj-*` มาจากโปรเจกต์ Porjai ที่เป็นต้นทางของ palette นี้ · คงชื่อไว้ให้ตรงกัน
+   * ชื่อ `--pj-*` มาจากโปรเจกต์ Porjai ที่เป็นต้นทางของ palette นี้เดิม · คงชื่อไว้ให้ตรงกัน
+   * (ค่าที่ `--pj-*` ชี้ไปตอนนี้เป็น Teibto Redwood — ดูหัวไฟล์)
    */
   var TOKENS = ':root{'
     + '--sp-1:4px;--sp-2:8px;--sp-3:12px;--sp-4:16px;'
@@ -43,19 +48,40 @@ define([], function () {
     + '--shadow-lg:0 4px 16px rgba(0,0,0,0.12);'
     + '--fs-xs:11px;--fs-sm:12px;--fs-md:13px;'
     + '--fs-lg:15px;--fs-xl:18px;--fs-xxl:24px;'
-    + '--pj-primary:#185FA5;--pj-primary-light:#3A86CF;--pj-primary-dark:#0F3F74;'
-    + '--pj-success:#0A8F6D;--pj-success-bg:#E5F5F0;'
-    + '--pj-info:#1E88E5;--pj-info-bg:#E3F2FD;'
-    + '--pj-warning:#E5921D;--pj-warning-bg:#FFF6E5;'
-    + '--pj-error:#D32F2F;--pj-error-bg:#FFEBEE;'
-    + '--pj-muted:#6B7280;--pj-muted-bg:#F3F4F6;'
-    + '--pj-bg:#F7F8FA;--pj-surface:#FFFFFF;--pj-surface-alt:#F4F6F8;'
-    + '--pj-border:#E5E7EB;--pj-border-strong:#D1D5DB;'
-    + '--pj-text:#1F2937;--pj-text-dim:#4B5563;'
-    + '--pj-text-muted:#6B7280;--pj-text-label:#6B7280;'
+    // ── Teibto Redwood --c-* — ยกมาทั้งบล็อกจาก 00-teibto-tokens.css (33 ตัว) ──────────
+    // แหล่งความจริง: `Foodstar/Reports/General_report/teibto-report-builder/ui-src/styles/
+    // 00-teibto-tokens.css` ซึ่งยืนยันแล้วว่าชื่อ token ตรงกับ `00-tokens.css` ของ
+    // teibto-ui-workspace ทุกตัว · ห้ามแก้ค่าที่นี่ให้ต่างจากต้นทาง
+    + '--c-brand:#36677d;--c-brand-strong:#325c72;--c-brand-on:#ffffff;--c-brand-soft:#e7f2f5;'
+    + '--c-sidebar:#325c72;--c-sidebar-text:#ffffff;'
+    + '--c-sidebar-hover:rgba(255,255,255,.08);--c-sidebar-active:rgba(255,255,255,.16);'
+    + '--c-sidebar-border:rgba(255,255,255,.12);'
+    + '--c-bg:#f5f4f2;--c-surface:#ffffff;--c-surface-2:#fbf9f8;--c-surface-3:#f1efed;'
+    + '--c-text:#161513;--c-text-subtle:rgba(22,21,19,.7);--c-text-muted:rgba(22,21,19,.7);'
+    + '--c-border:rgba(22,21,19,.12);--c-border-control:rgba(22,21,19,.5);'
+    + '--c-success:#436b1d;--c-success-soft:#f4fceb;'
+    + '--c-warning:#8f520a;--c-warning-soft:#fef9f2;'
+    + '--c-danger:#b3311f;--c-danger-soft:#fff8f7;'
+    + '--c-info:#00688c;--c-info-soft:#f6fafc;--c-link:#00688c;'
+    + '--c-console:#201e1c;--c-console-text:#f1efed;'
+    + '--c-console-ok:#6ea73a;--c-console-warn:#eca452;--c-console-err:#ee7362;'
+    + '--c-scrim:rgba(22,21,19,.5);'
+    // ── --pj-* alias layer — ชี้ไป var(--c-*) ตามที่ builder.css นิยามไว้ตรง ๆ (ห้าม map เอง) ──
+    // คงชื่อ --pj-* ไว้ทั้งหมด เพื่อไม่ต้องแก้ call site ในไฟล์นี้ทีเดียวหมด
+    + '--pj-primary:var(--c-brand);--pj-primary-light:var(--c-brand);--pj-primary-dark:var(--c-brand-strong);'
+    + '--pj-success:var(--c-success);--pj-success-bg:var(--c-success-soft);'
+    + '--pj-info:var(--c-info);--pj-info-bg:var(--c-info-soft);'
+    + '--pj-warning:var(--c-warning);--pj-warning-bg:var(--c-warning-soft);'
+    + '--pj-error:var(--c-danger);--pj-error-bg:var(--c-danger-soft);'
+    + '--pj-muted:var(--c-text-muted);--pj-muted-bg:var(--c-surface-3);'
+    + '--pj-bg:var(--c-bg);--pj-surface:var(--c-surface);--pj-surface-alt:var(--c-surface-2);'
+    + '--pj-border:var(--c-border);--pj-border-strong:var(--c-border-control);'
+    + '--pj-text:var(--c-text);--pj-text-dim:var(--c-text-subtle);'
+    + '--pj-text-muted:var(--c-text-muted);--pj-text-label:var(--c-text-muted);'
     // เพิ่มจากต้นทาง: ตัวเลขในรายงานตระกูลนี้ต้องเทียบหลักกันได้ทั้งคอลัมน์
     // builder.css ใช้ font-variant-numeric:tabular-nums แทนฟอนต์ mono ทั้งตาราง
     // ที่นี่ต้องมีชื่อฟอนต์จริงด้วย เพราะบางช่องเป็นรหัสเอกสาร ไม่ใช่ตัวเลข
+    // (--pj-mono ไม่มีนิยามใน builder.css เลย — เป็นของที่เราเพิ่มเองมาแต่ต้น จึงไม่มี --c-* ให้ map)
     + "--pj-mono:'SF Mono',Monaco,Consolas,'Courier New',monospace"
     + '}';
 
@@ -74,13 +100,14 @@ define([], function () {
     + 'padding-bottom:var(--sp-1);border-bottom:1px solid var(--pj-border)}'
     + 'h3{font-size:var(--fs-md);font-weight:600;margin:var(--sp-4) 0 var(--sp-1);color:var(--pj-text-dim)}'
     + 'pre{margin:0;white-space:pre-wrap;font-size:var(--fs-xs);font-family:var(--pj-mono)}'
-    // ตาราง — ค่าเดียวกับ .pivot-table ของ builder.css (หัวตารางตัวเล็ก uppercase พื้นเทา)
+    // ตาราง — ค่าเดียวกับ .pivot-table ของ builder.css
+    // Teibto Redwood: หัวตาราง muted semibold พื้น --c-surface-3 · ไม่ uppercase (ห้ามแถบแบรนด์เข้ม)
     // tabular-nums คือวิธีที่ต้นทางใช้ให้ตัวเลขเทียบหลักกันได้ โดยไม่ต้องสลับไปฟอนต์ mono
     + 'table{border-collapse:collapse;width:100%;background:var(--pj-surface);'
     + 'font-size:var(--fs-sm);font-variant-numeric:tabular-nums;margin:var(--sp-1) 0 var(--sp-3)}'
     + 'th,td{padding:6px var(--sp-3);border:1px solid var(--pj-border);text-align:left;vertical-align:top}'
-    + 'th{background:var(--pj-surface-alt);font-weight:600;color:var(--pj-text-label);'
-    + 'font-size:var(--fs-xs);text-transform:uppercase;letter-spacing:.3px}'
+    + 'th{background:var(--pj-muted-bg);font-weight:600;color:var(--pj-text-label);'
+    + 'font-size:var(--fs-xs);letter-spacing:.3px}'
     // ตัวควบคุมฟอร์ม — หน้าตาเดียวกับ .search / .inline-field input ของต้นทาง
     + 'input[type=text],input[type=date],select,textarea{'
     + "font-family:inherit;font-size:var(--fs-md);padding:7px var(--sp-3);"
@@ -89,7 +116,7 @@ define([], function () {
     + 'input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;'
     + 'border-color:var(--pj-primary);box-shadow:0 0 0 2px rgba(24,95,165,.15)}'
     + 'label{font-size:var(--fs-xs);font-weight:600;color:var(--pj-text-label);'
-    + 'text-transform:uppercase;letter-spacing:.5px}';
+    + 'letter-spacing:.5px}';
 
   /**
    * คลาสคอมโพเนนต์ — ชื่อคลาสตรงกับ builder.css ทุกตัว
@@ -158,7 +185,8 @@ define([], function () {
     + '.kpi-card.accent-warning{border-left-color:var(--pj-warning)}'
     + '.kpi-card.accent-error{border-left-color:var(--pj-error)}'
     + '.kpi-card.accent-primary{border-left-color:var(--pj-primary)}'
-    + '.kpi-label{font-size:10px;text-transform:uppercase;letter-spacing:.4px;'
+    // Teibto Redwood: label เป็น muted semibold ไม่ uppercase
+    + '.kpi-label{font-size:10px;letter-spacing:.4px;'
     + 'color:var(--pj-text-label);font-weight:600;'
     + 'white-space:nowrap;overflow:hidden;text-overflow:ellipsis}'
     + '.kpi-value{font-size:var(--fs-lg);font-weight:700;color:var(--pj-text);'
