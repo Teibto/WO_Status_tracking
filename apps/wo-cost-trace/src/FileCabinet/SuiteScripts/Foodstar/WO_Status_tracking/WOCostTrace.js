@@ -1601,9 +1601,17 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
       ${hidden}
-      เลขที่ใบสั่งผลิต <input type="text" name="wo" value="${esc(woKey)}" placeholder="WOFSC00000470">
-      &nbsp; avg cost ณ วันที่ <input type="text" name="asof" value="${esc(asOf)}" placeholder="YYYY-MM-DD" style="width:120px">
-      <button type="submit" class="btn primary">ตรวจที่มาของต้นทุน</button>
+      <div class="filterbar">
+        <div class="fld" style="flex:0 0 220px">
+          <label>เลขที่ใบสั่งผลิต</label>
+          <input type="text" name="wo" value="${esc(woKey)}" placeholder="WOFSC00000470">
+        </div>
+        <div class="fld" style="flex:0 0 170px">
+          <label>avg cost ณ วันที่</label>
+          <input type="text" name="asof" value="${esc(asOf)}" placeholder="YYYY-MM-DD">
+        </div>
+        <div class="act"><button type="submit" class="btn primary">ตรวจที่มาของต้นทุน</button></div>
+      </div>
     </form>`;
   }
 
@@ -1665,28 +1673,58 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
-      <label>เดือน</label>
-      <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
-      &nbsp;<label>หรือระบุช่วง</label>
-      <input type="text" name="from" value="${esc(f.from)}" placeholder="YYYY-MM-DD" style="width:110px">
-      ถึง <input type="text" name="to" value="${esc(f.to)}" placeholder="YYYY-MM-DD" style="width:110px">
-      &nbsp;<label>จับจาก</label>
-      <select name="basis" class="rw-select">
-        <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
-        <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
-      </select>
-      <br style="line-height:9px">
-      <label>รหัสสินค้า</label> <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้" style="width:130px">
-      &nbsp;<label>เลขที่ใบสั่งผลิต</label> <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่" style="width:140px">
-      &nbsp;<label>บริษัท</label>
-      <select name="sub">${selectOptions(f.subRows, f.sub, '— ทุกบริษัท —', 'รหัสนี้ไม่อยู่ในรายชื่อบริษัท')}</select>
-      &nbsp;<label>อาคารผลิต</label>
-      <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
-      &nbsp;<label>เรียงตาม</label>
-      <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
-      &nbsp;<label>ไม่เกิน</label> <input type="text" name="max" value="${esc(String(f.max))}" style="width:45px"> ใบ
-      &nbsp;<button type="submit" class="btn primary">ดูภาพรวม</button>
-      <div class="sub" style="margin-top:6px">
+      <div class="filterbar">
+        <div class="fld" style="flex:0 0 190px">
+          <label>เดือน</label>
+          <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
+        </div>
+        <div class="fld" style="flex:0 0 270px">
+          <label>หรือระบุช่วงวันที่</label>
+          <div class="range">
+            <input type="text" name="from" value="${esc(f.from)}" placeholder="YYYY-MM-DD">
+            <span class="sep">ถึง</span>
+            <input type="text" name="to" value="${esc(f.to)}" placeholder="YYYY-MM-DD">
+          </div>
+        </div>
+        <div class="fld" style="flex:0 0 215px">
+          <label>จับจาก</label>
+          <select name="basis" class="rw-select">
+            <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
+            <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
+          </select>
+        </div>
+        <div class="brk"></div>
+        <div class="fld" style="flex:0 0 165px">
+          <label>รหัสสินค้า</label>
+          <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
+        </div>
+        <div class="fld" style="flex:0 0 185px">
+          <label>เลขที่ใบสั่งผลิต</label>
+          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
+        </div>
+        <div class="fld" style="flex:0 0 200px">
+          <label>บริษัท</label>
+          <select name="sub">${selectOptions(f.subRows, f.sub, '— ทุกบริษัท —', 'รหัสนี้ไม่อยู่ในรายชื่อบริษัท')}</select>
+        </div>
+        <div class="fld" style="flex:0 0 200px">
+          <label>อาคารผลิต</label>
+          <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
+        </div>
+        <div class="brk"></div>
+        <div class="fld" style="flex:0 0 245px">
+          <label>เรียงตาม</label>
+          <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
+        </div>
+        <div class="fld" style="flex:0 0 110px">
+          <label>ไม่เกิน</label>
+          <div class="range">
+            <input type="text" name="max" value="${esc(String(f.max))}" inputmode="numeric">
+            <span class="sep">ใบ</span>
+          </div>
+        </div>
+        <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button></div>
+      </div>
+      <div class="sub" style="margin:var(--sp-3) 0 0">
         เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
         · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
       </div>
