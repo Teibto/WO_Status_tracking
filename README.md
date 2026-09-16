@@ -52,7 +52,7 @@ WO_Status_tracking/
 │   │   │   ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
 │   │   │   ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
 │   │   │   └── WOCostTrace.js                  entry · ภาพรวม + เจาะลึก + ความพร้อม
-│   │   ├── test/                               6 ไฟล์ — `npm run test:trace`
+│   │   ├── test/                               11 ไฟล์ — `npm run test:trace`
 │   │   ├── scripts/check-prod-staging.js       ตรวจ payload production 8 ข้อ
 │   │   ├── WO_COST_TRACE.md                    ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
 │   │   └── prototype/                          ไฟล์เจาะมือของผู้ใช้ (ต้นเรื่องของรายงานนี้)
@@ -65,7 +65,7 @@ WO_Status_tracking/
 │       │   ├── WOStatusTracking_Queries.js     lib · SuiteQL ของ CP1–CP9
 │       │   ├── WOStatusTracking_Labels.js      lib · ข้อความและ i18n
 │       │   └── WOStatusTracking_Drilldown.js   lib · แถว batch และ task
-│       ├── test/                               2 ไฟล์ — `npm run test:status`
+│       ├── test/                               6 ไฟล์ — `npm run test:status`
 │       ├── IMPLEMENTATION_PLAN.md              แผนที่ส่งมอบให้ dev รอบแรก (ประวัติ)
 │       ├── wo-status-tracking-mockup.html      mockup ที่ผู้ใช้อนุมัติ (reference หน้าตา)
 │       └── prototype/                          SuiteQL ที่ใช้พิสูจน์ CP3 · CP7
@@ -77,8 +77,8 @@ WO_Status_tracking/
 │   └── qa/make_theme_preview.js    หน้าตัวอย่าง style ดูเทียบสายตาโดยไม่ต้อง deploy (พัง — #43)
 └── test/                           ชุดข้ามแอป — `npm run test:shared`
     ├── lib/                        harness + fixture ที่ทั้งสองแอปใช้
-    ├── test_repo_guard.js · test_deploy_manifest.js
-    └── test_theme.js · test_theme_sync.js
+    ├── test_repo_guard.js · test_deploy_manifest.js · test_theme.js · test_theme_sync.js
+    └── test_icons.js · test_listfield_sync.js · test_listfield_portal_css.js · test_table_layout.js
 ```
 
 **ที่อยู่บน File Cabinet ยังเป็นโฟลเดอร์เดียวกันทั้งสองแอป**
@@ -309,7 +309,7 @@ project and is not included in the dependencies list"* · ประกาศไ�
 3. **เทียบกับการเจาะมือ 1 ใบ** ยอดวัตถุดิบ · ต้นทุนแปรสภาพ · ปริมาณผลิตได้ · ต้นทุน/หน่วย ·
    ถ้าไม่ตรง ให้เชื่อเอกสารต้นทางก่อน แล้วเปิด issue พร้อมเลขที่ใบและช่องที่ต่าง
 4. **เทียบชั้นภาพรวมกับชั้นเจาะลึก** ใบเดียวกันต้องได้ยอดเท่ากันทุกหลัก · โค้ดล็อกกฎนี้ไว้
-   และ `test/test_trace_parity.js` คุมอยู่ ถ้าของจริงไม่เท่ากันคือเจอเคสที่ fixture ยังไม่มี
+   และ `apps/wo-cost-trace/test/test_trace_parity.js` คุมอยู่ ถ้าของจริงไม่เท่ากันคือเจอเคสที่ fixture ยังไม่มี
 5. **ดู log** `loglevel` บน production เป็น `ERROR` จึงเห็นเฉพาะของที่พังจริง ·
    ถ้าต้องดูละเอียดชั่วคราว แก้ที่ staging payload แล้ว deploy อย่าแก้บนหน้าจอบัญชี
    ไม่งั้นค่าจะหายรอบ deploy ถัดไป
@@ -343,6 +343,9 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_qlog_scope.js` | query log สะสมข้าม request |
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |
+| `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) |
+| `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |
+| `test_wostatus_cp_fixes.js` | CP4/CP6/CP7/CP8 ของ WO Status — ข้อมูลขาดขึ้นเขียว · CP8 ตายเป็น na · `lang` หลุดลง HTML |
 | `test_summary_math.js` · `test_summary_export.js` · `test_ready_master.js` | สูตรและข้อความของแต่ละชั้น |
 
 fixture ที่ไม่ได้ประกาศ label = **เทสตก** ไม่ใช่คืนแถวว่างเงียบ ๆ · กับดักเดียวกับ `error:`
@@ -357,7 +360,7 @@ fixture ที่ไม่ได้ประกาศ label = **เทสตก*
 | ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `shared/REPORT_STYLE.md` |
 | แยก Summary/Trace ออกจาก entry | **ไม่ทำ** โดยตั้งใจ · โค้ดล็อก parity ไว้ แยกแล้วต้องดูแลสำเนา SQL สองชุดที่ต้องเท่ากันตลอด |
 | re-test SuiteQL ด้วย volume จริง | `apps/wo-status/prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |
-| `shared/qa/make_theme_preview.js` | พังตั้งแต่ #13 ย้าย `runSQL` — โหลด lib ไม่ครบ ดู issue #43 |
+| ช่องวันที่ของ WO Cost Trace | ยังเป็นช่องข้อความ ISO ไม่มีปฏิทินของแอป — ต่างจาก WO Status ที่ทำไว้ที่ #45/#64 ขั้น 4 |
 
 ข้อจำกัดของตัวรายงานที่ยังจริง: WO Status ไม่มี expand-all (drilldown เป็น lazy-load
 ทีละใบ) · ไม่มีการ flag WO ที่ค้างโดยไม่มี activity · ไม่มี filter "เฉพาะที่มีปัญหา"

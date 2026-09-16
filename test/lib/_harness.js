@@ -264,8 +264,12 @@ function makeEq(opts) {
   const show = o.json ? (v) => JSON.stringify(v) : (v) => v;
   return function eq(label, got, want, tolOverride) {
     const t = tolOverride == null ? tol : tolOverride;
+    // ตัวเลขต้องเป็นตัวเลขจริง — เดิม Math.abs('2.5' - 2.5) <= tol เป็น true ทำให้ค่าที่ควรเป็น
+    // number แต่หลุดมาเป็น string ผ่านด่านได้ (export ต้องได้ค่าดิบเป็น number ไม่ใช่สตริง)
     const ok = want == null ? got == null
-      : (typeof want === 'number' ? Math.abs(got - want) <= t : got === want);
+      : (typeof want === 'number'
+        ? (typeof got === 'number' && isFinite(got) && Math.abs(got - want) <= t)
+        : got === want);
     if (!ok) {
       failCount++;
       console.log('  FAIL ' + label + ': got ' + show(got) + ' want ' + show(want));

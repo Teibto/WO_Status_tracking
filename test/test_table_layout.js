@@ -161,7 +161,7 @@ console.log('\n════ 6. focus-visible ที่เพิ่มในข�
 });
 // pj-primary ต้องยังอ้าง token เดิม (ไม่ใช่ hex ที่หลุดมาตอนแก้ครั้งนี้ — เทส hex ทั่วไปอยู่ที่
 // test_theme.js แล้ว แต่ตรวจซ้ำเจาะจงจุดที่เพิ่มรอบนี้กันคนละกับดัก)
-eq('.btn:focus-visible ไม่มี hex หลุดมา', /\.btn:focus-visible\{[^}]*#[0-9a-fA-F]{3,6}/.test(traceStyle), false);
+eq('.btn:focus-visible ไม่มี hex หลุดมา', /\.btn:focus-visible\{[^}]*#[0-9a-fA-F]{3,8}/.test(traceStyle), false);
 
 // ── ก๊อป WOReportTheme.js ทั้งสองแอปต้องตรง shared/ เป๊ะ (test_theme_sync.js คุมอยู่แล้ว
 //    แต่ยืนยันซ้ำตรงนี้ว่า .btn:focus-visible ที่เพิ่มถูก sync มาจริง ไม่ใช่แก้ก๊อปตรง ๆ) ────

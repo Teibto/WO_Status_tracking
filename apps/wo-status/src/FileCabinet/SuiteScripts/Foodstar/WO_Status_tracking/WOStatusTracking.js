@@ -149,6 +149,9 @@ define(
       + '--err:var(--pj-error);--err-bg:var(--pj-error-bg);'
       + '--na:var(--pj-muted);--na-bg:var(--pj-muted-bg)'
       + '}'
+      // ใช้กับแถว placeholder ของ drilldown (tbody สร้าง tr เปล่าไว้รอ inject) — คลาสนี้ถูก
+      // classList.add/remove('hidden') ตั้งแต่แรกแต่ไม่เคยมีนิยาม ทำให้ซ่อน/โชว์ไม่ทำงานจริง
+      + '.hidden{display:none!important}'
       // แถบหัวเรื่องใช้ .topbar ของ template ทั้งชุด เหลือเฉพาะปุ่มสลับภาษาที่เป็นของหน้านี้เอง
       + '.langtog{display:flex;border:1px solid var(--pj-border-strong);'
       + 'border-radius:var(--radius-md);overflow:hidden;flex-shrink:0}'
@@ -358,7 +361,7 @@ define(
           renderForm(context);
         }
       } catch (e) {
-        log.error({ title: 'WOStatusTracking onRequest error', details: JSON.stringify(e) });
+        log.error({ title: 'WOStatusTracking onRequest error', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
         context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
         context.response.write(buildErrorPage(e.message || String(e)));
       }
@@ -392,7 +395,7 @@ define(
           failed: false
         };
       } catch (e) {
-        log.error({ title: 'Subsidiary scope query failed', details: JSON.stringify(e) });
+        log.error({ title: 'Subsidiary scope query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
         return { rows: [], failed: true };
       }
     }
@@ -406,7 +409,7 @@ define(
           failed: false
         };
       } catch (e) {
-        log.error({ title: 'Location scope query failed', details: JSON.stringify(e) });
+        log.error({ title: 'Location scope query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
         return { rows: [], failed: true };
       }
     }
@@ -471,7 +474,7 @@ define(
     // ══════════════════════════════════════════════════════════════
     function renderForm(context) {
       const p        = context.request.parameters;
-      const lang     = p.lang   || 'th';
+      const lang = normalizeLang(p.lang);
       const scriptId = p.script || '';
       const deployId = p.deploy || '';
       const woNumber    = (p.woNumber    || '').trim().toUpperCase();
@@ -540,7 +543,7 @@ define(
     // ══════════════════════════════════════════════════════════════
     function renderResults(context) {
       const p = context.request.parameters;
-      const lang         = p.lang || 'th';
+      const lang = normalizeLang(p.lang);
       const subsidiaryIdRaw = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
       const dateFromRaw  = p.dateFrom     || '';
@@ -621,7 +624,7 @@ define(
       try {
         cp1Rows = Q.getCP1_Approve(searchParams);
       } catch (e) {
-        log.error({ title: 'CP1 query failed', details: JSON.stringify(e) });
+        log.error({ title: 'CP1 query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
       }
 
       const allWoids = cp1Rows.map(r => r.woid);
@@ -706,7 +709,7 @@ define(
     // ══════════════════════════════════════════════════════════════
     function renderFragment(context) {
       const p = context.request.parameters;
-      const lang         = p.lang || 'th';
+      const lang = normalizeLang(p.lang);
       const subsidiaryIdRaw = p.subsidiaryId || '';
       const locationId   = p.locationId   || '';
       const dateFromRaw  = p.dateFrom     || '';
@@ -807,14 +810,14 @@ define(
     // ══════════════════════════════════════════════════════════════
     function renderDrilldown(context) {
       const woid = parseInt(context.request.parameters.woid, 10);
-      const lang = context.request.parameters.lang || 'th';
+      const lang = normalizeLang(context.request.parameters.lang);
 
       let html = '';
       try {
         // Delegate to drilldown module
         html = Drilldown.getDrilldownHtml({ woid, lang });
       } catch (e) {
-        log.error({ title: 'Drilldown failed', details: JSON.stringify(e) });
+        log.error({ title: 'Drilldown failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
         html = `<tr><td colspan="15" style="color:var(--pj-error);padding:12px 34px">
                   Error loading detail: ${escapeHtml(e.message || String(e))}
                 </td></tr>`;
@@ -860,9 +863,12 @@ define(
         const taskSum = (r.tmGood   || 0) + (r.tmScrap   || 0) + (r.tmRework   || 0) + (r.tmMove   || 0);
         return {
           woid:          String(r.woid),
+          batchId:       String(r.batchId == null ? '' : r.batchId),
+          taskId:        String(r.taskId == null ? '' : r.taskId),
           hasWOC:        wocSum > 0 ? 'T' : 'F',
-          l2ProQty:      wocSum,
-          l3TargetQty:   taskSum,
+          wocSum:        wocSum,
+          taskSum:       taskSum,
+          tmProQty:      parseFloat(r.tmProQty) || 0,
           l1QtyComplete: cp7l1Map[String(r.woid)] || 0,
         };
       });
@@ -884,7 +890,7 @@ define(
         const cp6      = computeCP6(woid, idx6[woid] || []);
         const cpWOC    = computeCP_WOCExists(woid, idx7[woid] || []);
         const cp7      = computeCP7(woid, idx7[woid] || []);
-        const cp8      = computeCP8(woid, idx8[woid] || []);
+        const cp8      = computeCP8(woid, idx7[woid] || [], idx8[woid] || []);
         const cp9      = computeCP9(woid, idx9[woid] || []);
 
         // ── CPLot: Gen Lot & Pallet (WO-grain, gate = released) ──
@@ -906,7 +912,6 @@ define(
           const b5   = (idx5[woid] || []).filter(r => r.batchId === batchId);
           const b6   = (idx6[woid] || []).filter(r => r.batchId === batchId);
           const b7   = (idx7[woid] || []).filter(r => r.batchId === batchId);
-          const b8   = (idx8[woid] || []).filter(r => r.batchId === batchId);
           const b9   = (idx9[woid] || []).filter(r => r.batchId === batchId);
 
           const batchCpStatus = [
@@ -919,7 +924,7 @@ define(
             computeCP6(woid, b6),
             computeCP_WOCExists(woid, b7),
             computeCP7(woid, b7),
-            computeCP8(woid, b8),
+            cp8,          // CP8 เป็น WO-grain (cost allocation ไม่มี batchId) — ใช้ค่าเดียวทุก batch
             computeCP9(woid, b9),
           ];
           return { batchId, batchNumber: batchNum, batchCpStatus };
@@ -1048,25 +1053,42 @@ define(
     }
 
     /** CP4: Machine
-     *  No WOC → na; WOC + no mismatch → ok; mismatch → err */
+     *  No WOC → na; WOC + machine time ครบและตรง detail → ok; ขาด/ไม่ตรง → err
+     *
+     *  ⚠ เงื่อนไขต้องตรงกับ WOStatusTracking_Drilldown.computeTaskCheckpoints:
+     *    WOC ที่ machineTime เป็น 0/ว่าง หรือมีเหตุหยุดเครื่องแต่ไม่กรอกนาที = err
+     *    เดิมกรองแค่ mismatch (ซึ่ง query ตั้งเป็น 'F' เมื่อเวลาขาด) จึงขึ้นเขียวทั้งที่ข้อมูลขาด
+     */
     function computeCP4(woid, rows) {
       if (!rows.length) return { status: 'na', note: { th: '', en: '' } };
       const hasAnyWOC = rows.some(r => r.hasWOC === 'T');
       if (!hasAnyWOC) return { status: 'na', note: { th: '', en: '' } };
 
-      const mismatches = rows.filter(r => r.hasWOC === 'T' && r.mismatch === 'T');
-      if (mismatches.length === 0) {
-        return { status: 'ok', note: { th: '', en: '' } };
+      const wocRows   = rows.filter(r => r.hasWOC === 'T');
+      const noTime    = wocRows.filter(r => (parseFloat(r.machineTime) || 0) <= 0);
+      const noDownMin = wocRows.filter(r => (parseFloat(r.machineTime) || 0) > 0 && r.downtimeMissing === 'T');
+      const mismatch  = wocRows.filter(r => (parseFloat(r.machineTime) || 0) > 0
+        && r.downtimeMissing !== 'T' && r.mismatch === 'T');
+
+      if (noTime.length) {
+        return { status: 'err', note: {
+          th: `ยังไม่บันทึกเวลาเครื่องจักร ${noTime.length} งาน`,
+          en: `Machine time not recorded for ${noTime.length} task(s)`,
+        } };
       }
-      const first = mismatches[0];
-      return {
-        status: 'err',
-        note: {
-          // Labels.getCheckpointNote(3, 'err', first, lang) — injected via Labels module
-          th: `เวลาเครื่องจักรไม่ตรงกัน (${first.taskNumber || ''})`,
-          en: `Machine time mismatch (${first.taskNumber || ''})`,
-        },
-      };
+      if (noDownMin.length) {
+        return { status: 'err', note: {
+          th: `มีเหตุหยุดเครื่องแต่ไม่กรอกนาที ${noDownMin.length} งาน`,
+          en: `Downtime reason without minutes on ${noDownMin.length} task(s)`,
+        } };
+      }
+      if (mismatch.length) {
+        return { status: 'err', note: {
+          th: `เวลาเครื่องจักรไม่ตรงกับรายละเอียด ${mismatch.length} งาน`,
+          en: `Machine time mismatch on ${mismatch.length} task(s)`,
+        } };
+      }
+      return { status: 'ok', note: { th: '', en: '' } };
     }
 
     /** CP5: Labor (Pre-WOC Labor existence)
@@ -1094,23 +1116,31 @@ define(
       const hasAnyWOC = rows.some(r => r.hasWOC === 'T');
       if (!hasAnyWOC) return { status: 'na', note: { th: '', en: '' } };
 
-      const mismatches = rows.filter(r => {
-        if (r.hasWOC !== 'T') return false;
-        if (!r.startDt || !r.endDt || r.totalMin <= 0) return false;
+      const wocRows = rows.filter(r => r.hasWOC === 'T');
+      // ⚠ สัญญาที่หัวไฟล์ (และ drilldown) บอกว่า WOC ที่ time field ขาด = Error ไม่ใช่ข้าม
+      // เดิม return false ทิ้งไว้ ทำให้ WOC ที่ไม่ได้กรอกเวลาเลยขึ้นเขียว
+      const spanMin = r => {
         const tStart = new Date(r.startDt).getTime();
         const tEnd   = new Date(r.endDt).getTime();
-        if (isNaN(tStart) || isNaN(tEnd) || tEnd <= tStart) return false;
-        const computedMin = (tEnd - tStart) / 60000;
-        return Math.abs(r.totalMin - computedMin) > 0.5; // 30-second tolerance
-      });
+        if (!r.startDt || !r.endDt || isNaN(tStart) || isNaN(tEnd) || tEnd <= tStart) return null;
+        return (tEnd - tStart) / 60000;
+      };
+      // totalMin ที่ขาด (null/ไม่ใช่ตัวเลข) = err · totalMin = 0 กับ span = 0 ถือว่าถูกต้อง
+      // (งานที่ใช้เวลา 0 นาทีมีจริง) — ตรงกับ drilldown ที่เทียบ recorded กับ span เฉย ๆ
+      const missing  = wocRows.filter(r => !isFinite(parseFloat(r.totalMin)) || spanMin(r) === null);
+      if (missing.length) {
+        return { status: 'err', note: {
+          th: `กรอกเวลาไม่ครบ/ไม่ถูกต้อง ${missing.length} งาน (ต้องมีเริ่ม–จบ และนาทีรวม)`,
+          en: `Incomplete time on ${missing.length} task(s) — start, end and total minutes required`,
+        } };
+      }
+      const mismatches = wocRows.filter(r => Math.abs(r.totalMin - spanMin(r)) > 0.5); // 30-second tolerance
 
       if (mismatches.length === 0) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
       const first = mismatches[0];
-      const tStart = new Date(first.startDt).getTime();
-      const tEnd   = new Date(first.endDt).getTime();
-      const computedMin = Math.round((tEnd - tStart) / 60000);
+      const computedMin = Math.round(spanMin(first));
       return {
         status: 'err',
         note: {
@@ -1120,39 +1150,39 @@ define(
       };
     }
 
-    /** CP7: WOC (Work Order Completion)
+    /** CP7: WO Completion (WOC actual vs task planned — per task)
      *  No WOC → na
-     *  WOC + l1QtyComplete >= l2ProQty AND l2ProQty == l3TargetQty → ok
-     *  l1 < l2 → wait
-     *  l2 != l3 → err */
+     *  ทุก task: ผลรวม qty ของ WOC == ผลรวม qty ของงาน (task) → ผ่านชั้น L3
+     *  taskSum < tmProQty → wait (ยังผลิตไม่ครบเป้า)
+     *  taskSum != wocSum → err (ข้อมูล WOC ไม่ตรงกับงาน)
+     *
+     *  ⚠ ต้องเทียบ "ต่อ task" เหมือน WOStatusTracking_Drilldown.computeTaskCheckpoints
+     *  ของเดิมรวม wocSum ข้ามทุก task แล้วเทียบกับเป้าของ task แรก (และบวก l1QtyComplete
+     *  ซ้ำตามจำนวน task เพราะค่านั้นเป็นค่า WO-grain) → err/wait ผิดบน WO ที่มีหลาย task
+     */
     function computeCP7(woid, rows) {
       if (!rows.length) return { status: 'na', note: { th: '', en: '' } };
-      const hasAnyWOC = rows.some(r => r.hasWOC === 'T');
-      if (!hasAnyWOC) return { status: 'na', note: { th: '', en: '' } };
-
       const wocRows = rows.filter(r => r.hasWOC === 'T');
+      if (!wocRows.length) return { status: 'na', note: { th: '', en: '' } };
 
-      // L3 check: l2ProQty matches l3TargetQty (across all completions, sum)
-      const totalL2 = wocRows.reduce((s, r) => s + (parseFloat(r.l2ProQty) || 0), 0);
-      const targetQty = wocRows[0] ? (parseFloat(wocRows[0].l3TargetQty) || 0) : 0;
-      if (totalL2 > 0 && targetQty > 0 && Math.abs(totalL2 - targetQty) > 0.001) {
+      const bad = wocRows.filter(r => Math.abs((parseFloat(r.wocSum) || 0) - (parseFloat(r.taskSum) || 0)) > 0.001);
+      if (bad.length) {
         return {
           status: 'err',
           note: {
-            th: `ปริมาณที่ผลิต ${totalL2} ≠ เป้าหมาย ${targetQty}`,
-            en: `Produced qty ${totalL2} ≠ target ${targetQty}`,
+            th: `ปริมาณ WOC ไม่ตรงกับงาน ${bad.length} งาน`,
+            en: `WOC quantity mismatch on ${bad.length} task(s)`,
           },
         };
       }
 
-      // L1 check: totalComplete >= totalPro
-      const totalL1 = wocRows.reduce((s, r) => s + (parseFloat(r.l1QtyComplete) || 0), 0);
-      if (totalL1 < totalL2 - 0.001) {
+      const short = wocRows.filter(r => (parseFloat(r.taskSum) || 0) < (parseFloat(r.tmProQty) || 0) - 0.001);
+      if (short.length) {
         return {
           status: 'wait',
           note: {
-            th: `จำนวนปิดงาน ${totalL1} น้อยกว่าที่ผลิต ${totalL2}`,
-            en: `Completed qty ${totalL1} < produced qty ${totalL2}`,
+            th: `ผลิตได้น้อยกว่าเป้า ${short.length} งาน`,
+            en: `Produced below target on ${short.length} task(s)`,
           },
         };
       }
@@ -1194,16 +1224,20 @@ define(
       };
     }
 
-    /** CP8: Cost generation
-     *  No WOC → na; WOC + hasCostAlloc → ok; WOC but no cost → err */
-    function computeCP8(woid, rows) {
-      if (!rows.length) return { status: 'na', note: { th: '', en: '' } };
-      const hasAnyWOC = rows.some(r => r.hasWOC === 'T');
-      if (!hasAnyWOC) return { status: 'na', note: { th: '', en: '' } };
+    /** CP8: Cost generation — ตัดสินที่ระดับ WO
+     *  No WOC → na; WOC + มี cost allocation → ok; WOC but no cost → err
+     *
+     *  ⚠ แถว cost allocation จาก getCP8_CostGen เป็น grain ต่อ WO (ไม่มี batchId/taskId)
+     *  และคืนเฉพาะ WO ที่มี cost allocation เท่านั้น — จึงต้องรู้ "มี WOC ไหม" จาก cp7 rows
+     *  ไม่ใช่จากแถวของตัวเอง · เดิมฟังก์ชันนี้รับแถวชุดเดียวที่ไม่มี hasWOC/hasCostAlloc เลย
+     *  (สัญญาที่หัวไฟล์เขียนไว้ไม่ตรงกับ query) ทำให้ CP8 เป็น na ตลอดกาล และ KPI "ครบทุกขั้น" = 0 เสมอ
+     */
+    function computeCP8(woid, wocRows, allocRows) {
+      const woc = (wocRows || []).filter(r => r.hasWOC === 'T');
+      if (!woc.length) return { status: 'na', note: { th: '', en: '' } };
 
-      const wocRows = rows.filter(r => r.hasWOC === 'T');
-      const noCost  = wocRows.filter(r => r.hasCostAlloc !== 'T');
-      if (noCost.length === 0) {
+      const hasAlloc = (allocRows || []).some(r => (parseFloat(r.costAllocCount) || 0) > 0);
+      if (hasAlloc) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
       return {
@@ -2720,6 +2754,13 @@ window.addEventListener('resize', fixStickyHeader);
         .replace(/'/g, '&#39;')
         .replace(/</g, '&lt;')
         .replace(/>/g, '&gt;');
+    }
+
+    /** จำกัดภาษาที่รับจาก URL ให้เหลือ th|en
+     *  ค่านี้ไหลลง HTML หลายจุดโดยไม่ผ่าน escape (html lang, hidden input lang, data-lang)
+     *  จึงต้อง whitelist ที่ต้นทาง — ไม่งั้น `?lang="><script>...` กลายเป็น reflected XSS */
+    function normalizeLang(v) {
+      return v === 'en' ? 'en' : 'th';
     }
 
     /** Format date object → YYYY-MM-DD (for SQL / date inputs) */
