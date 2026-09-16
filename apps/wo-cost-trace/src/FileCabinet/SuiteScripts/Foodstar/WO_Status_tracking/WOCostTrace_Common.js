@@ -344,6 +344,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     const s = runtime.getCurrentScript();
     let q = '/app/site/hosting/scriptlet.nl?script=' + encodeURIComponent(s.id)
       + '&deploy=' + encodeURIComponent(s.deploymentId);
+    // โหมด embed ต้องติดไปกับทุกลิงก์ภายใน (เจาะลึก · ความพร้อม · กลับภาพรวม) ไม่งั้นกดแล้ว
+    // หลุดโหมด หน้าที่ฝังเราไว้จะได้หัวเรื่องซ้อนสองชั้น · วางที่จุดเดียวแทนการเติม embed
+    // ใน filterParams เพราะมีลิงก์ที่ไม่ผ่าน filterParams (เช่นลิงก์ความพร้อมจากชั้นเจาะลึก)
+    if (EMBED) q += '&embed=1';
     Object.keys(params || {}).forEach(k => {
       const v = asStr(params[k]);
       if (v) q += '&' + k + '=' + encodeURIComponent(v);

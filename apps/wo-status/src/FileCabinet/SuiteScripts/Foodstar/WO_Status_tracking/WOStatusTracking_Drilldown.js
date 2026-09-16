@@ -665,7 +665,9 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
           .map((st, i) => Labels.getCheckpointNote(i, st, task.cpData[i], lang))
           .filter(n => n && n.trim());
         if (taskNotes.length) {
-          batchNotes.push(`${esc(task.taskName)}: ${esc(taskNotes.join(' · '))}`);
+          // เก็บข้อความดิบไว้ก่อน — escape ครั้งเดียวตอนฝังลง attribute/markup ข้างล่าง
+          // (esc ที่นี่แล้ว esc ซ้ำที่ batchNoteText ทำให้ชื่อที่มี & ขึ้นเป็น &amp; ให้ผู้ใช้เห็น)
+          batchNotes.push(`${task.taskName}: ${taskNotes.join(' · ')}`);
         }
       });
 

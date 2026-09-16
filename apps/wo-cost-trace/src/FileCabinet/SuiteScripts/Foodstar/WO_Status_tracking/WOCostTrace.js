@@ -187,6 +187,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       JOIN transactionline TL ON TL.transaction = CA.id
       JOIN transactionaccountingline TAL
         ON TAL.transaction = TL.transaction AND TAL.transactionline = TL.id
+       AND TAL.posting = 'T' AND TAL.accountingbook = 1
       JOIN account ACC ON ACC.id = TAL.account
       WHERE CA.recordtype = 'customtransaction_mfg2_woc_costallocatio'
         AND TL.custcol_mfg2_ref_workorder IN (${inList(woIds)})
@@ -733,6 +734,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       JOIN transactionline TL ON TL.transaction = CA.id
       JOIN transactionaccountingline TAL
         ON TAL.transaction = TL.transaction AND TAL.transactionline = TL.id
+       AND TAL.posting = 'T' AND TAL.accountingbook = 1
       JOIN account ACC ON ACC.id = TAL.account
       WHERE CA.recordtype = 'customtransaction_mfg2_woc_costallocatio'
         AND TL.custcol_mfg2_ref_workorder IN (${inList(part)})
@@ -2402,7 +2404,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const docHtml = Object.keys(docs).map(k => tranLink(docs[k].recordtype, docs[k].tran_id, k)
         + (asStr(docs[k].adj_type) ? '<br><span class="tag">' + esc(asStr(docs[k].adj_type)) + '</span>' : ''))
         .join('<br>') || '<span class="bad">ไม่พบใบเบิก</span>';
-      const lotHtml = uniq(r.lots.map(l => l.lot_no)).join('<br>');
+      // lot_no เป็นข้อความที่ผู้ใช้พิมพ์เอง (inventorynumber) — ต้อง escape ก่อนต่อ HTML
+      // เหมือนทุกจุดอื่นที่แสดง lot (ดู renderLots) ไม่งั้นเป็น stored XSS ในเซสชันของฝ่ายต้นทุน
+      const lotHtml = uniq(r.lots.map(l => esc(asStr(l.lot_no)))).join('<br>');
       h += `<tr><td>${itemLink(r.item_id, r.item_code)}</td><td>${esc(r.item_name)}</td><td>${esc(r.unit)}</td>`
         + numCell(r.std_qty, 6)
         + numCell(r.act_qty, 6)
@@ -2412,11 +2416,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + (showLots ? '<td>' + lotHtml + '</td>' : '')
         + `<td>${docHtml}</td></tr>`;
     });
-    const span = showLots ? 8 : 7;
-    h += `<tr class="tot"><td colspan="${span - 1}">รวมมูลค่าวัตถุดิบที่เบิก</td>`
+    // ตารางมี 9 คอลัมน์ไม่มี lot / 10 คอลัมน์มี lot · มูลค่าอยู่คอลัมน์ที่ 8 เสมอ
+    // (รหัส ชื่อ หน่วย BOM เบิกจริง ผลต่าง ต้นทุน/หน่วย → มูลค่า) ป้ายจึง spanning 7 คงที่
+    // แล้วท้ายเหลือ 2 เมื่อมี lot (lot + ใบเบิก) หรือ 1 เมื่อไม่มี — ของเดิม span=7 ทำให้
+    // ตอนไม่มี lot ตัวเลขไปตกช่อง "ต้นทุน/หน่วย" เพราะป้ายกิน 6 แล้วท้ายกิน 1 (6+1+1=8 จาก 9)
+    h += `<tr class="tot"><td colspan="7">รวมมูลค่าวัตถุดิบที่เบิก</td>`
       + numCell(s.rmTotal, 2) + `<td colspan="${showLots ? 2 : 1}"></td></tr>`;
     if (s.produced) {
-      h += `<tr class="tot"><td colspan="${span - 1}">÷ ผลิตได้ ${esc(fmt(s.produced, 4))} = ต้นทุนวัตถุดิบ/หน่วย</td>`
+      h += `<tr class="tot"><td colspan="7">÷ ผลิตได้ ${esc(fmt(s.produced, 4))} = ต้นทุนวัตถุดิบ/หน่วย</td>`
         + numCell(s.unitCostRM, 10) + `<td colspan="${showLots ? 2 : 1}"></td></tr>`;
     }
     return h + '</table>';
