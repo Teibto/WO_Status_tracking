@@ -227,6 +227,41 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.crumb{font-size:var(--fs-sm);margin-bottom:var(--sp-3)}'
     + 'form{background:var(--pj-surface);border:1px solid var(--pj-border);'
     + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4)}'
+    // ── แถบตัวกรอง ────────────────────────────────────────────────────────────
+    // ใช้คำศัพท์ .filterbar/.fld ชุดเดียวกับ wo-status (WOStatusTracking.js) โดยตั้งใจ —
+    // ป้ายอยู่ "เหนือ" ตัวควบคุมเสมอ ไม่ใช่ข้อความไหลต่อกันคั่นด้วย &nbsp; แบบเดิม ซึ่งทำให้
+    // อ่านไม่ออกว่าป้ายไหนเป็นของช่องไหนเมื่อบรรทัดตัดคำ
+    // ต่างจากของ wo-status สองข้อ — ห้ามยกกฎของที่นั่นมาทับทั้งก้อน:
+    //   1. ไม่มี padding/พื้น/เส้นขอบที่ .filterbar เพราะที่นี่ `form` เป็นการ์ดอยู่แล้ว
+    //      (กฎ form{} ด้านบน) ใส่ซ้ำจะได้กล่องพื้นเทาซ้อนอยู่ในกล่องขาวอีกชั้น
+    //   2. ความกว้างคุมเป็นราย .fld (ไม่ใช่ min-width:150px เท่ากันหมดแบบที่นั่น) เพราะฟอร์ม
+    //      ภาพรวมมี 9 ช่องที่ความยาวเนื้อหาต่างกันมาก — "ไม่เกิน" รับเลขไม่กี่หลัก ส่วน
+    //      "เรียงตาม" มีตัวเลือกยาวกว่า 20 ตัวอักษร · ตัวเลขความกว้างอยู่ที่ .fld จุดเดียว
+    //      ตัวควบคุมข้างในกิน 100% ตามแม่เสมอ (ห้ามกลับไปใส่ style="width:" ที่ตัว input/select
+    //      — inline style ชนะ CSS นี้ทุกกรณี แล้วความกว้างจะเพี้ยนกลับแบบไม่มีสัญญาณเตือน)
+    + '.filterbar{display:flex;flex-wrap:wrap;align-items:flex-end;gap:var(--sp-4)}'
+    // min-width:0 ไม่ใช่ของประดับ — flex item มี min-width:auto มาแต่เกิด ซึ่งดัน .fld ให้
+    // กว้างเท่า min-content ของลูก ชนะ flex-basis ที่ตั้งไว้เงียบ ๆ · ช่องที่มีลูกเป็น .range
+    // (ช่วงวันที่ · ไม่เกิน) โดนเต็ม ๆ เพราะ Chrome คิด min-content ของ flex container จาก
+    // max-content ของลูกที่ grow ได้ — วัดจริงแล้วช่องช่วงวันที่บานจาก 270px เป็น 399px
+    + '.filterbar .fld{display:flex;flex-direction:column;gap:var(--sp-1);'
+    + 'min-width:0;max-width:100%}'
+    + '.filterbar .fld>label{white-space:nowrap}'
+    + '.filterbar .fld>input,.filterbar .fld>select{width:100%}'
+    // ตัวคั่นแถว — บังคับขึ้นบรรทัดใหม่ตามกลุ่มความหมาย (ช่วงเวลา / ขอบเขต / การแสดงผล)
+    // ไม่ปล่อยให้ flex-wrap ตัดกลางกลุ่มตามความกว้างจอที่บังเอิญเป็น
+    + '.filterbar .brk{flex:1 0 100%;height:0;margin:0}'
+    // ช่องคู่ในป้ายเดียว (from–to · จำนวน+หน่วย) · คำคั่นต้องเป็น <span> จริง ไม่ใช่ text node
+    // ลอย ๆ — ลูกของ flex ที่เป็น text node กำหนดระยะ/สีไม่ได้ และเป็นที่มาของความเบียดเดิม
+    + '.filterbar .range{display:flex;align-items:center;gap:var(--sp-2)}'
+    + '.filterbar .range input{flex:1 1 0;min-width:0}'
+    + '.filterbar .range .sep{font-size:var(--fs-sm);color:var(--pj-text-muted);white-space:nowrap}'
+    + '.filterbar .act{display:flex;align-items:center;gap:var(--sp-2)}'
+    // combobox ที่ client สร้างครอบ <select name=sub/loc> ตอน enhance ต้องกว้างเท่า .fld แม่
+    // (ค่าตั้งต้นของมันคือ inline-block + min-width:170px จาก theme กลาง) — .fld สองช่องนั้น
+    // จึงตั้ง flex:0 0 200px ไม่ให้หด ถ้าหดต่ำกว่า 170px ตัว input จะล้นกรอบของ .fld ออกมา
+    + '.filterbar .rw-combobox{display:block;width:100%}'
+    + '.filterbar .rw-combobox .rw-combobox-input{width:100%}'
     // ตัวเลขชิดขวาและไม่ตัดบรรทัด · การเทียบหลักมาจาก font-variant-numeric ของ template
     // (เดิมสลับไปฟอนต์ Consolas ทั้งคอลัมน์ ซึ่ง template เลิกทำแล้ว)
     + 'td.n,th.n{text-align:right;white-space:nowrap}'

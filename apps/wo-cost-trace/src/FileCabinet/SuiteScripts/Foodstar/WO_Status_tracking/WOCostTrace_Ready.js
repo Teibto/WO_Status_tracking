@@ -1149,24 +1149,34 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
       <input type="hidden" name="rloc" id="rlocval" value="${esc(p.locAll ? 'all' : (rd.stock_locs || []).join(','))}">
-      <label>เลขที่ใบสั่งผลิต หรือรหัสสินค้า</label>
-      <input type="text" name="ready" value="${esc(rd.woKey)}"
-        placeholder="WO-FSC-00000392 หรือ 10010900101" style="width:210px">
-      &nbsp;<label>วันที่ที่ใช้ตรวจ master</label>
-      <input type="text" name="rdate" value="${esc(p.asOf || '')}" placeholder="${esc(asStr(rd.date_iso))}" style="width:110px">
-      &nbsp;<label>จำนวนที่จะผลิต</label>
-      <input type="text" name="rqty" value="${esc(p.qtyOverride || '')}" placeholder="${esc(fmt(rd.qty_from_wo, 4))}" style="width:100px">
-      <br style="line-height:9px">
-      <label>คลังที่ใช้เทียบสต๊อก (กด Ctrl เลือกได้หลายคลัง)</label>
-      <!-- #64 ขั้น 3 (list field): จงใจไม่ทำเป็น searchable combobox — สัญญาของ enhance()
-           คือ select-single (select.selectedIndex = i แล้วยิง change ครั้งเดียว) ส่วนที่นี่เป็น
-           select-multiple จริง (s.selectedOptions หลายค่าพร้อมกัน ดู onsubmit ด้านบน) คนละ
-           behavior contract กัน — ยัดเข้า combobox เดิมจะทำให้เลือกได้ทีละคลังเท่านั้น
-           ยังไม่มีสเปก multi-select ของทีมสำหรับ list field นี้ ปล่อยเป็น native ต่อไปก่อน -->
-      <select id="rlocsel" multiple size="6" style="min-width:260px;vertical-align:top">
-        <option value="all"${p.locAll ? ' selected' : ''}>— ทุกคลัง —</option>${opts}</select>
-      &nbsp;<button type="submit" class="btn primary">ตรวจความพร้อม</button>
-      <div class="sub" style="margin-top:6px">
+      <div class="filterbar">
+        <div class="fld" style="flex:0 0 250px">
+          <label>เลขที่ใบสั่งผลิต หรือรหัสสินค้า</label>
+          <input type="text" name="ready" value="${esc(rd.woKey)}"
+            placeholder="WO-FSC-00000392 หรือ 10010900101">
+        </div>
+        <div class="fld" style="flex:0 0 170px">
+          <label>วันที่ที่ใช้ตรวจ master</label>
+          <input type="text" name="rdate" value="${esc(p.asOf || '')}" placeholder="${esc(asStr(rd.date_iso))}">
+        </div>
+        <div class="fld" style="flex:0 0 150px">
+          <label>จำนวนที่จะผลิต</label>
+          <input type="text" name="rqty" value="${esc(p.qtyOverride || '')}" placeholder="${esc(fmt(rd.qty_from_wo, 4))}">
+        </div>
+        <div class="brk"></div>
+        <div class="fld" style="flex:0 0 320px">
+          <label>คลังที่ใช้เทียบสต๊อก (กด Ctrl เลือกได้หลายคลัง)</label>
+          <!-- #64 ขั้น 3 (list field): จงใจไม่ทำเป็น searchable combobox — สัญญาของ enhance()
+               คือ select-single (select.selectedIndex = i แล้วยิง change ครั้งเดียว) ส่วนที่นี่เป็น
+               select-multiple จริง (s.selectedOptions หลายค่าพร้อมกัน ดู onsubmit ด้านบน) คนละ
+               behavior contract กัน — ยัดเข้า combobox เดิมจะทำให้เลือกได้ทีละคลังเท่านั้น
+               ยังไม่มีสเปก multi-select ของทีมสำหรับ list field นี้ ปล่อยเป็น native ต่อไปก่อน -->
+          <select id="rlocsel" multiple size="6">
+            <option value="all"${p.locAll ? ' selected' : ''}>— ทุกคลัง —</option>${opts}</select>
+        </div>
+        <div class="act"><button type="submit" class="btn primary">ตรวจความพร้อม</button></div>
+      </div>
+      <div class="sub" style="margin:var(--sp-3) 0 0">
         ใส่เลขที่ใบสั่งผลิต: จำนวน วันที่ และคลัง มาจากใบนั้น · ใส่รหัสสินค้า (ยังไม่มีใบสั่งผลิต):
         จำนวนใช้ขนาด batch ของ revision · วันที่ = วันนี้ · คลังแรกที่เลือกถูกใช้เป็นคลังผลิต
         <br>เลือกคลังป้อน (เช่น RMRD · WRM-NP) เพิ่มด้วย ถ้าของยังรออยู่ที่คลังป้อนแล้วย้ายเข้าด้วย TO
