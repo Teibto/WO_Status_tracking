@@ -351,6 +351,12 @@ define([], function () {
       + 'focusable="false"><path d="M6.2 9.8L13 3M8 3h5v5M12.2 8.6V12a1 1 0 01-1 1H4a1 1 0 01-1-1V5a1 '
       + '1 0 011-1h3.4" stroke="currentColor" stroke-width="1.4" stroke-linecap="round" '
       + 'stroke-linejoin="round"/></svg>',
+    // เพิ่มพร้อม date field ของ WO Cost Trace — ปุ่มเปิดปฏิทินต้องเป็น SVG 16px ตามกติกา
+    // (WO Status ยังใช้ CAL_ICON 14px ที่เขียนไว้ก่อนกติกา — คนละเรื่อง ไม่แตะรอบนี้)
+    calendar: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><rect x="2" y="3.2" width="12" height="11" rx="2" '
+      + 'stroke="currentColor" stroke-width="1.4"/><path d="M2 6.6h12M5.4 1.6v3M10.6 1.6v3" '
+      + 'stroke="currentColor" stroke-width="1.4" stroke-linecap="round"/></svg>',
     // เพิ่มพร้อม date field (#64 ขั้น 4 — เดิมปุ่มเดือนก่อน/ถัดไปของปฏิทิน WO Status
     // เป็นตัวอักษร ‹ › ไม่ใช่ SVG จึงไม่ถูกนับใน #64 ขั้น 2 ตอนย้ายไอคอนสถานะ)
     chevronLeft: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
