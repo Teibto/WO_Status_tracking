@@ -1,0 +1,114 @@
+name: "🐛 Bug"
+description: "พฤติกรรมที่มีอยู่ทำงานผิด — แยกผลที่พบ/ควรเป็น พร้อมหลักฐาน"
+title: "[Bug] "
+labels: ["bug"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ค้น issue เดิมก่อนเปิด · หนึ่ง issue = หนึ่ง outcome · ห้ามใส่ข้อมูลลูกค้าที่ขัด Data classification
+  - type: textarea
+    id: problem
+    attributes:
+      label: "ปัญหา / อาการ"
+      description: "สรุปอาการจากมุมผู้ใช้หรือระบบก่อนข้อสังเกตเชิงเทคนิค"
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: "ผลที่พบ"
+      description: "ค่าจริง, error message, record หรือพฤติกรรมที่เกิด"
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: "ผลที่ควรเป็น"
+      description: "contract หรือพฤติกรรมที่ถูกต้อง"
+    validations:
+      required: true
+  - type: textarea
+    id: reproduction
+    attributes:
+      label: "ขั้นตอนทำซ้ำ"
+      placeholder: "1. ...\n2. ...\n3. ..."
+    validations:
+      required: true
+  - type: textarea
+    id: environment
+    attributes:
+      label: "สภาพแวดล้อม"
+      description: "Environment/branch/account/subsidiary/location/app version ที่เกี่ยวข้อง"
+    validations:
+      required: true
+  - type: textarea
+    id: evidence
+    attributes:
+      label: "หลักฐาน"
+      description: "Screenshot, log, query, code path, record id และเวลาที่ตรวจ"
+    validations:
+      required: true
+  - type: textarea
+    id: impact
+    attributes:
+      label: "ผลกระทบ"
+      description: "ผู้ใช้ ข้อมูล กระบวนการ หรือจำนวนรายการที่กระทบ โดยไม่ใช้ Priority แทน Severity"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "เกณฑ์ตรวจรับ"
+      description: "เงื่อนไขที่ตรวจได้ รวม negative/mutation case เมื่อเกี่ยวข้อง"
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: unknowns
+    attributes:
+      label: "สิ่งที่ยังไม่ยืนยัน"
+      description: "เขียนสิ่งที่ต้องเก็บเพิ่ม หรือ 'ไม่มี — ยืนยันแล้วจาก ...'"
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: "Area/module ที่เป็นเจ้าของงาน เช่น MRP, PWOC, MES, WMS หรือ Cross-module"
+    validations:
+      required: true
+  - type: dropdown
+    id: change_risk
+    attributes:
+      label: Change risk
+      description: "ความเสี่ยงจากการ merge/deploy ไม่ใช่ Severity หรือ Delivery Health"
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: dropdown
+    id: primary_executor
+    attributes:
+      label: Primary executor
+      options:
+        - Human
+        - Claude Code
+        - Codex
+        - Grok
+        - Mixed
+    validations:
+      required: true
+  - type: textarea
+    id: shared_resource_claims
+    attributes:
+      label: Shared-resource claims
+      description: >-
+        Account/SB, subsidiary, location, setup record, deploy file,
+        QA browser หรือ none
+      value: "none"
+    validations:
+      required: true

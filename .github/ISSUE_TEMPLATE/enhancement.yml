@@ -1,0 +1,91 @@
+name: "✨ Enhancement"
+description: "เพิ่มหรือเปลี่ยน capability/behavior โดยมี outcome และเกณฑ์ตรวจรับ"
+title: "[Enhancement] "
+labels: ["enhancement"]
+body:
+  - type: markdown
+    attributes:
+      value: "ค้น issue เดิมก่อนเปิด · หนึ่ง issue = หนึ่ง outcome ที่ปิดได้ด้วย PR เดียว"
+  - type: textarea
+    id: problem
+    attributes:
+      label: "ปัญหา / ความต้องการ"
+      description: "ใครติดปัญหาอะไร และทำไมต้องเปลี่ยน"
+    validations:
+      required: true
+  - type: textarea
+    id: outcome
+    attributes:
+      label: "ผลลัพธ์ที่ต้องการ"
+      description: "พฤติกรรมใหม่ที่ตรวจได้ ไม่ผูก implementation โดยไม่จำเป็น"
+    validations:
+      required: true
+  - type: textarea
+    id: scope
+    attributes:
+      label: "ขอบเขต"
+      description: "Flow, module, path และกลุ่มผู้ใช้ที่เกี่ยวข้อง"
+    validations:
+      required: true
+  - type: textarea
+    id: out_of_scope
+    attributes:
+      label: "นอกขอบเขต"
+      description: "สิ่งที่จงใจไม่เปลี่ยน; เขียน 'ไม่มี' ได้"
+    validations:
+      required: true
+  - type: textarea
+    id: acceptance
+    attributes:
+      label: "เกณฑ์ตรวจรับ"
+      placeholder: "- [ ] ..."
+    validations:
+      required: true
+  - type: textarea
+    id: dependencies
+    attributes:
+      label: "Dependencies / Open questions"
+      description: "Dependency, owner decision และข้อมูลที่ยังต้องยืนยัน; เขียน 'ไม่มี' ได้"
+    validations:
+      required: true
+
+  - type: input
+    id: module
+    attributes:
+      label: Module
+      description: "Area/module ที่เป็นเจ้าของงาน เช่น MRP, PWOC, MES, WMS หรือ Cross-module"
+    validations:
+      required: true
+  - type: dropdown
+    id: change_risk
+    attributes:
+      label: Change risk
+      description: "ความเสี่ยงจากการ merge/deploy ไม่ใช่ Severity หรือ Delivery Health"
+      options:
+        - Low
+        - Medium
+        - High
+    validations:
+      required: true
+  - type: dropdown
+    id: primary_executor
+    attributes:
+      label: Primary executor
+      options:
+        - Human
+        - Claude Code
+        - Codex
+        - Grok
+        - Mixed
+    validations:
+      required: true
+  - type: textarea
+    id: shared_resource_claims
+    attributes:
+      label: Shared-resource claims
+      description: >-
+        Account/SB, subsidiary, location, setup record, deploy file,
+        QA browser หรือ none
+      value: "none"
+    validations:
+      required: true
