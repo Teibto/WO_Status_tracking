@@ -349,6 +349,18 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'padding:7px var(--sp-2);border-radius:var(--radius-sm);margin:7px 0;font-size:var(--fs-sm)}'
     + '.miss{color:var(--pj-warning)}'
     + '.note{font-size:var(--fs-xs);line-height:1.35}'
+    // ตัวชี้สถานะของแถวที่คอลัมน์แรก (#77 ข้อ 2.2) — คอลัมน์ "หมายเหตุ" อยู่ขวาสุดของตาราง
+    // 16 คอลัมน์ ต้องเลื่อนจอไปสุดถึงจะรู้ว่าแถวไหนมีปัญหา · ตัวชี้นี้ย่อสถานะมาไว้ต้นแถว
+    // ไม่ได้แทนคอลัมน์หมายเหตุ (ข้อความเต็มยังอยู่ที่เดิม และ export Excel ยังอ่านจากที่เดิม)
+    + '.rowstat{display:flex;align-items:center;gap:3px;font-size:var(--fs-xs);'
+    + 'line-height:1.35;margin-bottom:2px}'
+    + '.rowstat svg{width:12px;height:12px;flex:0 0 auto}'
+    // สารบัญของหน้าเจาะลึก (#77 ข้อ 2.4) — หน้ายาว 8 หัวข้อ ข้ามหัวข้อโดยไม่ต้องเลื่อนทั้งหน้า
+    + '.toc{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:7px 0;'
+    + 'padding:7px var(--sp-2);border:1px solid var(--pj-border);border-radius:var(--radius-sm);'
+    + 'background:var(--pj-surface-alt);font-size:var(--fs-sm)}'
+    + '.toc a{color:var(--pj-primary);text-decoration:none}'
+    + '.toc a:hover{text-decoration:underline}'
     // ตารางภาพรวมกว้าง 15 คอลัมน์ และยาวได้ถึงหลักร้อยแถว — ให้เลื่อนในกรอบของตัวเองพร้อมหัวตารางติดบน
     // (layout-and-controls.md "ตารางกว้าง" ข้อ 2 — thead sticky ในกล่องที่ overflow:auto)
     + '.scroll{overflow:auto;max-height:76vh;border:1px solid var(--pj-border);'
@@ -944,9 +956,28 @@ ${costCols}
    *   rate    คิดจาก Set Up Rate → ช่องต้นทุนบน record ไม่ใช่คำตอบ สรุปว่า "ไม่มี" ไม่ได้
    *   unknown อ่าน Cost ref ไม่สำเร็จ → กลับไปใช้คำเตือนเดิม ไม่สรุปอะไรเพิ่ม
    */
+  /**
+   * หาใบสั่งผลิตจากสิ่งที่ผู้ใช้พิมพ์ — ตัวเลขล้วน = internal id · ที่เหลือ = เลขที่เอกสาร
+   *
+   * เลขที่เอกสารเทียบแบบ **ตัดขีดออกทั้งสองฝั่ง** (issue #77 ข้อ B5) · บนบัญชีนี้ `tranid`
+   * มีขีด (`WO-FSC-00001293`) แต่เอกสารและบันทึกเก่าของทีมเขียนแบบไม่มีขีด (`WOFSC00000470`)
+   * ของเดิมเทียบตรงตัวจึงตอบ "ไม่พบใบสั่งผลิต" ทั้งที่ใบมีอยู่ เพียงเพราะพิมพ์คนละรูปแบบ
+   *
+   * ตัดเฉพาะขีด ไม่ตัดช่องว่าง/อักขระอื่น — กว้างกว่านี้แล้วจะเริ่มจับคู่ใบที่ไม่ได้ตั้งใจ ·
+   * กิ่ง `byId` คงพฤติกรรมเดิมทุกอย่าง (ตัวเลขล้วนยังเป็น internal id ไม่ใช่เลขที่เอกสาร)
+   *
+   * ⚠ ชั้นความพร้อม (`&ready=`) ใช้ฟังก์ชันนี้ด้วย แล้วถอยไปหา "รหัสสินค้า" เมื่อไม่พบใบสั่งผลิต ·
+   * การจับคู่ที่กว้างขึ้นมีผลได้ทางเดียวคือ "เคยหาไม่เจอ แล้วตอนนี้เจอ" ทางถอยจึงยังทำงานเหมือนเดิม
+   *
+   * ⚠ การตัดขีดทำให้เลขที่คนละใบชนกันได้ (`WO-FSC-001` กับ `WOF-SC001` ตัดขีดแล้วเท่ากัน)
+   * ผู้เรียกหยิบแถวแรกไปแสดง จึงต้อง **เรียงให้แถวที่ตรงตัวมาก่อนเสมอ** (ทำใน JS ด้านล่าง)
+   * และผู้เรียกต้องเตือนเมื่อได้มากกว่าหนึ่งแถว (`buildModel` → `m.ambiguous` ·
+   * `buildReady` → `ambiguous`) ห้ามเลือกใบให้เงียบ ๆ
+   */
   function qWO(woKey) {
-    const byId = /^\d+$/.test(String(woKey).trim());
-    return runSQL('WO header', `
+    const key = String(woKey).trim();
+    const byId = /^\d+$/.test(key);
+    const rows = runSQL('WO header', `
       SELECT WO.id                                       AS wo_id,
              WO.tranid                                   AS wo_no,
              WO.trandate                                 AS wo_date,
@@ -957,8 +988,19 @@ ${costCols}
              BUILTIN.DF(WO.custbody_mfg_production_line) AS production_line,
              WO.custbody_mfg_qty_produce_back_order      AS backorder_qty
       FROM transaction WO
-      WHERE WO.recordtype = 'workorder' AND ${byId ? 'WO.id = ?' : 'UPPER(WO.tranid) = UPPER(?)'}
-    `, [String(woKey).trim()]);
+      WHERE WO.recordtype = 'workorder' AND ${byId ? 'WO.id = ?'
+        : "REPLACE(UPPER(WO.tranid), '-', '') = REPLACE(UPPER(?), '-', '')"}
+    `, [key]);
+    if (byId || rows.length < 2) return rows;
+    // เรียงใน JS ไม่ใช่ใน SQL โดยตั้งใจ — ORDER BY ที่มี bind อยู่ในนิพจน์เป็นของที่ต้องไปพิสูจน์
+    // กับบัญชีจริงก่อนถึงจะรู้ว่า parse ผ่าน และ query นี้เป็นคำสั่งแรกของทุก request
+    // (ทั้งชั้นเจาะลึกและชั้นความพร้อม) พังเมื่อไหร่คือหน้าตายทั้งหน้า · เรียงใน JS ได้ผลเท่ากัน
+    // ไม่ต้องเดา และเทสต์ยันลำดับจริงได้ ไม่ใช่ยันแค่ข้อความ SQL
+    const up = key.toUpperCase();
+    const exact = rows.filter(r => asStr(r.wo_no).toUpperCase() === up);
+    const rest = rows.filter(r => asStr(r.wo_no).toUpperCase() !== up);
+    const byWoId = (a, b) => asNum(a.wo_id) - asNum(b.wo_id);
+    return exact.sort(byWoId).concat(rest.sort(byWoId));
   }
 
   /** บรรทัดบน WO เอง: mainline='T' = ของที่จะผลิต · mainline='F' = component ตาม BOM */

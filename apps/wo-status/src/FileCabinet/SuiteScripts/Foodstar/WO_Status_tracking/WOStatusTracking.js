@@ -2102,6 +2102,9 @@ function _isoFromDateInput(el) {
     var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
       || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+    // ล้าง max-height ที่รอบก่อนย่อไว้ **ก่อนวัด** — ไม่งั้นรอบนี้วัดความสูงที่ย่อแล้ว
+    // แล้วย่อซ้ำลงไปเรื่อย ๆ และไม่มีวันขยายกลับจนกว่าจะปิด-เปิดรายการใหม่
+    if (list.style) list.style.maxHeight = '';
     var listRect = (list.getBoundingClientRect && list.getBoundingClientRect()) || {};
     var width  = rect.width  || 200;
     var height = listRect.height || 280;
@@ -2110,14 +2113,63 @@ function _isoFromDateInput(el) {
     if (vw && left + width > vw - pad) left = vw - pad - width;
     if (left < pad) left = pad;
 
-    var spaceBelow = vh ? (vh - rect.bottom) : (height + pad);
-    var flipUp = !!(vh && spaceBelow < (height + pad) && rect.top > (height + pad));
+    // ── เลือกด้านและความสูงของ popup (#77) ────────────────────────────────
+    //
+    // สามอย่างที่ต้องจริงพร้อมกัน เรียงตามลำดับความสำคัญ
+    //   1. รายการต้องกดใช้งานได้เสมอ — ห้ามยุบจนเหลือ 0/ติดลบ (รายการที่กดไม่ได้
+    //      แย่กว่าปุ่มที่ถูกทับ) ถ้าที่ไม่พอทั้งสองทางให้ยอมทับปุ่มไปตามเดิม
+    //   2. ไม่บังปุ่มหลักของฟอร์มถ้ายังมีทางเลี่ยง — QA วัดด้วย document.elementFromPoint()
+    //      ที่กึ่งกลางปุ่มขณะรายการเปิดอยู่ แล้วได้ div.rw-combobox-option ไม่ใช่ปุ่ม
+    //      ผู้ใช้จึงกดปุ่มแล้วกลายเป็นเลือกตัวกรองโดยไม่รู้ตัว (แก้ที่ตำแหน่ง ไม่ใช่ z-index —
+    //      ดันปุ่มขึ้นมาทับจะได้รายการที่เป็นรู และคลิกที่ตั้งใจเลือกตัวเลือกจะไปกดปุ่มแทน)
+    //   3. ไม่ล้นจอ — จำกัดด้วยพื้นที่ viewport ที่เหลือจริงเสมอ ไม่ว่าจะมีปุ่มให้หลบหรือไม่
+    var MIN_LIST = 120;   // ต่ำกว่านี้เลื่อนหาตัวเลือกไม่ไหว
+    // anchor เลื่อนพ้นจอไปแล้ว (เปิดรายการค้างไว้แล้วสกรอลล์) — ปิดรายการไปเลย
+    // ดีกว่าปล่อยให้ popup ลอยทับหัวหน้า · ห้ามซ่อนด้วย style.display (list-field.md ห้าม
+    // และ test_summary_listfield.js / test_wostatus_listfield.js เฝ้าอยู่)
+    if (vh && (rect.bottom < 0 || rect.top > vh)) {
+      list.setAttribute('data-offscreen', '1');
+      if (typeof _close === 'function') _close(w);
+      return;
+    }
+    list.setAttribute('data-offscreen', '0');
+
+    var avoid = w._avoid && w._avoid.getBoundingClientRect
+      ? w._avoid.getBoundingClientRect() : null;
+    var hitsBtn = !!(avoid && avoid.top >= rect.bottom
+      && !(avoid.right < left || avoid.left > left + width));
+
+    var roomDown = vh ? Math.max(0, vh - pad - (rect.bottom + pad)) : height;
+    var roomUp   = vh ? Math.max(0, rect.top - pad * 2) : height;
+    var roomBtn  = hitsBtn ? Math.max(0, avoid.top - pad - (rect.bottom + pad)) : roomDown;
+    var downRoom = Math.min(roomDown, roomBtn);
+    var need = Math.min(height, MIN_LIST);
+
+    var flipUp, avail;
+    if (downRoom >= need) { flipUp = false; avail = downRoom; }        // ลงได้ (อาจต้องย่อ)
+    else if (roomUp >= need) { flipUp = true; avail = roomUp; }        // ลงไม่พอ แต่ขึ้นได้
+    else if (roomDown >= need) { flipUp = false; avail = roomDown; }   // ยอมทับปุ่ม ดีกว่ากดไม่ได้
+    else if (roomUp >= roomDown) { flipUp = true; avail = roomUp; }    // แคบทั้งคู่ — เอาที่กว้างกว่า
+    else { flipUp = false; avail = roomDown; }
+    if (height > avail) height = avail;
+    if (height < MIN_LIST) height = Math.min(MIN_LIST, vh ? Math.max(0, vh - pad * 2) : MIN_LIST);
+    if (!(height > 0)) height = MIN_LIST;   // กันค่า 0/ติดลบ/NaN ทุกทาง
+
     var top = flipUp ? (rect.top - pad - height) : (rect.bottom + pad);
+    if (top < pad) top = pad;
+    if (vh && top + height > vh - pad) {
+      // จอเตี้ยกว่ารายการ — ย่อให้อยู่ในจอ · ที่นี่ยอมต่ำกว่า MIN_LIST ได้ เพราะเป็นข้อจำกัด
+      // ของ viewport เองไม่ใช่การยุบหลบปุ่ม (ล้นจอ = ตัวเลือกล่างเข้าไม่ถึงเลย)
+      var fit = vh - pad - top;
+      if (fit > 0) height = fit;
+    }
 
     list.style.position = 'fixed';
     list.style.left = left + 'px';
     list.style.top  = top  + 'px';
     list.style.width = width + 'px';
+    // ย่อด้วย inline max-height เท่านั้น — ค่าเริ่มต้น 280px อยู่ที่ .rw-combobox-list ของ theme
+    list.style.maxHeight = height + 'px';
     list.setAttribute('data-flip', flipUp ? 'up' : 'down');
   }
 
@@ -2217,6 +2269,16 @@ function _isoFromDateInput(el) {
     wrapper.className = 'rw-combobox';
     select.parentNode.insertBefore(wrapper, select);
     wrapper.appendChild(select);
+
+    // ปุ่มหลักของฟอร์มเดียวกัน — popup ต้องไม่ไปนั่งทับจนกดไม่ได้ (#77 · ดู _position)
+    // ตัวเลือก selector ครอบทั้งสองแอปด้วยสตริงเดียวกัน (เอนจินนี้เป็นสำเนาที่ต้องเท่ากันทุกตัวอักษร
+    // — test/test_listfield_sync.js เฝ้าอยู่) · wo-cost-trace ใช้ปุ่ม type=submit ใน .act ·
+    // wo-status ใช้ #btnSearch ที่เป็น type=button · ห้ามใช้ querySelector('button') ลอย ๆ
+    // เพราะจะไปโดนปุ่มปฏิทินเล็ก ๆ ในช่องวันที่แทนปุ่มหลัก
+    var ownerForm = select.form || (select.closest && select.closest('form')) || null;
+    wrapper._avoid = ownerForm && ownerForm.querySelector
+      ? ownerForm.querySelector('button[type="submit"],.act button,#btnSearch')
+      : null;
 
     var input = document.createElement('input');
     input.type = 'text';

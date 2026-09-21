@@ -25,7 +25,7 @@
 | ชั้น | พารามิเตอร์ | ใช้เมื่อ |
 |---|---|---|
 | ภาพรวม | ไม่ต้องส่งอะไร | ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน · export Excel เอาไป pivot ต่อได้ |
-| เจาะลึก | `&wo=WOFSC00000470` | ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง (19 query) |
+| เจาะลึก | `&wo=WOFSC00000470` | ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง (20 query) |
 | ความพร้อม master | `&ready=<เลขที่ WO หรือรหัสสินค้า>` | ก่อนเริ่มทดสอบ — master ที่ต้องใช้ตั้งครบหรือยัง |
 
 ทั้งสองใบรับ `&embed=1` = ไม่วาดแถบหัวเรื่องของตัวเอง สำหรับฝังในหน้าอื่น ·
@@ -215,7 +215,7 @@ production เลย ค่าจึงควรเหมือนเดิม �
 ค่าเดิมของ repo คือ `allroles=T` + ไม่มี `audslctrole` เลย ซึ่งแปลว่า **`project:deploy`
 จาก repo จะเปิดรายงานต้นทุนให้ทุก role** โดยไม่มีใครตั้งใจ · `runasrole` เดิมของ SB1 เป็น
 `ADMINISTRATOR` เปลี่ยนเป็นว่างตามคำตัดสินเดียวกับ #24 ให้รันด้วยสิทธิ์ของผู้เปิด ·
-`loglevel` เป็น `ERROR` ทั้งสามที่แล้ว เพราะรายงานยิง 19 query ต่อการเปิดหนึ่งครั้ง
+`loglevel` เป็น `ERROR` ทั้งสามที่แล้ว เพราะรายงานยิง 20 query ต่อการเปิดหนึ่งครั้ง
 
 `audslctrole` อ้างถึง role 2 ใบ จึงต้องประกาศไว้ใน `<objects>` ของ `src/manifest.xml` ด้วย
 ไม่งั้น `project:validate` ตอบว่า *"The object referenced in audslctrole is missing in the
@@ -348,6 +348,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |
 | `test_wostatus_cp_fixes.js` | CP4/CP6/CP7/CP8 ของ WO Status — ข้อมูลขาดขึ้นเขียว · CP8 ตายเป็น na · `lang` หลุดลง HTML |
 | `test_summary_math.js` · `test_summary_export.js` · `test_ready_master.js` | สูตรและข้อความของแต่ละชั้น |
+| `test_batch_breakdown.js` | ใบปิดงานผลิตราย batch — กลุ่มเพี้ยน · นับ "ปิดงานแล้ว" จากจำนวน WOC แทนใบที่มีปริมาณ · ธงแดงตัดสินที่จำนวนใบแทนการผูก · batch ที่ปล่อยงานแล้วหรือ WOC ที่ไม่มี batch หายจากตาราง · query รายการ batch พังแล้วอ่านเป็น 0 batch · เลขที่ WO แบบมีขีด/ไม่มีขีด |
 
 fixture ที่ไม่ได้ประกาศ label = **เทสตก** ไม่ใช่คืนแถวว่างเงียบ ๆ · กับดักเดียวกับ `error:`
 ใน query log ที่ทำให้อ่านเลขศูนย์เป็นคำตอบจริง

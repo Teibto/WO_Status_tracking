@@ -79,16 +79,32 @@ const ISSUE_LINES = [
 ];
 
 // ใบปิดงานผลิต — 2 ใบมีปริมาณ (2 batch) + 1 ใบขั้นตอนกลางที่ปริมาณ 0 ไม่ตีราคา
+// `op_seq` / `last_task` มาจาก task ที่ WOC ผูกอยู่ (issue #77) — ใบขั้นกลางของ batch 3001
+// เป็น op 1 (fg_qty = 0 · sc_ia ว่าง ตามปกติของระบบ) ส่วนใบที่ตีราคาเป็นขั้นสุดท้าย
 const WOC_ROWS = [
   { wo_id: WO_ID, woc_id: 7001, woc_no: 'WOCFSC00000900', woc_date: '26/07/2026',
     good_qty: 100276, scrap_qty: 0, sc_ia: 6001, fg_qty: 100276,
-    task_no: 'OP-30', task_name: 'Packing', batch_id: 3001, pro_qty: 100276 },
+    task_no: 'OP-30', task_name: 'Packing', batch_id: 3001, pro_qty: 100276,
+    op_seq: 2, last_task: 'T' },
   { wo_id: WO_ID, woc_id: 7002, woc_no: 'WOCFSC00000901', woc_date: '27/07/2026',
     good_qty: 60000, scrap_qty: 0, sc_ia: 6002, fg_qty: 60000,
-    task_no: 'OP-30', task_name: 'Packing', batch_id: 3002, pro_qty: 60000 },
+    task_no: 'OP-30', task_name: 'Packing', batch_id: 3002, pro_qty: 60000,
+    op_seq: 1, last_task: 'T' },
   { wo_id: WO_ID, woc_id: 7003, woc_no: 'WOCFSC00000902', woc_date: '26/07/2026',
     good_qty: 0, scrap_qty: 0, sc_ia: null, fg_qty: 0,
-    task_no: 'OP-10', task_name: 'Mixing', batch_id: 3001, pro_qty: 0 }
+    task_no: 'OP-10', task_name: 'Mixing', batch_id: 3001, pro_qty: 100276,
+    op_seq: 1, last_task: 'F' }
+];
+
+// task ของ WO — batch ที่ปล่อยงานแล้ว (issue #77) · ใบนี้ปล่อย 2 batch และปิดงานครบทั้งสอง
+// ใช้แสดงผลอย่างเดียว ไม่มีช่องไหนในสูตรต้นทุนอ่านค่าจากตารางนี้
+const TASK_ROWS = [
+  { wo_id: WO_ID, batch_id: 3001, pro_qty: 100276, good_qty: 100276,
+    op_seq: 1, last_task: 'F', prev_task: null },
+  { wo_id: WO_ID, batch_id: 3001, pro_qty: 100276, good_qty: 100276,
+    op_seq: 2, last_task: 'T', prev_task: 4001 },
+  { wo_id: WO_ID, batch_id: 3002, pro_qty: 60000, good_qty: 60000,
+    op_seq: 1, last_task: 'T', prev_task: null }
 ];
 
 // เอกสารปันส่วนต้นทุน — บรรทัด WIP เป็นยอดรวม ไม่ใช่องค์ประกอบ ต้องถูกตัดทั้งสองชั้น
@@ -141,6 +157,7 @@ function drilldown() {
     'WO lines (BOM standard)': WO_LINES,
     'ใบเบิกวัตถุดิบเข้า WO': ISSUE_LINES,
     'ใบปิดงานผลิต (WOC)': WOC_ROWS,
+    'งานที่ปล่อยราย batch (task)': TASK_ROWS,
     'เอกสารปันส่วนต้นทุน': CA_ROWS,
     // ชั้นที่ 2 (ไล่ lot หา WO ต้นทาง) ไม่ใช้ในเทสนี้ — ประกาศว่าไม่มีแถว ไม่ใช่ปล่อยว่าง
     'lot ที่เบิก': [],
@@ -200,6 +217,6 @@ function summary() {
 }
 
 module.exports = {
-  CLASS_WIP, WO_ID, FG_ITEM, WO_HEADER, WO_LINES, ISSUE_LINES, WOC_ROWS, CA_ROWS,
+  CLASS_WIP, WO_ID, FG_ITEM, WO_HEADER, WO_LINES, ISSUE_LINES, WOC_ROWS, TASK_ROWS, CA_ROWS,
   EXPECT, drilldown, summary
 };
