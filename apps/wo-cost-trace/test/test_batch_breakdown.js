@@ -764,6 +764,69 @@ eq('มีแถวรวมของ batch 4702 ทั้งที่ยัง�
 eq('จำนวนแถวรวมเท่ากับจำนวนกลุ่มที่เข้าเงื่อนไข (ทุกกลุ่มมีหลายขั้น)',
   (partHtml.match(/class="sub bsum"/g) || []).length, 3);
 
+// ── 24. ค่า sub/loc ที่มีอักขระปน — ห้ามขัดให้เป็น id แล้วกรองเงียบ ๆ (QA #77) ──
+// `?sub=<script>alert(1)</script>` ไม่ใช่ช่องโหว่ (ทุกช่องผ่าน esc) แต่ของเดิม
+// `replace(/[^0-9]/g,'')` ทำให้เหลือ `1` แล้วรายงานกรองด้วยบริษัทแรกโดยผู้ใช้ไม่ได้เลือก
+// และหน้าจอเขียนหน้าตาเฉยว่า "บริษัท FS Group" — ตารางที่อธิบายไม่ได้ ซึ่งเป็นโจทย์ของใบนี้
+H.setFixtures(SUM_FX);
+const idT = H.load({
+  libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
+  fixtures: SUM_FX, quietLog: true,
+  exports: ['buildSummary', 'readFilters', 'renderSummaryPage']
+}).T;
+const withRows = (f) => {
+  f.subRows = [{ id: 1, name: 'FS Group' }, { id: 2, name: 'Foodstar' }];
+  f.locRows = [{ id: 10, name: 'PD_B1' }];
+  return f;
+};
+const runWith = (over) => {
+  const f = withRows(idT.readFilters(
+    Object.assign({ from: '2026-07-01', to: '2026-07-31' }, over)));
+  const html = idT.renderSummaryPage(idT.buildSummary(f));
+  return { f: f, html: html, sql: H.sqlOf('ภาพรวม — รายการใบสั่งผลิต') };
+};
+
+console.log('\n── 24. ค่า sub/loc ที่ใช้ไม่ได้ ──');
+const junk = runWith({ sub: '<script>alert(1)</script>' });
+eq('ไม่เก็บเศษตัวเลขไปใช้กรอง', junk.f.sub, '');
+eq('SQL ไม่มีเงื่อนไขบริษัท', /TL\.subsidiary = \?/.test(junk.sql), false);
+eq('ขึ้นคำเตือนว่าค่าที่ส่งมาใช้ไม่ได้',
+  junk.html.indexOf('ค่าที่ส่งมาในช่อง <b>บริษัท</b> ใช้ไม่ได้') >= 0, true);
+eq('บอกว่าไม่ได้กรองด้วยค่านั้น',
+  junk.html.indexOf('<b>ไม่ได้กรองด้วยค่านั้น</b>') >= 0, true);
+eq('ไม่แอบอ้างว่ากรองด้วย FS Group', junk.html.indexOf('บริษัท FS Group') >= 0, false);
+eq('ค่าที่สะท้อนกลับถูก escape', junk.html.indexOf('&lt;script&gt;alert(1)&lt;/script&gt;') >= 0, true);
+eq('ไม่มี <script> ดิบในหน้า', junk.html.indexOf('<script>alert(1)') >= 0, false);
+// ห้ามสะท้อนสตริงยาว ๆ กลับลงหน้า — ตัดที่ 40 ตัวอักษร
+const long = runWith({ sub: 'x'.repeat(200) });
+eq('ค่ายาวถูกตัดก่อนแสดง', long.f.badParams[0].raw.length, 41);
+eq('ตัดแล้วต่อท้ายด้วยจุดไข่ปลา', long.f.badParams[0].raw.slice(-1), '…');
+eq('ไม่สะท้อนสตริงยาวเต็มลงหน้า', long.html.indexOf('x'.repeat(60)) >= 0, false);
+
+const junkLoc = runWith({ loc: "10' OR 1=1" });
+eq('loc ใช้กฎเดียวกัน — ไม่กรอง', junkLoc.f.loc, '');
+eq('loc: SQL ไม่มีเงื่อนไขสถานที่ผลิต', /TL\.location = \?/.test(junkLoc.sql), false);
+eq('loc: ขึ้นคำเตือน',
+  junkLoc.html.indexOf('ค่าที่ส่งมาในช่อง <b>สถานที่ผลิต</b> ใช้ไม่ได้') >= 0, true);
+
+console.log('\n   ค่าตัวเลขล้วนและค่าว่าง ต้องได้พฤติกรรมเดิมทุกอย่าง');
+const ghost = runWith({ sub: '99' });
+eq('ตัวเลขล้วนยังถูกใช้กรอง', ghost.f.sub, '99');
+eq('SQL ยังมีเงื่อนไขบริษัท', /TL\.subsidiary = \?/.test(ghost.sql), true);
+// บรรทัดสรุปด้านบนพิมพ์ชื่อไว้ใน <b> (การ์ด "ไม่พบ…" พิมพ์เป็นข้อความล้วน — คนละที่กัน)
+eq('ยังบอกว่าเป็น id ที่ไม่อยู่ในรายชื่อ',
+  ghost.html.indexOf('บริษัท <b>id 99</b>') >= 0, true);
+eq('ช่องเลือกยังฟ้องว่าไม่อยู่ในรายชื่อ',
+  ghost.html.indexOf('รหัสนี้ไม่อยู่ในรายชื่อบริษัท (id: 99)') >= 0, true);
+eq('ไม่ขึ้นคำเตือนค่าใช้ไม่ได้', ghost.html.indexOf('ใช้ไม่ได้') >= 0, false);
+const bothIds = runWith({ sub: '2', loc: '10' });
+eq('ค่าปกติยังกรองครบทั้งสองช่อง',
+  /TL\.subsidiary = \?/.test(bothIds.sql) && /TL\.location = \?/.test(bothIds.sql), true);
+const none = runWith({});
+eq('ค่าว่าง → ไม่กรอง ไม่เตือน', none.f.sub + none.f.loc, '');
+eq('ค่าว่าง → ไม่มีคำเตือน', none.html.indexOf('ใช้ไม่ได้') >= 0, false);
+eq('ค่าว่าง → badParams ว่าง', none.f.badParams.length, 0);
+
 const fails = H.fails();
 console.log(fails ? '\nไม่ผ่าน ' + fails + ' ข้อ' : '\nผ่านทั้งหมด');
 process.exit(fails ? 1 : 0);

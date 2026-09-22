@@ -1613,6 +1613,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw
       : (custom || fromIso || toIso ? '' : today.substring(0, 7));
 
+    const subParam = idParam('sub', 'บริษัท', p.sub);
+    const locParam = idParam('loc', 'สถานที่ผลิต', p.loc);
+
     let from, to;
     if (month) { from = month + '-01'; to = endOfMonth(month); }
     else {
@@ -1628,10 +1631,42 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       basis: asStr(p.basis) === 'wo' ? 'wo' : 'woc',
       item: asStr(p.item).trim(),
       wono: asStr(p.wono).trim(),
-      sub: asStr(p.sub).replace(/[^0-9]/g, ''),
-      loc: asStr(p.loc).replace(/[^0-9]/g, ''),
+      // sub/loc เป็น internal id — ค่าที่มีอักขระอื่นปนคือ "ค่าที่ใช้ไม่ได้" ไม่ใช่ค่าที่ต้องขัดให้สะอาด
+      // (ดู idParam) · ของเดิมกรองเหลือแต่ตัวเลข ทำให้ `?sub=<script>alert(1)</script>`
+      // กลายเป็น sub=1 แล้วหน้ารายงานกรองด้วย "บริษัท FS Group" เงียบ ๆ โดยผู้ใช้ไม่ได้เลือก
+      // — ปลอดภัย (ทุกช่องผ่าน esc) แต่เป็น "ตารางที่อธิบายไม่ได้" ซึ่งเป็นโจทย์ของ #77 เอง
+      sub: subParam.value,
+      loc: locParam.value,
+      // คำเตือนของค่าที่ทิ้งไป — ปลายทางเป็นคนวาด (renderSummaryPage) ที่นี่แค่บอกว่าเกิดอะไรขึ้น
+      badParams: [subParam, locParam].filter(x => x.bad)
+        .map(x => ({ name: x.name, label: x.label, raw: x.raw })),
       sort: ['item', 'date', 'gap', 'unit'].indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : 'item',
       max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || MAX_ROWS_DEFAULT))
+    };
+  }
+
+  /**
+   * ค่าตัวกรองที่เป็น internal id (`sub` · `loc`) — ตัวเลขล้วนเท่านั้นจึงใช้กรองได้ (issue #77)
+   *
+   * แยกสามสภาพออกจากกันให้ชัด ไม่ยุบรวม
+   *   ว่าง              → ไม่กรอง (ปกติ)
+   *   ตัวเลขล้วน        → ใช้กรอง · ไม่อยู่ในรายชื่อก็ยังใช้ แล้วให้หน้าจอฟ้องว่า "id นี้ไม่อยู่ในรายชื่อ"
+   *   มีอักขระอื่นปน    → **ทิ้งทั้งค่า** ไม่กรองด้วยค่านั้น แล้วขึ้นคำเตือน
+   *
+   * ของเดิมใช้ `replace(/[^0-9]/g,'')` ซึ่งขัดค่าขยะให้กลายเป็น id ที่ใช้ได้เงียบ ๆ —
+   * `?sub=<script>alert(1)</script>` เหลือ `1` แล้วรายงานกรองด้วยบริษัทแรกโดยไม่มีใครสั่ง
+   *
+   * `raw` ตัดความยาวไว้ที่ 40 ตัวอักษรก่อนส่งต่อ — คำเตือนต้องบอกว่า "ค่าที่ส่งมาหน้าตาประมาณนี้"
+   * ไม่ใช่สะท้อน payload ยาว ๆ กลับลงหน้า (ปลายทาง esc() อีกชั้นอยู่แล้ว)
+   */
+  function idParam(name, label, v) {
+    const raw = asStr(v).trim();
+    const digits = raw.replace(/[^0-9]/g, '');
+    const bad = !!raw && raw !== digits;
+    return {
+      name: name, label: label, bad: bad,
+      value: bad ? '' : digits,
+      raw: raw.length > 40 ? raw.substring(0, 40) + '…' : raw
     };
   }
 
@@ -2736,6 +2771,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + (pickedName(f.locRows, f.loc) ? ' · สถานที่ผลิต <b>' + esc(pickedName(f.locRows, f.loc)) + '</b>' : '')
       + (f.item ? ' · รหัสสินค้ามีคำว่า <b>' + esc(f.item) + '</b>' : '')
       + '</div>';
+    // ค่าตัวกรองที่ใช้ไม่ได้ต้องดังก่อนตัวเลขทุกตัว — ไม่งั้นผู้ใช้อ่านตารางที่กรองไม่ตรงที่สั่ง
+    (f.badParams || []).forEach(b => {
+      h += '<div class="err">ค่าที่ส่งมาในช่อง <b>' + esc(b.label) + '</b> ใช้ไม่ได้ '
+        + '(<code>' + esc(b.name) + '=' + esc(b.raw) + '</code>) — ต้องเป็นเลข id เท่านั้น · '
+        + 'รายงานนี้<b>ไม่ได้กรองด้วยค่านั้น</b> ตัวเลขที่เห็นจึงเป็นของทุก' + esc(b.label)
+        + ' · เลือกจากช่องในแถบตัวกรองด้านบนแทนการพิมพ์ใน URL</div>';
+    });
+
     // คำเตือนเรื่องตัดแถวต้องมาก่อน KPI — อ่านตัวเลขไปแล้วค่อยรู้ว่ามันไม่ครบคือสายไป
     // (issue #77 ข้อ 2.1 · ของเดิมอยู่ใต้ KPI จึงเขียนว่า "ด้านบน" — ย้ายแล้วต้องเป็น "ด้านล่าง")
     if (sm.truncated) {
