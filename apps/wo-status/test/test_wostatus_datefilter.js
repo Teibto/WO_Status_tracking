@@ -484,9 +484,16 @@ eq('หยุดก่อนยิง query', H.calls.length, 0);
 const badEn = run({ action: 'search', lang: 'en', dateFrom: '2026/13/01', dateTo: '08/09/2026' });
 eq('ภาษาอังกฤษได้ข้อความอังกฤษ', /Invalid date format/.test(errorText(badEn)), true);
 
-console.log('\n── ด่านช่วง 7 วัน ยังทำงาน ──');
-const wide = run({ action: 'search', dateFrom: '01/09/2026', dateTo: '30/09/2026' });
-eq('เตือนช่วงเกิน 7 วัน', /7 วัน/.test(errorText(wide)), true);
+console.log('\n── เพดานช่วงวันที่ใหม่ (issue #78) ──');
+// เดิมช่วง > 7 วันถูกปฏิเสธ (#78 ยกเพดานเป็น 92 วัน เพราะงานหนักผูกกับขนาดหน้าแล้ว)
+const wide30 = run({ action: 'search', dateFrom: '01/09/2026', dateTo: '30/09/2026' });
+eq('ช่วง 30 วันผ่านได้ (เดิมถูกบล็อกที่ 7 วัน)', errorText(wide30), '');
+const tooWide = run({ action: 'search', dateFrom: '01/01/2026', dateTo: '31/12/2026' });
+eq('ช่วงเกินเพดานยังถูกปฏิเสธ', /92 วัน/.test(errorText(tooWide)), true);
+
+console.log('\n── ชั้น fragment ต้องมีด่านเพดานเดียวกัน (issue #78) ──');
+const fragWide = run({ action: 'search', fragment: '1', dateFrom: '01/01/2026', dateTo: '31/12/2026' });
+eq('fragment ติดด่านเพดานช่วง', /schema-notice/.test(fragWide) && /92 วัน/.test(fragWide), true);
 
 console.log('\n── ชั้น fragment (AJAX) ──');
 H.calls.length = 0;
