@@ -26,7 +26,7 @@ const { T } = H.load({
   exports: ['renderListFieldScript'],
 });
 
-// ปฏิทินของช่องวันที่อยู่ใน lib ไม่ใช่ entry — โหลดแยกเพื่อดึง renderDateFieldScript() (#88)
+// ปฏิทินของช่องวันที่อยู่ใน lib ไม่ใช่ entry — โหลดแยกเพื่อดึง renderDateFieldScript() (#86)
 const { module: libC } = H.load({
   file: 'WOCostTrace_Common.js',
   libs: ['WOReportTheme.js'],
@@ -119,7 +119,7 @@ if (comboPosSrc) {
   } };
   eq('ปุ่มอยู่คนละคอลัมน์ → ไม่ย่อ', openAt(sideBtn, 900).style.maxHeight, '280px');
 
-  // ── ปุ่มอยู่คนละแถวกับช่อง (#88) ─────────────────────────────────────────
+  // ── ปุ่มอยู่คนละแถวกับช่อง (#86) ─────────────────────────────────────────
   // `.act` ย้ายออกจาก .filterbar มาเป็นแถวเต็มความกว้างใต้ details.filterbox แล้ว —
   // เรขาคณิตเปลี่ยนสองทาง: (ก) กรอบปุ่มกว้างเท่าฟอร์ม จึงคร่อมช่องในแนวนอนเสมอ
   // หลบด้วยการ "ขยับไปคนละคอลัมน์" ไม่ได้อีก (ข) กล่องกางอยู่ = ปุ่มอยู่ไกลลงไปข้างล่าง
@@ -208,13 +208,13 @@ if (comboPosSrc) {
   eq('anchor พ้นจอ → ไม่แตะ style.display (list-field.md ห้าม)',
     gone.style.display === undefined || gone.style.display === '', true);
 
-  // ══ ปฏิทินของช่องวันที่ต้องไม่บังปุ่มหลักของฟอร์มเช่นกัน (issue #88) ══════════
+  // ══ ปฏิทินของช่องวันที่ต้องไม่บังปุ่มหลักของฟอร์มเช่นกัน (issue #86) ══════════
   /**
    * regression ที่วัดได้จริงบน SB1 (script 1098 · viewport 1350x900 · &month=custom)
    *   .cal            t341 b597 l33 r271
    *   ปุ่ม ดูภาพรวม    t379 b411 l33 r104   → ถูกทับเต็ม ๆ
    *   elementsFromPoint() กึ่งกลางปุ่ม = DIV.cal-dow / DIV.cal-grid
-   * เกิดเพราะ #88 ย้ายแถว `.act` ลงมาอยู่ใต้ที่พับ — ก่อนหน้านี้ `.act` อยู่แถวบนสุด
+   * เกิดเพราะ #86 ย้ายแถว `.act` ลงมาอยู่ใต้ที่พับ — ก่อนหน้านี้ `.act` อยู่แถวบนสุด
    * ปฏิทินที่กางลงจึงไม่เคยเจอปุ่ม · อาการเดียวกับที่ #77 แก้ให้คอมโบบ็อกซ์ คนละ popup
    *
    * ⚠ ตรรกะนี้เป็น **สำเนาที่สอง** ของ `_position(w)` ฝั่งคอมโบบ็อกซ์ · ยกออกมาเป็นตัวช่วย
@@ -222,7 +222,7 @@ if (comboPosSrc) {
    * test/test_listfield_sync.js — แก้ฝั่งนี้ต้องแก้ apps/wo-status/ ตาม ซึ่งอยู่นอกขอบเขต
    * ส่วน "สัญญาร่วม" ของสองสำเนาถูกล็อกไว้ในหัวข้อถัดไปของไฟล์นี้แทน
    */
-  console.log('\n── ปฏิทินต้องไม่บังปุ่มหลักของฟอร์ม (#88) ──');
+  console.log('\n── ปฏิทินต้องไม่บังปุ่มหลักของฟอร์ม (#86) ──');
 
   const calScript = libC.renderDateFieldScript();
   const calPosSrc = (calScript.match(/function _position\(\) \{[\s\S]*?\n  \}/) || [])[0];
@@ -322,6 +322,24 @@ if (comboPosSrc) {
     avoid: null, vh: 120, fullH: 256 });
   eq('viewport เตี้ย → ไม่ล้นจอ', shortVh.top + shortVh.height <= 120, true);
   eq('viewport เตี้ย → ยังสูงเป็นบวก', shortVh.height > 0, true);
+  // anchor คร่อมทั้ง viewport — ทั้งบนทั้งล่างเหลือ 0 ทั้งคู่
+  // รีวิว #86 ทำ mutation test แล้วหลุดตรงนี้: ทำให้ปฏิทินย่อเหลือ 0 ได้ เทสต์ยังเขียว
+  // (ต้นฉบับได้ max-height 92px · ตัวกลายได้ 0px — ปฏิทินหายเงียบ ๆ)
+  const spanning = calPlace({
+    rect: { top: 0, bottom: 100, left: 33, right: 271 },
+    avoid: null, vh: 100, fullH: 256 });
+  eq('anchor คร่อมทั้งจอ → ปฏิทินต้องไม่เหลือ 0', spanning.height > 0, true);
+  eq('anchor คร่อมทั้งจอ → ไม่ล้นขอบจอ', spanning.top + spanning.height <= 100, true);
+
+  // ฉากจริงจากหน้าความพร้อม master บน SB1 (&ready=) — ช่องวันที่อยู่สูง ปุ่มอยู่แถวล่าง
+  // roomUp = 176px ขาด MIN_CAL ไป 4px · ก่อนมี MIN_TIGHT มันตกมาทับปุ่ม submit ทั้งที่เป็นปุ่มเดียวของหน้า
+  const ready = calPlace({
+    rect: { top: 184, bottom: 217, left: 300, right: 440 },
+    avoid: { getBoundingClientRect: function () { return { top: 368, bottom: 400, left: 369, right: 472 }; } },
+    vh: 900, fullH: 256 });
+  eq('หน้าความพร้อม: ปฏิทินพลิกขึ้น ไม่ตกมาทับปุ่ม', ready.flip, 'up');
+  eq('หน้าความพร้อม: ขอบล่างจบก่อนปุ่ม', ready.top + ready.height <= 368, true);
+  eq('หน้าความพร้อม: ยังสูงพอใช้งาน (>= 140)', ready.height >= 140, true);
 
   // ── เรียกซ้ำบนกล่องเดิมต้องไม่ย่อสะสม (ล้าง max-height ก่อนวัด) ──────────
   const sticky = makeCalEl(256);
@@ -337,7 +355,7 @@ if (comboPosSrc) {
   /**
    * `_open()` ผูก scroll แบบ capture (`useCapture=true`) เพราะ scroll ของ element ไม่ bubble —
    * ต้องดักขาลงถึงจะรู้ว่ากรอบแม่ถูกเลื่อนแล้วย้ายปฏิทินตาม · แต่ปฏิทินที่ถูกย่อมี
-   * `overflow-y:auto` ของตัวเองตั้งแต่ #88 การหมุนล้อ "ในกรอบปฏิทิน" จึงยิง scroll มาถึง
+   * `overflow-y:auto` ของตัวเองตั้งแต่ #86 การหมุนล้อ "ในกรอบปฏิทิน" จึงยิง scroll มาถึง
    * `_reposition` ด้วย แล้ว `_position()` ล้าง `maxHeight`/`overflowY` ก่อนวัด = กล่องที่เลื่อนได้
    * ถูกสร้างใหม่ scrollTop กลับเป็น 0 ทุกครั้ง → กดวันท้ายเดือนไม่ได้เลย ซึ่งเป็นสิ่งเดียวที่
    * การย่อพยายามรักษาไว้ · ที่นี่ล็อกว่า scroll จากในกล่องเราเองต้องไม่ทำอะไร

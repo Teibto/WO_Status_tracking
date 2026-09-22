@@ -255,7 +255,7 @@ eq('ไม่มีปุ่ม submit ตัวที่สองในที�
 console.log('\n── แถวหลักเหลือ 4 ช่อง + ปุ่ม ──');
 const mainBar = bar(full);
 eq('แถวหลักมี .fld 4 ช่อง', mainBar.split('<div class="fld"').length - 1, 4);
-// #88 — `.act` ย้ายออกจาก .filterbar มาอยู่นอก details.filterbox แล้ว
+// #86 — `.act` ย้ายออกจาก .filterbar มาอยู่นอก details.filterbox แล้ว
 // (พิสูจน์ตำแหน่งใหม่แบบโครงสร้างที่ท้ายไฟล์ ไม่ใช่แค่ "ไม่มีในแถวนี้")
 eq('แถวหลักไม่มี .act อีกแล้ว (ปุ่มย้ายออกไปนอกกล่องตัวกรอง)',
   mainBar.indexOf('<div class="act">') >= 0, false);
@@ -303,7 +303,7 @@ eq('summary ของที่พับไม่เปลี่ยน display (�
   /display:/.test((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || ''), false);
 
 
-// ── ทั้งกล่องตัวกรองหุบ/ขยายได้ `<details class="filterbox">` (issue #88) ──────
+// ── ทั้งกล่องตัวกรองหุบ/ขยายได้ `<details class="filterbox">` (issue #86) ──────
 /**
  * โจทย์: "filter ทั้งกล่องให้ หุบขยายได้ · ย้ายปุ่ม export excel ไปอยู่หลังปุ่มดูภาพรวม"
  *
@@ -318,7 +318,7 @@ eq('summary ของที่พับไม่เปลี่ยน display (�
  * `querySelector('button[type="submit"],.act button,#btnSearch')` = **ตัวแรกตามลำดับเอกสาร**
  * ปุ่ม submit จึงต้องมาก่อน `#btnXlsx` เสมอ ไม่งั้น popup ไปหลบปุ่ม export แทนปุ่มค้นหา
  */
-console.log('\n── ทั้งกล่องตัวกรองหุบ/ขยายได้ (#88) ──');
+console.log('\n── ทั้งกล่องตัวกรองหุบ/ขยายได้ (#86) ──');
 
 /** ก้อน <details class="filterbox"> … </details> โดยนับชั้น <details> (มี morefld ซ้อนอยู่) */
 function boxBlock(html) {
@@ -481,7 +481,7 @@ eq('ช่องกรอกทุกช่องอยู่ในกล่อ�
   ctrlsOutsideFld(inFormAll.replace(box.html, '')).join(','), '');
 
 // 6. CSS ของกล่องใหม่
-console.log('\n── CSS ของกล่องตัวกรอง (#88) ──');
+console.log('\n── CSS ของกล่องตัวกรอง (#86) ──');
 ['.filterbox{', '.filterbox>summary{', '.filterbox>.filterbar{', 'form>.act{'].forEach((needle) => {
   eq('CSS มี ' + needle, style.indexOf(needle) >= 0, true);
 });

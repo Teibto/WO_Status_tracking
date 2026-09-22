@@ -260,7 +260,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.filterbar .range .sep{font-size:var(--fs-sm);color:var(--pj-text-muted);white-space:nowrap}'
     // แถวปุ่มมีสองที่อยู่ ไม่ใช่ที่เดียว — ห้ามยุบสองกฎนี้เป็นกฎเดียว
     //   หน้าเจาะลึก/หน้าความพร้อม  .act เป็นลูกของ .filterbar → เรียงชิดขอบล่างไปกับช่องอื่น
-    //   หน้าภาพรวม (#88)          .act เป็นลูกตรงของ form อยู่ **นอก** details.filterbox
+    //   หน้าภาพรวม (#86)          .act เป็นลูกตรงของ form อยู่ **นอก** details.filterbox
     //                             เพื่อให้หุบกล่องตัวกรองแล้วปุ่มยังกดได้ · ระยะห่างจึงไม่ได้
     //                             มาจาก gap ของ .filterbar อีก ต้องมี margin-top ของตัวเอง
     + '.filterbar .act{display:flex;align-items:center;gap:var(--sp-2)}'
@@ -283,7 +283,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.morefld>summary{width:fit-content;padding:3px var(--sp-2);'
     + 'font-size:var(--fs-sm);color:var(--pj-text-muted)}'
     + '.morefld>.filterbar{margin-top:var(--sp-3)}'
-    // ── ทั้งกล่องตัวกรองของชั้นภาพรวมหุบได้ (issue #88) ───────────────────────
+    // ── ทั้งกล่องตัวกรองของชั้นภาพรวมหุบได้ (issue #86) ───────────────────────
     // ห่อ **เฉพาะช่องกรอก** — `.act` อยู่นอกกล่อง หุบแล้วปุ่มต้องยังกดได้
     // summary คงพื้น/ขอบจากกฎ summary{} รวมไว้ (เป็น "หัวกล่อง" ของฟอร์ม ไม่ใช่ลิงก์เล็ก ๆ
     // แบบ .morefld>summary) · ห้ามแตะ display ด้วยเหตุผลเดียวกับ .morefld — marker จะหาย
@@ -308,7 +308,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'cursor:pointer;color:var(--pj-text-muted);transition:background-color .1s ease,color .1s ease}'
     + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
     + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
+    // overscroll-behavior:contain — ปฏิทินที่ถูกย่อมีแถบเลื่อนของตัวเอง ถ้าเลื่อนจนสุดขอบแล้ว
+    // scroll chain ต่อไปที่หน้าเว็บ event จะมี target เป็น document ซึ่งตัวกันใน `_reposition`
+    // มองไม่เห็น → `_position()` ล้าง max-height แล้ว scrollTop กลับเป็น 0 (รีวิว #86)
     + '.cal{position:fixed;z-index:40;width:238px;background:var(--pj-surface);'
+    + 'overscroll-behavior:contain;'
     + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
     + 'box-shadow:var(--shadow-lg);padding:var(--sp-2);font-size:var(--fs-sm)}'
     + '.cal[hidden]{display:none}'
@@ -405,7 +409,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
     // กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ตัวเดียวติดท้ายเลขที่ตัดบรรทัด)
     + 'a.drill{font-weight:600;white-space:nowrap}'
-    // .xbar ถูกถอดออกที่ #88 — ปุ่ม export ย้ายเข้าแถว .act ของฟอร์มแล้ว ไม่มีแถบลอยกลางหน้าอีก
+    // .xbar ถูกถอดออกที่ #86 — ปุ่ม export ย้ายเข้าแถว .act ของฟอร์มแล้ว ไม่มีแถบลอยกลางหน้าอีก
     + '.xnote{font-size:var(--fs-xs);color:var(--pj-text-muted)}'
     + '.nsrec{margin-top:2px}'
     + '.nsrec a{font-size:10px;color:var(--pj-text-muted);text-decoration:none}'
@@ -541,12 +545,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   function isoFromYmd(y, m, d) { return y + '-' + p2(m + 1) + '-' + p2(d); }
 
   var openCal = null;
-  // ── ตำแหน่งของปฏิทิน — ต้องไม่บังปุ่มหลักของฟอร์ม (issue #88 · กฎเดียวกับ #77) ──────
+  // ── ตำแหน่งของปฏิทิน — ต้องไม่บังปุ่มหลักของฟอร์ม (issue #86 · กฎเดียวกับ #77) ──────
   //
   // วัดจริงบน SB1 (script 1098 · viewport 1350x900 · &month=custom):
   //   .cal  t341 b597 l33 r271  ·  ปุ่ม "ดูภาพรวม" t379 b411 l33 r104
   //   elementsFromPoint() กึ่งกลางปุ่ม = DIV.cal-dow / DIV.cal-grid → กดปุ่มแล้วโดนช่องวัน
-  // โผล่ขึ้นมาเมื่อ #88 ย้ายแถว ".act" ลงมาอยู่ใต้ที่พับ "ตัวกรองเพิ่มเติม" (เดิม ".act" อยู่
+  // โผล่ขึ้นมาเมื่อ #86 ย้ายแถว ".act" ลงมาอยู่ใต้ที่พับ "ตัวกรองเพิ่มเติม" (เดิม ".act" อยู่
   // แถวบนสุด ปฏิทินที่กางลงจึงไม่เคยเจอปุ่ม)
   //
   // **นี่คือสำเนาที่สองของตรรกะเดียวกับคอมโบบ็อกซ์ ("_position(w)" ที่ WOCostTrace.js)**
@@ -585,7 +589,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     var hitsBtn = !!(avoid && avoid.top >= rect.bottom
       && !(avoid.right < left || avoid.left > left + width));
 
-    var MIN_CAL = 180;   // ต่ำกว่านี้เหลือไม่ถึงหัวเดือน+แถววัน กดเลือกวันไม่ไหว
+    var MIN_CAL = 180;   // ขั้นที่อยากได้ — เห็นหัวเดือน + แถววันโดยไม่ต้องเลื่อนมาก
+    var MIN_TIGHT = 140; // ขั้นที่ยอมรับก่อนจะทับปุ่ม — ต้องเลื่อนแต่ยังกดปุ่มได้
     var roomDown = vh ? Math.max(0, vh - pad - (rect.bottom + pad)) : height;
     var roomUp = vh ? Math.max(0, rect.top - pad * 2) : height;
     var roomBtn = hitsBtn ? Math.max(0, avoid.top - pad - (rect.bottom + pad)) : roomDown;
@@ -597,11 +602,21 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     else if (roomUp >= height) { flip = true; avail = roomUp; }        // ขึ้นได้ทั้งเดือน (มาก่อนย่อ)
     else if (downRoom >= need) { flip = false; avail = downRoom; }     // ลงได้ถ้ายอมย่อ
     else if (roomUp >= need) { flip = true; avail = roomUp; }          // ขึ้นได้ถ้ายอมย่อ
-    else if (roomDown >= need) { flip = false; avail = roomDown; }     // ยอมทับปุ่ม ดีกว่ากดไม่ได้
+    // ก่อนจะยอมทับปุ่ม ลองเพดานที่เตี้ยกว่าก่อน — หน้าความพร้อมวัดจริงได้ roomUp = 176px
+    // ซึ่งขาด MIN_CAL ไป 4px แล้วตกมาทับปุ่ม submit ทั้งที่เป็นปุ่มเดียวของหน้า (วัดบน SB1)
+    // ปฏิทินเตี้ยที่เลื่อนได้ ดีกว่าปุ่มที่กดไม่ได้ — overscroll-behavior:contain ทำให้เลื่อนในกรอบได้จริง
+    else if (roomUp >= MIN_TIGHT) { flip = true; avail = roomUp; }     // เตี้ยแต่ไม่ทับปุ่ม
+    else if (roomBtn >= MIN_TIGHT) { flip = false; avail = roomBtn; }  // ลงแบบเตี้ย แต่จบก่อนปุ่ม
+    else if (roomDown >= need) { flip = false; avail = roomDown; }     // หมดทาง — ยอมทับปุ่ม ดีกว่ากดไม่ได้
     else if (roomUp >= roomDown) { flip = true; avail = roomUp; }      // แคบทั้งคู่ — เอาที่กว้างกว่า
     else { flip = false; avail = roomDown; }
     if (height > avail) height = avail;
-    if (height < MIN_CAL) height = Math.min(MIN_CAL, vh ? Math.max(0, vh - pad * 2) : MIN_CAL);
+    // ดันกลับขึ้นไป MIN_CAL ได้เฉพาะเท่าที่ avail ยอม — ไม่งั้นขั้น MIN_TIGHT
+    // ที่เพิ่งเลือกมาจะถูกดันกลับไปทับปุ่มอีก (หน้าความพร้อม: avail 176 → จะกลายเป็น 180 แล้วทับ 4px)
+    if (height < MIN_CAL) {
+      var ceiling = avail > 0 ? avail : (vh ? Math.max(0, vh - pad * 2) : MIN_CAL);
+      height = Math.min(MIN_CAL, ceiling);
+    }
     if (!(height > 0)) height = MIN_CAL;   // กันค่า 0/ติดลบ/NaN ทุกทาง
 
     var top = flip ? (rect.top - pad - height) : (rect.bottom + pad);
@@ -627,7 +642,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   // สคริปต์ผูก scroll แบบ capture (useCapture=true) โดยตั้งใจ — scroll ของ element ไม่ bubble
   // จึงต้องดักขาลงถึงจะรู้ว่ากรอบแม่ที่เลื่อนได้ถูกเลื่อน แล้วย้ายปฏิทินตาม
   //
-  // กับดัก: ตั้งแต่ #88 ปฏิทินที่ถูกย่อมี overflow-y:auto ของตัวเอง — การเลื่อน "ในกรอบปฏิทิน"
+  // กับดัก: ตั้งแต่ #86 ปฏิทินที่ถูกย่อมี overflow-y:auto ของตัวเอง — การเลื่อน "ในกรอบปฏิทิน"
   // ก็ยิง scroll ขาลงมาถึงที่นี่ด้วย และ _position() ล้าง maxHeight/overflowY ก่อนวัดทุกครั้ง
   // ซึ่งทำลายกล่องที่เลื่อนได้ → scrollTop กลับเป็น 0 ทุกครั้งที่หมุนล้อ = เลือกวันท้ายเดือน
   // ไม่ได้เลย ซึ่งเป็นสิ่งเดียวที่การย่อพยายามรักษาไว้ · กันเฉพาะ "scroll ที่เกิดในกล่องเราเอง"
@@ -812,7 +827,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     var now = new Date();
     var view = iso ? { y: +iso.slice(0, 4), m: +iso.slice(5, 7) - 1, d: +iso.slice(8, 10) }
       : { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
-    // ปุ่มหลักของฟอร์มที่ปฏิทินต้องไม่บัง (#88) — selector เดียวกับที่คอมโบบ็อกซ์ใช้
+    // ปุ่มหลักของฟอร์มที่ปฏิทินต้องไม่บัง (#86) — selector เดียวกับที่คอมโบบ็อกซ์ใช้
     // ("_avoid" ใน WOCostTrace.js) แต่เอา ".act" ทั้งแถวก่อน เพราะแถวนี้มีสองปุ่ม
     var ownerForm = input.form || (input.closest ? input.closest('form') : null);
     var avoid = ownerForm && ownerForm.querySelector

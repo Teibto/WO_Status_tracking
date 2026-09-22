@@ -2077,7 +2077,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const advOpen = advOn.length > 0 || !f.month;
     const advLabel = 'ตัวกรองเพิ่มเติม'
       + (advOn.length ? ' · ตั้งไว้ ' + advOn.length + ' ช่อง' : '');
-    const boxLabel = 'ตัวกรอง · ' + (activeFilterText(f) || 'ยังไม่ได้ตั้งเงื่อนไข');
+    // ป้ายของกล่องต้องครอบ **ทุกช่องที่ถูกตั้ง** — `activeFilterText` ไม่ได้พูดถึง sort/max
+    // ซึ่งอยู่ในที่พับชั้นใน ถ้าไม่ต่อจำนวนนี้เข้าไป หุบกล่องแล้วป้ายจะเหมือนตอนไม่ได้ตั้งอะไรเลย
+    // ทุกตัวอักษร (รีวิว #86: `?sort=gap&max=10` เคยได้ป้ายเดียวกับค่าเริ่มต้น)
+    const boxLabel = 'ตัวกรอง · ' + activeFilterText(f)
+      + (advOn.length ? ' · ตัวกรองเพิ่มเติม ' + advOn.length + ' ช่อง' : '');
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
