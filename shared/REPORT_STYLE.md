@@ -76,7 +76,7 @@ font stack คือ `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Sarabun', 
 ตั้งใจไม่เปลี่ยน เพราะเป็นของเฉพาะรายงานนี้และ `builder.css` ไม่มีของเทียบ
 
 `.lvl2` `.lvl3` (รางเจาะลึกชั้น BOM) · `.n` `.tot` `.grand` `.sub` (ตารางต้นทุน) ·
-`.pill` `.cp` `.twist` (ตารางสถานะ CP) · `.miss` `.xbar` `.scroll` `.rv`
+`.pill` `.cp` `.twist` (ตารางสถานะ CP) · `.miss` `.xnote` `.scroll` `.rv`
 
 `.tag` เป็นข้อยกเว้น: หน้าตาเหมือน `.badge.info` เป๊ะ แต่คงชื่อเดิมไว้เพราะ markup ใช้อยู่ 19 จุด
 

@@ -258,7 +258,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ช่วงวันที่สองช่องใช้ .datewrap เป็นลูกของ .range จึงต้องให้กรอบแบ่งความกว้างกันเอง
     + '.filterbar .range .datewrap{flex:1 1 0;min-width:0}'
     + '.filterbar .range .sep{font-size:var(--fs-sm);color:var(--pj-text-muted);white-space:nowrap}'
+    // แถวปุ่มมีสองที่อยู่ ไม่ใช่ที่เดียว — ห้ามยุบสองกฎนี้เป็นกฎเดียว
+    //   หน้าเจาะลึก/หน้าความพร้อม  .act เป็นลูกของ .filterbar → เรียงชิดขอบล่างไปกับช่องอื่น
+    //   หน้าภาพรวม (#88)          .act เป็นลูกตรงของ form อยู่ **นอก** details.filterbox
+    //                             เพื่อให้หุบกล่องตัวกรองแล้วปุ่มยังกดได้ · ระยะห่างจึงไม่ได้
+    //                             มาจาก gap ของ .filterbar อีก ต้องมี margin-top ของตัวเอง
     + '.filterbar .act{display:flex;align-items:center;gap:var(--sp-2)}'
+    + 'form>.act{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);'
+    + 'margin:var(--sp-3) 0 0}'
     // combobox ที่ client สร้างครอบ <select name=sub/loc> ตอน enhance ต้องกว้างเท่า .fld แม่
     // (ค่าตั้งต้นของมันคือ inline-block + min-width:170px จาก theme กลาง) — .fld สองช่องนั้น
     // จึงตั้ง flex:0 0 200px ไม่ให้หด ถ้าหดต่ำกว่า 170px ตัว input จะล้นกรอบของ .fld ออกมา
@@ -276,6 +283,13 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.morefld>summary{width:fit-content;padding:3px var(--sp-2);'
     + 'font-size:var(--fs-sm);color:var(--pj-text-muted)}'
     + '.morefld>.filterbar{margin-top:var(--sp-3)}'
+    // ── ทั้งกล่องตัวกรองของชั้นภาพรวมหุบได้ (issue #88) ───────────────────────
+    // ห่อ **เฉพาะช่องกรอก** — `.act` อยู่นอกกล่อง หุบแล้วปุ่มต้องยังกดได้
+    // summary คงพื้น/ขอบจากกฎ summary{} รวมไว้ (เป็น "หัวกล่อง" ของฟอร์ม ไม่ใช่ลิงก์เล็ก ๆ
+    // แบบ .morefld>summary) · ห้ามแตะ display ด้วยเหตุผลเดียวกับ .morefld — marker จะหาย
+    + '.filterbox{margin:0}'
+    + '.filterbox>summary{padding:6px var(--sp-3);font-size:var(--fs-sm);font-weight:600}'
+    + '.filterbox>.filterbar{margin-top:var(--sp-3)}'
     // ── ช่องวันที่ (references/date-field.md) ─────────────────────────────────
     // กรอบทั้งก้อนอยู่ที่ .datewrap ใบเดียว (border + focus-ring) · input กับปุ่มข้างในไม่มี
     // กรอบของตัวเอง ปุ่มมีแค่เส้นคั่น border-left · ค่าที่มองเห็น = DATEFORMAT ของบัญชี
@@ -391,7 +405,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
     // กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ตัวเดียวติดท้ายเลขที่ตัดบรรทัด)
     + 'a.drill{font-weight:600;white-space:nowrap}'
-    + '.xbar{display:flex;align-items:center;gap:var(--sp-3);margin:0 0 7px}'
+    // .xbar ถูกถอดออกที่ #88 — ปุ่ม export ย้ายเข้าแถว .act ของฟอร์มแล้ว ไม่มีแถบลอยกลางหน้าอีก
     + '.xnote{font-size:var(--fs-xs);color:var(--pj-text-muted)}'
     + '.nsrec{margin-top:2px}'
     + '.nsrec a{font-size:10px;color:var(--pj-text-muted);text-decoration:none}'
@@ -527,6 +541,26 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   function isoFromYmd(y, m, d) { return y + '-' + p2(m + 1) + '-' + p2(d); }
 
   var openCal = null;
+  // ── ตำแหน่งของปฏิทิน — ต้องไม่บังปุ่มหลักของฟอร์ม (issue #88 · กฎเดียวกับ #77) ──────
+  //
+  // วัดจริงบน SB1 (script 1098 · viewport 1350x900 · &month=custom):
+  //   .cal  t341 b597 l33 r271  ·  ปุ่ม "ดูภาพรวม" t379 b411 l33 r104
+  //   elementsFromPoint() กึ่งกลางปุ่ม = DIV.cal-dow / DIV.cal-grid → กดปุ่มแล้วโดนช่องวัน
+  // โผล่ขึ้นมาเมื่อ #88 ย้ายแถว ".act" ลงมาอยู่ใต้ที่พับ "ตัวกรองเพิ่มเติม" (เดิม ".act" อยู่
+  // แถวบนสุด ปฏิทินที่กางลงจึงไม่เคยเจอปุ่ม)
+  //
+  // **นี่คือสำเนาที่สองของตรรกะเดียวกับคอมโบบ็อกซ์ ("_position(w)" ที่ WOCostTrace.js)**
+  // ยกออกมาเป็นตัวช่วยตัวเดียวไม่ได้ เพราะเอนจินคอมโบบ็อกซ์ถูก byte-lock กับ wo-status ที่
+  // test/test_listfield_sync.js (เทียบช่วง "function _sig(select) {" … "})();" ทีละตัวอักษร)
+  // แก้ฝั่งนี้ = ต้องแก้ apps/wo-status/ ตามซึ่งเป็นงานของ session อื่น ·
+  // ตัวกันดริฟต์จึงเป็นเทสต์: test_widthcalc.js รันทั้งสองสำเนาผ่านฉากเดียวกันแล้วยืนยัน
+  // ว่าได้ "สัญญา" ข้อเดียวกัน (ไม่บังปุ่มเมื่อยังมีทางเลี่ยง · ไม่เหลือความสูง 0/ติดลบ ·
+  // เรียกซ้ำไม่ย่อสะสม)
+  //
+  // ต่างจากคอมโบบ็อกซ์อยู่ข้อเดียวโดยตั้งใจ — **ปฏิทินเลือก "พลิกขึ้น" ก่อน "ย่อ"**
+  // ตารางวันเป็นกริด 6 แถวตายตัว ย่อแล้วต้องเลื่อนในกรอบถึงจะกดวันท้ายเดือนได้ ซึ่งแย่กว่า
+  // การพลิกขึ้นที่ยังเห็นทั้งเดือนในครั้งเดียว · คอมโบบ็อกซ์เป็นรายการแนวตั้งที่เลื่อนอยู่แล้ว
+  // โดยธรรมชาติ การย่อจึงไม่เสียอะไร · ย่อยังทำอยู่ แต่เป็นทางเลือกรองไม่ใช่ทางแรก
   function _position() {
     if (!openCal) return;
     var box = openCal.box, anchor = openCal.anchor;
@@ -535,18 +569,74 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     var vw = (document.documentElement && document.documentElement.clientWidth) || window.innerWidth || 0;
     var vh = window.innerHeight || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect()) || { top: 0, bottom: 0, left: 0, right: 0 };
+    // ล้างค่าที่รอบก่อนย่อไว้ **ก่อนวัด** — ไม่งั้นรอบนี้วัดความสูงที่ย่อแล้วย่อซ้ำลงไปเรื่อย ๆ
+    if (box.style) { box.style.maxHeight = ''; box.style.overflowY = ''; }
     var br = (box.getBoundingClientRect && box.getBoundingClientRect()) || {};
     var width = br.width || 238, height = br.height || 280;
+    var full = height;
     var left = rect.left;
     if (vw && left + width > vw - pad) left = vw - pad - width;
     if (left < pad) left = pad;
-    var below = vh ? (vh - rect.bottom) : (height + pad);
-    var flip = !!(vh && below < (height + pad) && rect.top > (height + pad));
+
+    // ปุ่มหลักของฟอร์มเดียวกัน · เอา ".act" ทั้งแถวก่อนตัวปุ่มเดี่ยว เพราะแถวนี้มีสองปุ่ม
+    // (ดูภาพรวม + Export Excel) การหลบเฉพาะปุ่มแรกยังทิ้งปุ่มที่สองให้ถูกทับได้
+    var avoid = openCal.avoid && openCal.avoid.getBoundingClientRect
+      ? openCal.avoid.getBoundingClientRect() : null;
+    var hitsBtn = !!(avoid && avoid.top >= rect.bottom
+      && !(avoid.right < left || avoid.left > left + width));
+
+    var MIN_CAL = 180;   // ต่ำกว่านี้เหลือไม่ถึงหัวเดือน+แถววัน กดเลือกวันไม่ไหว
+    var roomDown = vh ? Math.max(0, vh - pad - (rect.bottom + pad)) : height;
+    var roomUp = vh ? Math.max(0, rect.top - pad * 2) : height;
+    var roomBtn = hitsBtn ? Math.max(0, avoid.top - pad - (rect.bottom + pad)) : roomDown;
+    var downRoom = Math.min(roomDown, roomBtn);
+    var need = Math.min(height, MIN_CAL);
+
+    var flip, avail;
+    if (downRoom >= height) { flip = false; avail = downRoom; }        // ลงได้ทั้งเดือน
+    else if (roomUp >= height) { flip = true; avail = roomUp; }        // ขึ้นได้ทั้งเดือน (มาก่อนย่อ)
+    else if (downRoom >= need) { flip = false; avail = downRoom; }     // ลงได้ถ้ายอมย่อ
+    else if (roomUp >= need) { flip = true; avail = roomUp; }          // ขึ้นได้ถ้ายอมย่อ
+    else if (roomDown >= need) { flip = false; avail = roomDown; }     // ยอมทับปุ่ม ดีกว่ากดไม่ได้
+    else if (roomUp >= roomDown) { flip = true; avail = roomUp; }      // แคบทั้งคู่ — เอาที่กว้างกว่า
+    else { flip = false; avail = roomDown; }
+    if (height > avail) height = avail;
+    if (height < MIN_CAL) height = Math.min(MIN_CAL, vh ? Math.max(0, vh - pad * 2) : MIN_CAL);
+    if (!(height > 0)) height = MIN_CAL;   // กันค่า 0/ติดลบ/NaN ทุกทาง
+
+    var top = flip ? (rect.top - pad - height) : (rect.bottom + pad);
+    if (top < pad) top = pad;
+    if (vh && top + height > vh - pad) {
+      // จอเตี้ยกว่าปฏิทิน — ย่อให้อยู่ในจอ · ที่นี่ยอมต่ำกว่า MIN_CAL ได้ เพราะเป็นข้อจำกัด
+      // ของ viewport เองไม่ใช่การยุบหลบปุ่ม
+      var fit = vh - pad - top;
+      if (fit > 0) height = fit;
+    }
+
     box.style.position = 'fixed';
     box.style.left = left + 'px';
-    box.style.top = (flip ? rect.top - pad - height : rect.bottom + pad) + 'px';
+    box.style.top = top + 'px';
+    // ย่อเมื่อไหร่ต้อง **เลื่อนในกรอบได้** ไม่ใช่ตัดวันท้ายเดือนทิ้งเงียบ ๆ
+    // ไม่ได้ย่อ = ไม่ตั้ง max-height เลย ปฏิทินสูงตามเนื้อหาเหมือนเดิม
+    if (height < full) {
+      box.style.maxHeight = height + 'px';
+      box.style.overflowY = 'auto';
+    }
+    box.setAttribute('data-flip', flip ? 'up' : 'down');
   }
-  function _reposition() { _position(); }
+  // สคริปต์ผูก scroll แบบ capture (useCapture=true) โดยตั้งใจ — scroll ของ element ไม่ bubble
+  // จึงต้องดักขาลงถึงจะรู้ว่ากรอบแม่ที่เลื่อนได้ถูกเลื่อน แล้วย้ายปฏิทินตาม
+  //
+  // กับดัก: ตั้งแต่ #88 ปฏิทินที่ถูกย่อมี overflow-y:auto ของตัวเอง — การเลื่อน "ในกรอบปฏิทิน"
+  // ก็ยิง scroll ขาลงมาถึงที่นี่ด้วย และ _position() ล้าง maxHeight/overflowY ก่อนวัดทุกครั้ง
+  // ซึ่งทำลายกล่องที่เลื่อนได้ → scrollTop กลับเป็น 0 ทุกครั้งที่หมุนล้อ = เลือกวันท้ายเดือน
+  // ไม่ได้เลย ซึ่งเป็นสิ่งเดียวที่การย่อพยายามรักษาไว้ · กันเฉพาะ "scroll ที่เกิดในกล่องเราเอง"
+  // ไม่ใช่ปิด capture ทิ้ง (ปิดแล้วกรอบแม่เลื่อนก็จะไม่ย้ายปฏิทินตาม ซึ่งแย่กว่า)
+  function _reposition(e) {
+    if (e && e.target && openCal && openCal.box && openCal.box.contains
+      && openCal.box.contains(e.target)) return;
+    _position();
+  }
   function _close(refocus) {
     if (!openCal) return;
     var cur = openCal;
@@ -722,7 +812,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     var now = new Date();
     var view = iso ? { y: +iso.slice(0, 4), m: +iso.slice(5, 7) - 1, d: +iso.slice(8, 10) }
       : { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
-    openCal = { input: input, btn: btn, box: box, anchor: anchor, y: view.y, m: view.m, focus: view };
+    // ปุ่มหลักของฟอร์มที่ปฏิทินต้องไม่บัง (#88) — selector เดียวกับที่คอมโบบ็อกซ์ใช้
+    // ("_avoid" ใน WOCostTrace.js) แต่เอา ".act" ทั้งแถวก่อน เพราะแถวนี้มีสองปุ่ม
+    var ownerForm = input.form || (input.closest ? input.closest('form') : null);
+    var avoid = ownerForm && ownerForm.querySelector
+      ? (ownerForm.querySelector('.act')
+        || ownerForm.querySelector('button[type="submit"],.act button,#btnSearch'))
+      : null;
+    openCal = { input: input, btn: btn, box: box, anchor: anchor, avoid: avoid, y: view.y, m: view.m, focus: view };
     btn.setAttribute('aria-expanded', 'true');
     _position(); _draw(true); _position();
     window.addEventListener('scroll', _reposition, true);

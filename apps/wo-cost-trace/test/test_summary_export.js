@@ -57,7 +57,7 @@ const FX = {
 const { T } = H.load({
   libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX,
-  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryExportData', 'renderSummaryExport', 'excelDate', 'summaryExportName']
+  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryExportData', 'renderSummaryExport', 'renderSummaryExportBtn', 'excelDate', 'summaryExportName']
 });
 
 // ── run ────────────────────────────────────────────────────────────────────
@@ -147,10 +147,22 @@ eq('ชื่อไฟล์เป็น ASCII ล้วน', /^[\x20-\x7e]+$/.t
 eq('ชื่อชีทไม่เกิน 31 ตัว', d.sheet.length <= 31, true);
 
 console.log('\n── ปุ่มและข้อมูลที่ฝังมากับหน้า ──');
+const btnHtml = T.renderSummaryExportBtn(sm);
 const html = T.renderSummaryExport(sm);
-eq('มีปุ่ม', html.indexOf('id="btnXlsx"') > 0, true);
+eq('มีปุ่ม', btnHtml.indexOf('id="btnXlsx"') > 0, true);
+// ปุ่มอยู่ใน <form method=get> — ลืม type=button เมื่อไหร่ กดแล้วได้หน้าใหม่แทนไฟล์ Excel
+eq('ปุ่มเป็น type="button" ไม่ใช่ submit ที่เผลอส่งฟอร์ม',
+  /<button type="button"[^>]*id="btnXlsx"/.test(btnHtml), true);
+eq('ไม่มี <div class="xbar"> ลอยกลางหน้าอีก', (btnHtml + html).indexOf('xbar') >= 0, false);
+eq('renderSummaryExport เหลือแต่สคริปต์ ไม่มี <button> ซ้ำ', /<button/.test(html), false);
+eq('สคริปต์ขึ้นต้นด้วย <script> ทันที (ไม่มี markup ที่มองเห็นนำหน้า)', html.indexOf('<script'), 0);
 eq('โหลดตัวสร้าง xlsx', html.indexOf('xlsx-js-style@1.2.0') > 0, true);
-eq('บอกจำนวนแถวที่จะได้', html.indexOf('ได้ 3 แถว') > 0, true);
+// จำนวนแถวต้องเห็นได้โดยไม่ต้อง hover — อยู่ใน .xnote ไม่ใช่ใน title ของปุ่ม
+eq('บอกจำนวนแถวที่จะได้', btnHtml.indexOf('ได้ 3 แถว') > 0, true);
+eq('จำนวนแถวอยู่ใน .xnote ที่มองเห็นตลอด', /<span class="xnote">[^<]*ได้ 3 แถว/.test(btnHtml), true);
+// คำอธิบายรูปแบบไฟล์ย้ายไป title ของปุ่ม — ห้ามหายไปเฉย ๆ
+eq('คำอธิบายรูปแบบไฟล์ยังอยู่ (ย้ายไป title ของปุ่ม)',
+  /title="[^"]*หัวและลำดับคอลัมน์ตรงกับตาราง[^"]*ไม่มีแถวรวม/.test(btnHtml), true);
 // "<" ในชื่อสินค้าต้องไม่ปิดแท็ก script กลางคัน
 eq('ข้อมูลฝังหนีอักขระ < แล้ว', html.indexOf('FG ส้ม 300 มล. <ขวด>') < 0, true);
 eq('หนีเป็น \\u003c', html.indexOf('\\u003c\\u0e02') > 0 || html.indexOf('\\u003cขวด') > 0, true);
@@ -165,15 +177,19 @@ eq('มีข้อความเตือนเมื่อโหลดตั�
 
 console.log('\n── ตัด max แล้วต้องบอกในแถบ export ──');
 const smCut = T.buildSummary(T.readFilters({ from: '2026-07-01', to: '2026-07-31', max: '1' }));
-const htmlCut = T.renderSummaryExport(smCut);
+const htmlCut = T.renderSummaryExportBtn(smCut);
 eq('ไฟล์ได้เท่าที่แสดง', T.summaryExportData(smCut).rows.length, 1);
 eq('บอกว่าได้ไม่ครบ', htmlCut.indexOf('ได้ 1 แถวเท่าที่แสดง จากทั้งหมด 3 ใบ') > 0, true);
 
 console.log('\n── ไม่มีข้อมูล: ปุ่มต้องปิด ไม่ใช่กดแล้ว error ──');
 const smEmpty = { filters: T.readFilters({}), rows: [], total: 0, shown: 0, truncated: false };
-const htmlEmpty = T.renderSummaryExport(smEmpty);
+const htmlEmpty = T.renderSummaryExportBtn(smEmpty);
 eq('ปุ่มถูกปิด', htmlEmpty.indexOf('disabled') > 0, true);
-eq('ไม่โหลดตัวสร้าง xlsx เปล่า ๆ', htmlEmpty.indexOf('xlsx-js-style') < 0, true);
+eq('ปุ่มที่ปิดอยู่ก็ยังเป็น type="button"', /<button type="button"[^>]*disabled/.test(htmlEmpty), true);
+eq('ไม่โหลดตัวสร้าง xlsx เปล่า ๆ', T.renderSummaryExport(smEmpty).indexOf('xlsx-js-style') < 0, true);
+eq('0 แถว → ไม่วาดสคริปต์อะไรเลย (ไม่เหลือแถบว่างกลางหน้า)', T.renderSummaryExport(smEmpty), '');
+// ทาง error ของ buildSummary เรียก renderSummaryForm โดยไม่มี sm — ต้องไม่มีปุ่ม ไม่ใช่ undefined
+eq('ไม่มี sm เลย → ไม่มีปุ่ม export', T.renderSummaryExportBtn(undefined), '');
 eq('บอกเหตุผล', htmlEmpty.indexOf('ไม่มีรายการให้ export') > 0, true);
 eq('summaryExportData ไม่พังกับผลลัพธ์ว่าง', T.summaryExportData(smEmpty).rows.length, 0);
 

@@ -255,7 +255,10 @@ eq('ไม่มีปุ่ม submit ตัวที่สองในที�
 console.log('\n── แถวหลักเหลือ 4 ช่อง + ปุ่ม ──');
 const mainBar = bar(full);
 eq('แถวหลักมี .fld 4 ช่อง', mainBar.split('<div class="fld"').length - 1, 4);
-eq('แถวหลักมี .act (ปุ่มดูภาพรวม)', mainBar.indexOf('<div class="act">') > 0, true);
+// #88 — `.act` ย้ายออกจาก .filterbar มาอยู่นอก details.filterbox แล้ว
+// (พิสูจน์ตำแหน่งใหม่แบบโครงสร้างที่ท้ายไฟล์ ไม่ใช่แค่ "ไม่มีในแถวนี้")
+eq('แถวหลักไม่มี .act อีกแล้ว (ปุ่มย้ายออกไปนอกกล่องตัวกรอง)',
+  mainBar.indexOf('<div class="act">') >= 0, false);
 eq('ฟอร์มภาพรวมไม่ใช้ <div class="brk"> อีกแล้ว', full.indexOf('class="brk"') >= 0, false);
 ['month', 'sub', 'loc', 'wono'].forEach((n) => {
   eq('แถวหลักมีช่อง ' + n,
@@ -298,6 +301,201 @@ const moreCss = ((style.match(/\.morefld\{([^}]*)\}/) || [])[1] || '')
   + ((style.match(/\.morefld>\.filterbar\{([^}]*)\}/) || [])[1] || '');
 eq('summary ของที่พับไม่เปลี่ยน display (เปลี่ยนแล้วสามเหลี่ยมเปิด/ปิดหาย)',
   /display:/.test((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || ''), false);
+
+
+// ── ทั้งกล่องตัวกรองหุบ/ขยายได้ `<details class="filterbox">` (issue #88) ──────
+/**
+ * โจทย์: "filter ทั้งกล่องให้ หุบขยายได้ · ย้ายปุ่ม export excel ไปอยู่หลังปุ่มดูภาพรวม"
+ *
+ * สามอย่างที่ต้องจริงพร้อมกัน — ข้อ 2 กับ 3 คือเหตุผลที่ `.act` ต้องอยู่**นอก**กล่อง
+ *   1. กล่องกางเป็นค่าเริ่มต้นเสมอ (`open` มาจากเซิร์ฟเวอร์ ไม่ใช่ JS) · ถ้ากล่องหุบเองได้
+ *      เมื่อไหร่ จะเกิดเคส "morefld กางอยู่แต่ถูกกล่องที่หุบบังไว้" ซึ่งคือตัวกรองซ่อนหาย
+ *   2. หุบแล้วยังรู้ว่ากรองอะไรอยู่ — `<summary>` พิมพ์เงื่อนไขจริงด้วย `activeFilterText`
+ *      ตัวเดียวกับที่ตารางว่างใช้ (#77) ไม่ใช่ข้อความคงที่
+ *   3. หุบแล้วปุ่มทั้งสองยังกดได้ — `.act` อยู่นอก `details.filterbox`
+ *
+ * และลำดับปุ่มใน DOM แบกน้ำหนักจริง: `_avoid` ของคอมโบบ็อกซ์หยิบ
+ * `querySelector('button[type="submit"],.act button,#btnSearch')` = **ตัวแรกตามลำดับเอกสาร**
+ * ปุ่ม submit จึงต้องมาก่อน `#btnXlsx` เสมอ ไม่งั้น popup ไปหลบปุ่ม export แทนปุ่มค้นหา
+ */
+console.log('\n── ทั้งกล่องตัวกรองหุบ/ขยายได้ (#88) ──');
+
+/** ก้อน <details class="filterbox"> … </details> โดยนับชั้น <details> (มี morefld ซ้อนอยู่) */
+function boxBlock(html) {
+  const start = html.indexOf('<details class="filterbox"');
+  if (start < 0) return { start: -1, end: -1, html: '' };
+  const re = /<details\b[^>]*>|<\/details>/g;
+  re.lastIndex = start;
+  let depth = 0, m;
+  while ((m = re.exec(html)) !== null) {
+    depth += m[0] === '</details>' ? -1 : 1;
+    if (depth === 0) return { start: start, end: re.lastIndex, html: html.substring(start, re.lastIndex) };
+  }
+  return { start: start, end: html.length, html: html.substring(start) };
+}
+
+/** ข้อความใน <summary> ของกล่องนอกสุด (ตัวแรกในก้อน = ของ filterbox เอง) */
+function boxSummary(html) {
+  const blk = boxBlock(html).html;
+  return (blk.match(/<summary>([\s\S]*?)<\/summary>/) || [, ''])[1];
+}
+
+// 1. กางเป็นค่าเริ่มต้นเสมอ — ทุกชุด param ไม่มีข้อยกเว้น
+[
+  ['ไม่ส่ง param อะไรเลย', {}],
+  ['กรองด้วยเลขที่ WO', { wono: 'WOFSC00000470' }],
+  ['เดือน = กำหนดวันที่เอง (morefld กางด้วย)', { month: 'custom' }],
+  ['ตั้งตัวกรองในที่พับไว้', { item: 'FG', sort: 'gap', max: '10' }],
+  ['ตั้งครบทุกช่อง', { sub: '2', loc: '10', wono: 'WO-1', item: 'FG', basis: 'wo' }]
+].forEach((c) => {
+  const blk = boxBlock(sumForm(c[1])).html;
+  eq(c[0] + ' → มี <details class="filterbox"> และมี open มาจากเซิร์ฟเวอร์',
+    /^<details class="filterbox" open>/.test(blk), true);
+});
+
+// morefld ต้องยังอยู่ข้างในกล่อง (ไม่ใช่หลุดออกมาเป็นพี่น้องของ .act)
+const openBoth = sumForm({ item: 'FG' });
+eq('ที่พับ "ตัวกรองเพิ่มเติม" อยู่ข้างใน filterbox',
+  boxBlock(openBoth).html.indexOf('<details class="morefld" open>') > 0, true);
+
+// 2. <summary> บอกเงื่อนไขที่ใช้อยู่จริง — ไม่ใช่ข้อความคงที่
+console.log('\n── <summary> ต้องบอกเงื่อนไขที่กรองอยู่ ──');
+[
+  { name: 'เลขที่ WO', p: { wono: 'WOFSC00000470' }, want: ['WOFSC00000470'] },
+  { name: 'รหัสสินค้า', p: { item: '11010900010' }, want: ['11010900010'] },
+  { name: 'บริษัท', p: { sub: '2' }, want: ['Foodstar'] },
+  { name: 'อาคารผลิต', p: { loc: '10' }, want: ['PD_B1'] },
+  { name: 'ช่วงวันที่เอง', p: { month: 'custom', from: '2026-07-01', to: '2026-07-31' },
+    want: ['2026-07-01', '2026-07-31'] },
+  { name: 'หลายเงื่อนไขพร้อมกัน', p: { sub: '2', loc: '10', item: 'FG-9' },
+    want: ['Foodstar', 'PD_B1', 'FG-9'] }
+].forEach((c) => {
+  const sum = boxSummary(sumForm(c.p));
+  eq(c.name + ' → summary ขึ้นต้นด้วยคำว่า "ตัวกรอง"', /^ตัวกรอง · /.test(sum), true);
+  c.want.forEach((w) => {
+    eq(c.name + ' → summary มี "' + w + '"', sum.indexOf(w) > 0, true);
+  });
+});
+// ข้อความคงที่ = บั๊กที่ #77/#86 เพิ่งปิด · สองชุดที่กรองคนละอย่างต้องได้ข้อความคนละแบบ
+eq('summary ไม่ใช่ข้อความคงที่ (เปลี่ยนเงื่อนไขแล้วเปลี่ยนตาม)',
+  boxSummary(sumForm({ wono: 'A-1' })) === boxSummary(sumForm({ wono: 'B-2' })), false);
+// เดือนปกติต้องบอกช่วงด้วย ไม่ใช่เงียบ
+eq('ไม่ตั้งอะไรเลย → summary ยังบอกช่วงและ "จับจาก"',
+  /จับจาก/.test(boxSummary(sumForm({}))), true);
+
+// ค่าที่ผู้ใช้พิมพ์ต้องผ่าน esc() ก่อนลง summary
+console.log('\n── ค่าที่ผู้ใช้พิมพ์ใน summary ต้องถูก escape ──');
+const evilForm = sumForm({ wono: '<script>alert(1)</script>', item: 'a"b&c<d' });
+const evilSum = boxSummary(evilForm);
+eq('summary มีค่าที่ผู้ใช้พิมพ์จริง (ไม่ได้ทิ้งเงียบ)', evilSum.indexOf('alert(1)') > 0, true);
+eq('ไม่มีแท็ก <script> ดิบใน summary', /<script/.test(evilSum), false);
+eq('escape เป็น &lt;script&gt;', evilSum.indexOf('&lt;script&gt;') > 0, true);
+eq('escape เครื่องหมายคำพูดและ &', evilSum.indexOf('a&quot;b&amp;c&lt;d') > 0, true);
+eq('ทั้งฟอร์มไม่มี <script> ดิบหลุดจากค่าตัวกรอง',
+  evilForm.indexOf('<script>alert(1)') >= 0, false);
+
+// 3. `.act` อยู่นอก filterbox — พิสูจน์ด้วยโครงสร้าง ไม่ใช่ regex หลวม ๆ
+console.log('\n── .act ต้องอยู่นอก details.filterbox ──');
+const SM3 = { rows: [1, 2, 3], shown: 3, total: 3, truncated: false };
+const SM_CUT = { rows: [1], shown: 1, total: 9, truncated: true };
+const SM_EMPTY = { rows: [], shown: 0, total: 0, truncated: false };
+function sumFormSm(params, sm) {
+  const ff = T.readFilters(params || {});
+  ff.subRows = [{ id: 2, name: 'Foodstar' }];
+  ff.locRows = [{ id: 10, name: 'PD_B1' }];
+  return T.renderSummaryForm(ff, sm);
+}
+
+const withBtn = sumFormSm({ item: 'FG' }, SM3);
+const box = boxBlock(withBtn);
+const actAt = withBtn.indexOf('<div class="act">');
+eq('มีแถว .act ในฟอร์ม', actAt > 0, true);
+eq('.act อยู่หลัง </details> ของ filterbox (= นอกกล่อง)', actAt > box.end, true);
+eq('ในก้อน filterbox ไม่มี .act ปนอยู่เลย', box.html.indexOf('class="act"') >= 0, false);
+eq('.act ยังอยู่ใน <form> เดียวกัน',
+  actAt < withBtn.indexOf('</form>') && actAt > withBtn.indexOf('<form'), true);
+// หุบกล่องแล้วปุ่มต้องยังกดได้ = ปุ่มต้องไม่ใช่ลูกของ details ที่หุบ (ข้อบนพิสูจน์แล้ว)
+// ที่พับชั้นในมี <button class="datebtn"> ของช่องวันที่อยู่แล้วโดยตั้งใจ — ที่ห้ามคือปุ่มของ .act
+eq('ปุ่ม export ไม่หลงเข้าไปอยู่ในที่พับ "ตัวกรองเพิ่มเติม"',
+  moreBlock(withBtn).indexOf('id="btnXlsx"') >= 0, false);
+
+// 4. ปุ่ม export อยู่หลังปุ่ม "ดูภาพรวม" ในลำดับ DOM
+console.log('\n── ปุ่ม export อยู่หลังปุ่ม "ดูภาพรวม" ──');
+const actBlk = withBtn.substring(actAt, withBtn.indexOf('</div>', actAt) + 6);
+eq('ปุ่มดูภาพรวมอยู่ในแถว .act', actBlk.indexOf('ดูภาพรวม') > 0, true);
+eq('ปุ่ม export อยู่ในแถว .act เดียวกัน', actBlk.indexOf('id="btnXlsx"') > 0, true);
+eq('ปุ่ม export อยู่หลังปุ่มดูภาพรวมในลำดับ DOM',
+  withBtn.indexOf('ดูภาพรวม</button>') < withBtn.indexOf('id="btnXlsx"'), true);
+// _avoid ของคอมโบบ็อกซ์หยิบ **ตัวแรกตามลำดับเอกสาร** ที่เข้า selector
+// 'button[type="submit"],.act button,#btnSearch' — จำลอง selector นั้นกับ markup จริง
+// (ปุ่มปฏิทิน .datebtn ในที่พับมาก่อนในเอกสาร แต่ไม่เข้า selector จึงต้องไม่ถูกหยิบ)
+const actEnd = withBtn.indexOf('</div>', actAt) + '</div>'.length;
+const avoidHit = (function () {
+  const re = /<button[^>]*>/g;
+  let m;
+  while ((m = re.exec(withBtn)) !== null) {
+    const inAct = m.index > actAt && m.index < actEnd;
+    if (/type="submit"/.test(m[0]) || inAct || /id="btnSearch"/.test(m[0])) return m[0];
+  }
+  return '';
+})();
+eq('ปุ่มตัวแรกที่เข้า selector ของ _avoid คือปุ่ม submit (ไม่ใช่ปุ่มปฏิทินหรือปุ่ม export)',
+  /type="submit"/.test(avoidHit), true);
+eq('ปุ่มปฏิทินในที่พับไม่ถูก _avoid หยิบไปเป็นปุ่มหลัก', /datebtn/.test(avoidHit), false);
+eq('ฟอร์มมีปุ่ม type="submit" ตัวเดียว',
+  (withBtn.match(/<button[^>]*type="submit"/g) || []).length, 1);
+// ปุ่มนี้อยู่ใน <form> — ลืม type=button เมื่อไหร่ กดแล้ว submit แทนการ export
+eq('ปุ่ม export เป็น type="button" ไม่ใช่ submit',
+  /<button type="button"[^>]*id="btnXlsx"/.test(withBtn), true);
+eq('ปุ่ม export มี title อธิบายรูปแบบไฟล์', /id="btnXlsx" title="[^"]+"/.test(withBtn), true);
+eq('จำนวนแถวเห็นได้โดยไม่ต้อง hover', /<span class="xnote">[^<]*3 แถว/.test(withBtn), true);
+eq('ตัด max แล้วบอกในแถว .act ด้วย',
+  sumFormSm({}, SM_CUT).indexOf('ได้ 1 แถวเท่าที่แสดง จากทั้งหมด 9 ใบ') > 0, true);
+
+// เคส 0 แถว / ไม่มี sm เลย
+const emptyForm = sumFormSm({}, SM_EMPTY);
+eq('0 แถว → ปุ่ม export ถูกปิด', /<button type="button"[^>]*disabled/.test(emptyForm), true);
+eq('0 แถว → บอกเหตุผล', emptyForm.indexOf('ไม่มีรายการให้ export ตามเงื่อนไขนี้') > 0, true);
+eq('0 แถว → ยังมีปุ่ม submit ตัวเดียวเหมือนเดิม',
+  (emptyForm.match(/<button[^>]*type="submit"/g) || []).length, 1);
+const noSm = sumFormSm({}, undefined);
+eq('ไม่มี sm (ทาง error ของ buildSummary) → ไม่มีปุ่ม export',
+  noSm.indexOf('Export Excel') >= 0, false);
+// ตัด <script> ท้ายฟอร์มออกก่อน — โค้ด client มีสำนวน `typeof window !== 'undefined'`
+// เป็นตัวอักษรจริงโดยตั้งใจ (ด่านเดียวกับ test_summary_math.js)
+eq('ไม่มี sm → ไม่มีคำว่า undefined หลุดลงใน markup ของฟอร์ม',
+  noSm.substring(0, noSm.indexOf('</form>')).indexOf('undefined') >= 0, false);
+eq('ไม่มี sm → ปุ่มดูภาพรวมยังอยู่', noSm.indexOf('ดูภาพรวม</button>') > 0, true);
+
+// 5. ช่องกรอกทุกช่อง (ทั้งสองชั้นของที่พับ) ยังอยู่ในฟอร์มเดียวกันและไม่ถูก disabled
+console.log('\n── ช่องกรอกทุกช่องยังอยู่ในฟอร์มเดียวกัน ──');
+const inFormAll = withBtn.substring(withBtn.indexOf('<form'), withBtn.indexOf('</form>'));
+eq('มี <form> เดียว', withBtn.split('<form').length - 1, 1);
+['month', 'sub', 'loc', 'wono', 'from', 'to', 'basis', 'item', 'sort', 'max'].forEach((n) => {
+  eq('ช่อง ' + n + ' อยู่ใน <form> เดียวกัน',
+    new RegExp('<(?:input|select)[^>]*name="' + n + '"').test(inFormAll), true);
+});
+eq('ไม่มีช่องไหนถูก disabled (ค่าจะไม่ถูกส่งไปกับฟอร์ม)',
+  /<(?:input|select)[^>]*\sdisabled/.test(inFormAll), false);
+eq('ช่องกรอกทุกช่องอยู่ในกล่อง filterbox (นอกกล่องเหลือแต่ hidden + ปุ่ม)',
+  ctrlsOutsideFld(inFormAll.replace(box.html, '')).join(','), '');
+
+// 6. CSS ของกล่องใหม่
+console.log('\n── CSS ของกล่องตัวกรอง (#88) ──');
+['.filterbox{', '.filterbox>summary{', '.filterbox>.filterbar{', 'form>.act{'].forEach((needle) => {
+  eq('CSS มี ' + needle, style.indexOf(needle) >= 0, true);
+});
+eq('summary ของกล่องไม่เปลี่ยน display (เปลี่ยนแล้วสามเหลี่ยมเปิด/ปิดหาย)',
+  /display:/.test((style.match(/\.filterbox>summary\{([^}]*)\}/) || [])[1] || ''), false);
+const formActRule = (style.match(/form>\.act\{([^}]*)\}/) || [])[1] || '';
+eq('แถว .act นอก .filterbar มี flex + gap ของตัวเอง',
+  /display:flex/.test(formActRule) && /gap:/.test(formActRule), true);
+eq('แถว .act นอก .filterbar มีระยะห่างบนของตัวเอง (ไม่ได้ gap จาก .filterbar อีกแล้ว)',
+  /margin:/.test(formActRule), true);
+eq('กฎ .filterbar .act ยังอยู่ (หน้าเจาะลึก/หน้าความพร้อมยังใช้อยู่)',
+  style.indexOf('.filterbar .act{') >= 0, true);
+eq('.xbar ถูกถอดออกจาก CSS แล้ว (ไม่มีใครใช้)', style.indexOf('.xbar{') >= 0, false);
+eq('.xnote ยังอยู่ (ใช้ในแถว .act)', style.indexOf('.xnote{') >= 0, true);
 eq('CSS ของที่พับใช้ var() ไม่มีค่าสีตรง ๆ', /#[0-9a-fA-F]{3}/.test(moreCss), false);
 // กฎ .brk ยังต้องคงอยู่ — WOCostTrace_Ready.js ยังใช้ markup นี้อยู่จริง (ตรวจ 2026-09-22)
 eq('กฎ .filterbar .brk{ ยังอยู่ เพราะหน้าความพร้อมยังใช้', style.indexOf('.filterbar .brk{') >= 0, true);

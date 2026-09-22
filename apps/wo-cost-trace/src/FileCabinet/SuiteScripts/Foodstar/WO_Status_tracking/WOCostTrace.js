@@ -2042,7 +2042,28 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return `<option value=""${sel ? '' : ' selected'}>${esc(allLabel)}</option>` + opts.join('');
   }
 
-  function renderSummaryForm(f) {
+  /**
+   * ฟอร์มตัวกรองของชั้นภาพรวม
+   *
+   * `sm` เป็น **ตัวเลือก** — ทางที่ `buildSummary` พังเรียกฟอร์มนี้โดยไม่มีผลลัพธ์ (ดูท้ายไฟล์)
+   * และเทสหลายไฟล์เรียกด้วยอาร์กิวเมนต์เดียวเพื่อดูโครง markup เท่านั้น ·
+   * ไม่มี `sm` = ไม่มีปุ่ม export (ไม่ใช่ปุ่มที่กดแล้วได้ไฟล์ว่าง และไม่ใช่คำว่า "undefined" ในหน้า)
+   *
+   * ── ทั้งกล่องตัวกรองหุบได้ `<details class="filterbox">` ──────────────────────
+   * `open` ใส่มา**เสมอ** ไม่มีเงื่อนไข — กางเป็นค่าเริ่มต้นตามที่ผู้ใช้สั่ง และที่สำคัญกว่านั้น
+   * มันทำให้เคส "`morefld` กางอยู่แต่ถูก `filterbox` ที่หุบบังไว้" เกิดไม่ได้เลย ·
+   * ถ้าวันหนึ่งจะทำให้จำสถานะหุบได้ ต้องคิดเรื่องนี้ก่อนเป็นข้อแรก
+   *
+   * `<summary>` พิมพ์เงื่อนไขที่กรองอยู่จริงด้วย `activeFilterText` **ตัวเดียวกับ**ที่ตารางว่าง
+   * ใช้ (#77) — หุบแล้วต้องยังรู้ว่ากรองอะไรอยู่ ไม่งั้นได้บั๊กเดียวกับที่ #77/#86 เพิ่งปิด
+   * ห้ามเขียนตรรกะสรุปเงื่อนไขซ้ำที่สอง
+   *
+   * `.act` (ปุ่มดูภาพรวม + ปุ่ม export) อยู่ **นอก** `filterbox` โดยตั้งใจ — หุบกล่องแล้ว
+   * ปุ่มทั้งสองต้องยังกดได้ · ลำดับปุ่มใน DOM แบกน้ำหนัก: `_avoid` ของคอมโบบ็อกซ์หยิบ
+   * `querySelector('button[type="submit"],.act button,#btnSearch')` ซึ่งคืน**ตัวแรกตามลำดับเอกสาร**
+   * ปุ่ม submit จึงต้องมาก่อน `#btnXlsx` เสมอ (test_filterbar_layout.js เฝ้าอยู่)
+   */
+  function renderSummaryForm(f, sm) {
     const s = runtime.getCurrentScript();
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
     const monthOpts = monthChoices().map(ym =>
@@ -2056,9 +2077,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const advOpen = advOn.length > 0 || !f.month;
     const advLabel = 'ตัวกรองเพิ่มเติม'
       + (advOn.length ? ' · ตั้งไว้ ' + advOn.length + ' ช่อง' : '');
+    const boxLabel = 'ตัวกรอง · ' + (activeFilterText(f) || 'ยังไม่ได้ตั้งเงื่อนไข');
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      <details class="filterbox" open>
+      <summary>${esc(boxLabel)}</summary>
       <div class="filterbar">
         <div class="fld" style="flex:0 0 190px">
           <label>เดือน</label>
@@ -2076,7 +2100,6 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <label>เลขที่ใบสั่งผลิต</label>
           <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
         </div>
-        <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button></div>
       </div>
       <details class="morefld"${advOpen ? ' open' : ''}>
         <summary>${esc(advLabel)}</summary>
@@ -2117,6 +2140,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
         แล้วกรอกวันที่ใน "ตัวกรองเพิ่มเติม" · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
       </div>
+      </details>
+      <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button>${renderSummaryExportBtn(sm)}</div>
     </form>${renderListFieldScript()}${renderMoreFiltersScript()}`;
   }
 
@@ -2798,28 +2823,57 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
 
   /**
-   * ปุ่ม export + ข้อมูลของตารางฝังมากับหน้า
+   * คำอธิบายรูปแบบไฟล์ — ยาวเกินกว่าจะอยู่ข้างปุ่มในแถว `.act` จึงย้ายไป `title` ของปุ่ม
+   * **จำนวนแถวไม่ได้อยู่ในนี้** เพราะต้องเห็นได้โดยไม่ต้อง hover (ดู `summaryExportNote`)
+   */
+  const XLSX_HINT = 'หัวและลำดับคอลัมน์ตรงกับตาราง · ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้';
+
+  /** จำนวนแถวที่จะได้จริง — ข้อความนี้ต้องมองเห็นตลอด ไม่ใช่ซ่อนใน tooltip */
+  function summaryExportNote(sm) {
+    return sm.truncated
+      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
+      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
+  }
+
+  /**
+   * ปุ่ม Export Excel — อยู่ใน `.act` ของฟอร์ม ต่อจากปุ่ม "ดูภาพรวม" (ไม่ใช่แถบลอยกลางหน้า)
+   *
+   * ⚠ `type="button"` ห้ามลืม — ปุ่มนี้อยู่ใน `<form method="get">` ค่าเริ่มต้นของ `<button>`
+   * คือ submit กดแล้วจะได้หน้าใหม่แทนไฟล์ Excel
+   *
+   * ไม่มี `sm` (ทาง error ของ `buildSummary` และเทสที่ดูโครงฟอร์มอย่างเดียว) = ไม่มีปุ่มเลย ·
+   * มี `sm` แต่ 0 แถว = ปุ่มปิด + บอกเหตุผล ไม่ใช่ปุ่มที่กดแล้วได้ไฟล์เปล่า
+   */
+  function renderSummaryExportBtn(sm) {
+    if (!sm) return '';
+    if (!sm.rows || !sm.rows.length) {
+      return '<button type="button" class="btn" disabled>⬇ Export Excel</button>'
+        + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span>';
+    }
+    return '<button type="button" class="btn" id="btnXlsx" title="' + esc(XLSX_HINT) + '">'
+      + '⬇ Export Excel</button>'
+      + '<span class="xnote">' + esc(summaryExportNote(sm)) + '</span>';
+  }
+
+  /**
+   * ตัวสร้างไฟล์ + ข้อมูลของตารางฝังมากับหน้า — **สคริปต์ล้วน ไม่มีอะไรให้เห็นบนจอ**
+   * ตัวปุ่มอยู่ใน `.act` ของฟอร์มด้านบนแล้ว (`renderSummaryExportBtn`) สคริปต์นี้จึงต้อง
+   * ถูกวาดหลังฟอร์มเสมอ ไม่งั้น `getElementById("btnXlsx")` ได้ null
+   *
    * ฝังข้อมูลแทนการยิง mode=json ใหม่ตอนกด เพราะการยิงใหม่รันคำสั่งรวมยอดอีกรอบ
    * และอาจได้แถวไม่เท่ากับที่ผู้ใช้เห็นอยู่ตรงหน้า
    */
   function renderSummaryExport(sm) {
-    if (!sm.rows.length) {
-      return '<div class="xbar"><button type="button" class="btn" disabled>⬇ Export Excel</button>'
-        + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span></div>';
-    }
+    if (!sm.rows.length) return '';
     const d = summaryExportData(sm);
     // ข้อมูลฝังเป็น object literal ในหน้า — ต้องกัน "<" ไม่ให้ปิดแท็ก script กลางคัน
     const json = JSON.stringify(d).replace(/</g, '\\u003c');
-    const note = sm.truncated
-      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
-      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
-    return '<div class="xbar"><button type="button" class="btn" id="btnXlsx">⬇ Export Excel</button>'
-      + '<span class="xnote">' + esc(note) + ' · หัวและลำดับคอลัมน์ตรงกับตาราง · '
-      + 'ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้</span></div>'
-      + '<script src="' + XLSX_CDN + '"><\/script>'
+    return '<script src="' + XLSX_CDN + '"><\/script>'
       + '<script>(function(){\n'
       + 'var D=' + json + ';\n'
       + 'var btn=document.getElementById("btnXlsx");\n'
+      // ปุ่มถูกวาดในฟอร์มด้านบน — ไม่เจอ = มีคนย้ายโครง อย่าให้ทั้งหน้าตายเพราะ null
+      + 'if(!btn)return;\n'
       + 'function p2(n){return n<10?"0"+n:""+n;}\n'
       + 'function stamp(){var d=new Date();return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes());}\n'
       + 'btn.onclick=function(){\n'
@@ -2859,7 +2913,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     let h = '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
       + '<div class="sub">ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน แล้วกดเลขที่ใบสั่งผลิตเพื่อเจาะที่มาของทุกตัวเลข '
       + 'จนถึงเอกสารต้นทาง · ยอดในหน้านี้ใช้แหล่งข้อมูลเดียวกับหน้าเจาะลึกทุกช่อง</div>'
-      + renderSummaryForm(f);
+      + renderSummaryForm(f, sm);
 
     h += renderErrors();
     h += '<div class="sub">' + (f.wono
