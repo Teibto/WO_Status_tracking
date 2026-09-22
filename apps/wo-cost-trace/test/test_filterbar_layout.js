@@ -398,5 +398,21 @@ eq('สคริปต์ไม่มีบรรทัดที่สั่ง�
   /open\s*=\s*false|removeAttribute\(\s*['"]open/.test(moreJs), false);
 eq('สคริปต์ไม่แก้ค่าของช่องกรองใด ๆ (.value =)', /\.value\s*=[^=]/.test(moreJs), false);
 
+// ═══ 5. ค่าที่ผู้ใช้พิมพ์ต้องถูก escape ก่อนสะท้อนกลับลงฟอร์ม ════
+//
+// `item` เป็นช่องเดียวในฟอร์มภาพรวมที่เก็บข้อความดิบของผู้ใช้ (trim อย่างเดียว) แล้ววาดกลับ
+// เป็น value="..." · `sub`/`loc` ถูกกรองเหลือตัวเลขไปแล้วตั้งแต่ readFilters จึงไม่ใช่ทางนี้
+// รีวิวของ #86 ทำ mutation test แล้วพบว่าถอด esc() ออกจากช่องนี้ npm test ยังเขียวทั้งชุด
+// — ด่านนี้คือตัวปิดรูนั้น (repo เคยปิด stored XSS ไป 2 จุดใน #73)
+console.log('\n── ค่าที่ผู้ใช้พิมพ์ถูก escape ──');
+const XSS = '"><img src=x onerror=alert(1)>';
+const xssForm = sumForm({ item: XSS });
+eq('ค่า item ดิบไม่หลุดลง HTML', xssForm.indexOf(XSS) >= 0, false);
+eq('ค่า item ถูก escape เป็น entity',
+  xssForm.indexOf('value="&quot;&gt;&lt;img src=x onerror=alert(1)&gt;"') >= 0, true);
+eq('ไม่มี <img> เกิดขึ้นจากค่าที่พิมพ์', xssForm.indexOf('<img') >= 0, false);
+// ค่าแบบนี้ไม่ใช่ค่าเริ่มต้น → ที่พับต้องกางด้วย ไม่งั้นผู้ใช้ไม่เห็นว่ากรองอะไรอยู่
+eq('ค่าแปลก ๆ ใน item ยังทำให้ที่พับกาง', OPEN.test(moreBlock(xssForm)), true);
+
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
