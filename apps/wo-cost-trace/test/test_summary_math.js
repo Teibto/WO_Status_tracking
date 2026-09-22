@@ -245,7 +245,15 @@ eq('จำนวนหมายเหตุ', r2.notes.length, 4);
 console.log('\n── สินค้าที่ไม่ตั้ง basepercarton + summary cost ซ้ำ + ปิดงานคร่อมช่วง ──');
 const r3 = sm.rows.filter(x => x.wo_no === 'WOFSC00000480')[0];
 eq('cost_per_unit หารด้วย WOC ทุกใบ', r3.cost_per_unit, 1100 / 900, 1e-12);
-eq('cost_per_carton เป็น null', r3.cost_per_carton, null);
+// เจ้าของงานกำหนด (2026-09-22): ติ๊ก Report - Cost per Carton (flag 'T') แล้ว
+// `custitem_item_basepercarton` ไม่ใช่ข้อมูลบังคับ — ไม่ได้ตั้งจึงถือ conversion = 1
+// แทนที่จะคืน null แบบเดิม (fixture ของแถวนี้ตั้ง flag = 'T')
+eq('flag T ที่ไม่ได้ตั้ง bpc → conversion = 1', r3.cost_per_carton, 1100 / 900, 1e-12);
+eq('→ จำนวนลัง = ปริมาณที่ผลิตได้', r3.cartons, 900, 1e-12);
+eq('→ ไม่เตือนว่าไม่ได้ตั้ง basepercarton',
+  r3.notes.some(n => n.text.indexOf('ไม่ได้ตั้ง custitem_item_basepercarton') >= 0), false);
+eq('→ มีหมายเหตุอธิบายว่าต้นทุน/ลัง = ต้นทุน/หน่วย',
+  r3.notes.some(n => n.cls === 'info' && n.text.indexOf('ไม่บังคับ') >= 0), true);
 eq('ตีราคาซ้ำเป็น bad', r3.notes.filter(n => n.cls === 'bad').length, 1);
 // ข้อความต้องบอกฐานที่ใช้ตัดสิน (ใบ orphan / ใบมีมูลค่า / รอบปิดงาน) ไม่ใช่จำนวนใบเทียบกติกาที่มองไม่เห็น
 eq('ข้อความบอกจำนวนใบที่ไม่มีใบปิดงานอ้างถึง',

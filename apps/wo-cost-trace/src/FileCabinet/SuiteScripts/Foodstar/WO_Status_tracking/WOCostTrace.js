@@ -342,8 +342,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * ตัวหารต้นทุนต่อลังที่ใช้จริง (issue #54) — คิดครั้งเดียวที่นี่ แล้วปล่อยให้ปลายทาง
    * (flushGroup / unitCell / SUMMARY_EXPORT_COLS / renderTotals) ใช้ `cartons` ตามเดิม
    *
-   *   flag 'T'        → คิดตามเดิม (÷ custitem_item_basepercarton)
-   *   flag 'F'        → conversion = 1 (ไม่คิดต่อลัง)
+   *   flag 'T' + ตั้ง bpc   → ÷ custitem_item_basepercarton
+   *   flag 'T' ไม่ตั้ง bpc  → conversion = 1 **ไม่เตือน** (ติ๊กแล้ว bpc ไม่ใช่ข้อมูลบังคับ)
+   *   flag 'F'              → conversion = 1 (ไม่คิดต่อลัง)
    *   อ่านไม่ได้/ไม่ได้ตั้ง → คิดตามเดิม + หมายเหตุ — ห้ามตกไปทาง conversion 1 เด็ดขาด
    *     (เลขต่อลังที่ผิดมองออกด้วยตา แต่ conversion 1 จาก flag อ่านไม่ได้แยกไม่ออกจาก
    *     สินค้าที่ตั้งใจไม่คิดต่อลัง — กับดักเดียวกับ subsidiary ว่าง = fail-open ของ BomRestrict)
@@ -358,7 +359,13 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     }
     const flag = asStr(f.byItem[asStr(itemId)]);
     if (flag === 'F') return { bpcEff: 1, flag: flag, note: null };
-    if (flag === 'T') return { bpcEff: bpc, flag: flag, note: null };
+    if (flag === 'T') {
+      // ติ๊กช่อง "Report - Cost per Carton" แล้ว `custitem_item_basepercarton` ไม่ใช่ข้อมูลบังคับ
+      // ไม่ได้ตั้งไว้ → conversion = 1 และ **ไม่ต้องเตือน** (เจ้าของงานกำหนด 2026-09-22)
+      // ⚠ ผ่อนได้เฉพาะเคสที่อ่าน flag สำเร็จ **และได้ค่า 'T' จริง** เท่านั้น — เคสอ่านไม่ได้
+      // หรือไม่ได้ตั้งประเภทย่อยสินค้า ยังห้ามตกไปทาง conversion 1 เหมือนเดิม (ดูหัวฟังก์ชัน)
+      return { bpcEff: bpc || 1, flag: flag, note: null };
+    }
     return {
       bpcEff: bpc, flag: flag,
       note: { cls: 'warn', text: 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม' }
@@ -1817,13 +1824,20 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + ' ใบ summary cost — นับเกิน ' + fmt(over, 2)
           + ' คิดเป็น ' + fmt(over / scGap * 100, 1) + '% ของผลต่าง · ประเด็นฝั่งสร้างเอกสาร' });
       }
-      // flag = F ไม่คิดต่อลังตั้งใจ — ห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton (ไม่เกี่ยวกันแล้ว)
-      if (cpc.flag !== 'F' && !bpc) notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      // flag F = ไม่คิดต่อลังตั้งใจ · flag T = ติ๊กแล้ว bpc ไม่ใช่ข้อมูลบังคับ
+      // ทั้งสองกรณีห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton — เหลือเตือนเฉพาะตอนที่ยัง
+      // ตัดสินไม่ได้ (อ่าน flag ไม่สำเร็จ หรือไม่ได้ตั้งประเภทย่อยสินค้า)
+      if (cpc.flag !== 'F' && cpc.flag !== 'T' && !bpc) {
+        notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      }
       if (cpc.note) notes.push(cpc.note);
       // F ไม่ใช่ปัญหา — แต่ถ้าไม่บอกไว้ คนอ่าน Excel/หน้าเว็บจะเห็นต้นทุน/ลัง = ต้นทุน/หน่วยเฉย ๆ
       // แล้วเข้าใจผิดว่าเป็นบั๊ก จึงต้องมีคำอธิบายกำกับไว้เสมอ (ไม่ใช่แค่ปล่อยให้ตัวเลขพูดเอง)
       if (cpc.flag === 'F') {
         notes.push({ cls: 'info', text: 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — ต้นทุน/ลัง = ต้นทุน/หน่วย (conversion = 1)' });
+      } else if (cpc.flag === 'T' && !bpc) {
+        notes.push({ cls: 'info', text: 'ประเภทย่อยสินค้าติ๊ก Report - Cost per Carton ไว้ '
+          + 'จึงไม่บังคับ custitem_item_basepercarton — ต้นทุน/ลัง = ต้นทุน/หน่วย (conversion = 1)' });
       }
 
       return {
@@ -3155,9 +3169,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ใช้ bpcEff คุมเงื่อนไข ไม่ใช่ bpc ดิบ — ไม่งั้นสินค้า flag F ที่ไม่ได้ตั้ง basepercarton
     // จะตกไปโชว์ข้อความ "คำนวณต้นทุนต่อลังไม่ได้" ทั้งที่จริงคำนวณได้ (conversion = 1)
     if (bpcEff) {
-      const srcText = cpc.flag === 'F'
-        ? 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)'
-        : `ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpcEff, 4))} (<code>custitem_item_basepercarton</code>)`;
+      let srcText;
+      if (cpc.flag === 'F') {
+        srcText = 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)';
+      } else if (cpc.flag === 'T' && !bpc) {
+        // ห้ามเขียนว่า "÷ 1 (custitem_item_basepercarton)" — ช่องนั้นว่างอยู่ ไม่ได้มีค่า 1
+        srcText = 'ประเภทย่อยสินค้าติ๊ก Report - Cost per Carton ไว้ จึงไม่บังคับ '
+          + '<code>custitem_item_basepercarton</code> — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)';
+      } else {
+        srcText = `ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpcEff, 4))} (<code>custitem_item_basepercarton</code>)`;
+      }
       h += `<tr><td>จำนวนลังที่ผลิตได้</td>` + numCell(cartons, 6) + '<td class="n z"></td>'
         + `<td>${srcText}</td></tr>`;
       h += `<tr class="grand"><td>ต้นทุนต่อลัง</td>` + numCell(total, 2)
