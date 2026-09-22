@@ -144,5 +144,259 @@ eq('.filterbar เป็น flex ที่ตัดบรรทัดได้',
 eq('.filterbar ไม่ประกาศพื้น/ขอบ/padding ซ้ำกับการ์ด form',
   /background|border|padding/.test(barRule), false);
 
+// ── ที่พับ "ตัวกรองเพิ่มเติม" ของหน้าภาพรวม (issue #86) ──────────────────────
+/**
+ * แถบตัวกรองเคยสูง 231px เพราะ `.brk` สองตัวบังคับขึ้นบรรทัดตายตัว · ตัวกรองรองย้ายเข้า
+ * `<details>` แล้ว — สิ่งที่เทสชุดนี้เฝ้าคือ "การพับต้องไม่ทำให้ตัวกรองหายไป" ซึ่งเป็นอาการ
+ * เดียวกับ "ตารางว่างที่อธิบายไม่ได้" ที่ #77 เพิ่งปิดไป
+ *
+ *   1. สถานะกาง/พับมาจาก **เซิร์ฟเวอร์** (attribute `open` ใน HTML) ไม่ใช่ JS — ต้องถูกแม้ JS พัง
+ *   2. นิยาม "ค่าเริ่มต้น" มาจาก SUMMARY_DEFAULTS ชุดเดียวกับที่ readFilters ใช้ · ค่าที่
+ *      readFilters ปัดกลับเป็นค่าเริ่มต้นไปแล้ว (`?sort=ขยะ`) ต้องไม่ทำให้กางโดยไม่มีสาเหตุที่มองเห็น
+ *   3. ช่องที่อยู่ในที่พับยังอยู่ใน <form> เดียวกันและไม่ถูก disabled — สองทางเดียวที่ markup
+ *      ทำให้ค่าไม่ถูกส่งไปกับฟอร์ม (เทสต์สถิตพิสูจน์การ submit จริงของเบราว์เซอร์ไม่ได้)
+ *   4. แถวหลักเหลือ 4 ช่อง + ปุ่ม และไม่มี `.brk` อีก · ช่องบริษัท/อาคารผลิตยังกว้าง ≥170px
+ *      (ต่ำกว่านั้น combobox ที่ client สร้างครอบจะล้นกรอบ — WOCostTrace_Common.js:262-264)
+ */
+console.log('\n── ที่พับ "ตัวกรองเพิ่มเติม" (#86) ──');
+
+/** ก้อน <details class="morefld"> … </details> ของหน้าภาพรวม (ไม่มี <details> ซ้อนข้างใน) */
+function moreBlock(html) {
+  const i = html.indexOf('<details class="morefld"');
+  if (i < 0) return '';
+  const end = html.indexOf('</details>', i);
+  return end < 0 ? html.substring(i) : html.substring(i, end + '</details>'.length);
+}
+
+/** ฟอร์มภาพรวมจาก param ดิบ — ผ่าน readFilters เสมอ เทสนี้จึงไม่ได้ตั้งค่าเริ่มต้นซ้ำเอง */
+function sumForm(params) {
+  const ff = T.readFilters(params || {});
+  ff.subRows = [{ id: 2, name: 'Foodstar' }];
+  ff.locRows = [{ id: 10, name: 'PD_B1' }];
+  return T.renderSummaryForm(ff);
+}
+
+const CLOSED = /^<details class="morefld">/;
+const OPEN = /^<details class="morefld" open>/;
+
+// ไม่ส่ง param อะไรเลย = เดือนปัจจุบันทั้งเดือน + ค่าเริ่มต้นทุกช่อง
+const noneBlk = moreBlock(sumForm({}));
+eq('มีที่พับ <details class="morefld">', noneBlk.length > 0, true);
+eq('ไม่มีตัวกรองรอง → พับไว้ (ไม่มี open)', CLOSED.test(noneBlk), true);
+eq('ไม่มีตัวกรองรอง → summary ไม่มีคำว่า "ตั้งไว้"', noneBlk.indexOf('ตั้งไว้') >= 0, false);
+eq('summary ยังบอกว่ามันคืออะไร',
+  noneBlk.indexOf('<summary>ตัวกรองเพิ่มเติม</summary>') > 0, true);
+
+// ทีละช่อง — แต่ละช่องต้องกางเองได้ด้วยตัวมันเอง
+[
+  { name: 'รหัสสินค้า (item)', p: { item: 'FG-001' } },
+  { name: 'จับจาก (basis=wo)', p: { basis: 'wo' } },
+  { name: 'เรียงตาม (sort=gap)', p: { sort: 'gap' } },
+  { name: 'ไม่เกิน (max=50)', p: { max: '50' } }
+].forEach((c) => {
+  const blk = moreBlock(sumForm(c.p));
+  eq(c.name + ' → เซิร์ฟเวอร์ใส่ open มาเอง', OPEN.test(blk), true);
+  eq(c.name + ' → summary บอก "ตั้งไว้ 1 ช่อง"', blk.indexOf('ตั้งไว้ 1 ช่อง') > 0, true);
+});
+
+// ค่าที่อ่านไม่ออก — readFilters ปัดกลับเป็นค่าเริ่มต้นไปแล้ว จึงต้องไม่กาง
+const junkBlk = moreBlock(sumForm({ sort: 'ไม่มีจริง', max: 'abc', basis: 'zz' }));
+eq('ค่าที่ถูกปัดกลับเป็นค่าเริ่มต้น → ไม่กางโดยไม่มีสาเหตุที่มองเห็น', CLOSED.test(junkBlk), true);
+
+// เดือน = กำหนดวันที่เอง → กางเสมอ เพราะช่องวันที่ที่ต้องกรอกอยู่ข้างใน
+const customBlk = moreBlock(sumForm({ month: 'custom' }));
+eq('month=custom → กางเสมอ', OPEN.test(customBlk), true);
+eq('month=custom อย่างเดียวไม่นับเป็น "ช่องที่ตั้งไว้" (เดือนอยู่แถวหลักที่เห็นอยู่แล้ว)',
+  customBlk.indexOf('ตั้งไว้') >= 0, false);
+eq('ลิงก์เก่าที่ส่ง from/to มาเอง → กางเช่นกัน (month ว่าง)',
+  OPEN.test(moreBlock(sumForm({ from: '2026-07-01', to: '2026-07-31' }))), true);
+
+// นับหลายช่องพร้อมกัน
+eq('3 ช่องพร้อมกัน → "ตั้งไว้ 3 ช่อง"',
+  moreBlock(sumForm({ item: 'FG', sort: 'unit', max: '10' })).indexOf('ตั้งไว้ 3 ช่อง') > 0, true);
+eq('ครบทั้ง 4 ช่องในที่พับ → "ตั้งไว้ 4 ช่อง"',
+  moreBlock(sumForm({ item: 'FG', sort: 'unit', max: '10', basis: 'wo' }))
+    .indexOf('ตั้งไว้ 4 ช่อง') > 0, true);
+eq('ช่องที่อยู่แถวหลัก (sub/loc/wono) ไม่ถูกนับเข้ากับที่พับ',
+  CLOSED.test(moreBlock(sumForm({ sub: '2', loc: '10', wono: 'WOFSC00000470' }))), true);
+
+// ลิงก์ "กลับหน้าภาพรวม" จากหน้าเจาะลึก — `filterParams` (WOCostTrace_Common.js) ส่ง
+// `basis`/`sort`/`max` ติดไปทุกครั้งแม้ผู้ใช้ไม่เคยแตะ — URL ที่มีค่าเท่าค่าเริ่มต้น
+// ต้องไม่ทำให้ที่พับกางและไม่ขึ้นว่า "ตั้งไว้ n ช่อง" ทั้งที่ผู้ใช้ไม่ได้ตั้งเอง
+const backBlk = moreBlock(sumForm({
+  month: '2026-09', from: '2026-09-01', to: '2026-09-30',
+  basis: 'woc', sort: 'item', max: '200'
+}));
+eq('ลิงก์กลับจากหน้าเจาะลึก (filterParams ส่ง basis/sort/max มาครบ) → ไม่กางเอง',
+  CLOSED.test(backBlk), true);
+eq('ลิงก์กลับจากหน้าเจาะลึก → summary ไม่ขึ้นว่า "ตั้งไว้"',
+  backBlk.indexOf('ตั้งไว้') >= 0, false);
+
+// ── ช่องในที่พับยังถูกส่งไปกับฟอร์มเดียวกัน ─────────────────────────────────
+console.log('\n── ช่องในที่พับต้องยังถูกส่งไปกับฟอร์ม ──');
+const full = sumForm({ item: 'FG', sort: 'gap', max: '10', basis: 'wo', sub: '2', loc: '10' });
+const formStart = full.indexOf('<form');
+const formEnd = full.indexOf('</form>');
+eq('มี <form> เดียวในหน้านี้', full.split('<form').length - 1, 1);
+const detailsAt = full.indexOf('<details class="morefld"');
+eq('ที่พับอยู่ข้างใน <form> (ไม่หลุดออกไปนอก)',
+  detailsAt > formStart && detailsAt < formEnd, true);
+const inForm = full.substring(formStart, formEnd);
+['from', 'to', 'item', 'sort', 'basis', 'max'].forEach((n) => {
+  eq('ช่อง ' + n + ' ยังอยู่ใน <form> เดียวกัน',
+    new RegExp('<(?:input|select)[^>]*name="' + n + '"').test(inForm), true);
+});
+eq('ไม่มีช่องไหนถูกตั้ง disabled (ค่าจะไม่ถูกส่งไปกับฟอร์ม)',
+  /<(?:input|select)[^>]*\sdisabled/.test(inForm), false);
+eq('ไม่มีปุ่ม submit ตัวที่สองในที่พับ (combobox _avoid หยิบตัวแรกในเอกสาร)',
+  moreBlock(full).indexOf('type="submit"') >= 0, false);
+
+// ── แถวหลักเหลือ 4 ช่อง + ปุ่ม ────────────────────────────────────────────
+console.log('\n── แถวหลักเหลือ 4 ช่อง + ปุ่ม ──');
+const mainBar = bar(full);
+eq('แถวหลักมี .fld 4 ช่อง', mainBar.split('<div class="fld"').length - 1, 4);
+eq('แถวหลักมี .act (ปุ่มดูภาพรวม)', mainBar.indexOf('<div class="act">') > 0, true);
+eq('ฟอร์มภาพรวมไม่ใช้ <div class="brk"> อีกแล้ว', full.indexOf('class="brk"') >= 0, false);
+['month', 'sub', 'loc', 'wono'].forEach((n) => {
+  eq('แถวหลักมีช่อง ' + n,
+    new RegExp('<(?:input|select)[^>]*name="' + n + '"').test(mainBar), true);
+});
+const mainFlds = [];
+mainBar.replace(/<div class="fld" style="flex:0 0 (\d+)px">\s*<label>([^<]*)<\/label>/g,
+  (m, px, label) => { mainFlds.push({ px: Number(px), label: label }); return m; });
+eq('อ่านความกว้างของทุกช่องในแถวหลักได้ครบ', mainFlds.length, 4);
+['บริษัท', 'อาคารผลิต'].forEach((label) => {
+  const hit = mainFlds.filter(x => x.label === label)[0];
+  eq('ช่อง ' + label + ' อยู่แถวหลักและกว้าง >=170px (กัน combobox ล้นกรอบ)',
+    !!hit && hit.px >= 170, true);
+});
+
+// ── โครงของแถบในที่พับต้องเข้มเท่าแถวหลัก ──────────────────────────────────
+console.log('\n── โครงของแถบในที่พับ ──');
+const moreBar = bar(moreBlock(full));
+eq('ในที่พับเป็นโครง .filterbar เหมือนแถวหลัก', moreBar.length > 0, true);
+const moreFlds = moreBar.split('<div class="fld"').slice(1);
+eq('ที่พับมี 5 ช่อง', moreFlds.length, 5);
+moreFlds.forEach((fld, i) => {
+  eq('ช่องที่ ' + (i + 1) + ' ในที่พับมี <label> ของตัวเอง', /<label>/.test(fld), true);
+  eq('ช่องที่ ' + (i + 1) + ' ในที่พับกำหนดความกว้างเป็น flex-basis ที่ตัวมันเอง',
+    /^ style="flex:0 0 \d+px">/.test(fld), true);
+});
+eq('ที่พับไม่มี style="width:" ติดที่ input/select',
+  /<(?:input|select)[^>]*style="[^"]*width:/.test(moreBar), false);
+eq('ที่พับไม่ใช้ &nbsp; / <br> จัดระยะ',
+  moreBar.indexOf('&nbsp;') >= 0 || /<br[\s/>]/.test(moreBar), false);
+eq('ไม่มี input/select หลุดออกนอก .fld ในที่พับ', ctrlsOutsideFld(moreBar).join(','), '');
+
+// ── CSS ของที่พับ ─────────────────────────────────────────────────────────
+console.log('\n── CSS ของที่พับ ──');
+['.morefld{', '.morefld>summary{', '.morefld>.filterbar{'].forEach((needle) => {
+  eq('CSS มี ' + needle, style.indexOf(needle) >= 0, true);
+});
+const moreCss = ((style.match(/\.morefld\{([^}]*)\}/) || [])[1] || '')
+  + ((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || '')
+  + ((style.match(/\.morefld>\.filterbar\{([^}]*)\}/) || [])[1] || '');
+eq('summary ของที่พับไม่เปลี่ยน display (เปลี่ยนแล้วสามเหลี่ยมเปิด/ปิดหาย)',
+  /display:/.test((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || ''), false);
+eq('CSS ของที่พับใช้ var() ไม่มีค่าสีตรง ๆ', /#[0-9a-fA-F]{3}/.test(moreCss), false);
+// กฎ .brk ยังต้องคงอยู่ — WOCostTrace_Ready.js ยังใช้ markup นี้อยู่จริง (ตรวจ 2026-09-22)
+eq('กฎ .filterbar .brk{ ยังอยู่ เพราะหน้าความพร้อมยังใช้', style.indexOf('.filterbar .brk{') >= 0, true);
+
+// ── ตัวช่วยฝั่ง client: เลือก "กำหนดวันที่เอง" แล้วกางที่พับให้ (#86) ────────
+/**
+ * ฝั่งเซิร์ฟเวอร์ตัดสินสถานะกาง/พับเสมอ (ข้อ 1 ด้านบน) แต่มีจังหวะเดียวที่เซิร์ฟเวอร์ตอบไม่ได้
+ * คือ **ก่อน submit** — ผู้ใช้เพิ่งเลือก "— กำหนดวันที่เอง —" ในช่องเดือนที่แถวหลัก แล้วช่อง
+ * วันที่ที่ต้องกรอกยังอยู่ในที่พับที่เซิร์ฟเวอร์ปิดมา · ถ้าไม่ทำอะไรเลยผู้ใช้เจอทางตัน ต้องเดาเอง
+ * ว่าต้องไปกดแถบ "ตัวกรองเพิ่มเติม" — เป็นอาการ "ตัวกรองซ่อนหาย" แบบหนึ่งที่ #86 ตั้งใจกัน
+ *
+ * สิ่งที่ล็อกไว้ที่นี่
+ *   1. เปลี่ยนเป็น custom → `details.open = true` และ focus ไปช่องวันที่ช่องแรก
+ *   2. เปลี่ยนกลับเป็นเดือนปกติ → **ห้ามปิดที่พับให้เอง** (ปิดเอง = ตัวกรองหายอีกแบบ)
+ *   3. หน้าที่ไม่มี `.morefld` (ชั้นเจาะลึก/ชั้นความพร้อม) → เงียบ ไม่ throw
+ *   4. สคริปต์ตัวนี้เป็น enhancement ล้วน — ไม่มีบรรทัดไหนไปตัดสินสถานะแทนเซิร์ฟเวอร์
+ */
+console.log('\n── ตัวช่วยฝั่ง client ของที่พับ (#86) ──');
+
+/** เนื้อ <script> ก้อนที่จัดการที่พับ (ฟอร์มภาพรวมมีสอง <script> — อีกก้อนเป็น combobox) */
+function moreScript(html) {
+  const parts = html.split('<script>');
+  for (let i = 1; i < parts.length; i++) {
+    const body = parts[i].split('</script>')[0];
+    if (body.indexOf('details.morefld') >= 0) return body;
+  }
+  return '';
+}
+
+const moreJs = moreScript(sumForm({}));
+eq('ฟอร์มภาพรวมมีสคริปต์ที่อ้าง details.morefld', moreJs.length > 0, true);
+eq('สคริปต์ไม่ได้หลุด </script> ออกมากลางทาง (ต้องเขียนเป็น <\\/script> ในเทมเพลต)',
+  sumForm({}).split('</script>').length - 1, 2);
+
+/** DOM ปลอมเท่าที่สคริปต์ใช้จริง — ไม่ได้จำลองเบราว์เซอร์ทั้งใบ */
+function fakeDom(opts) {
+  const o = opts || {};
+  const dateInput = { focusCount: 0, focus() { this.focusCount += 1; } };
+  const details = {
+    open: !!o.open,
+    querySelector: (s) => (s === 'input.dateinput' ? dateInput : null)
+  };
+  const handlers = {};
+  const select = {
+    value: o.month || '2026-09',
+    addEventListener: (ev, fn) => { handlers[ev] = fn; }
+  };
+  const document = {
+    querySelector: (s) => {
+      if (s === 'details.morefld') return o.noDetails ? null : details;
+      if (s === 'select[name="month"]') return o.noSelect ? null : select;
+      return null;
+    }
+  };
+  return {
+    details: details,
+    dateInput: dateInput,
+    run: () => new Function('document', moreJs)(document),
+    change: (v) => { select.value = v; if (handlers.change) handlers.change(); },
+    bound: () => !!handlers.change
+  };
+}
+
+// 1. เลือก custom → กางให้ + พาไปช่องวันที่
+const d1 = fakeDom({});
+d1.run();
+eq('ผูก listener ของ change ไว้แล้ว', d1.bound(), true);
+eq('ตอนโหลดยังไม่แตะสถานะที่เซิร์ฟเวอร์ส่งมา', d1.details.open, false);
+d1.change('custom');
+eq('เลือก "กำหนดวันที่เอง" → กางที่พับให้', d1.details.open, true);
+eq('เลือก "กำหนดวันที่เอง" → focus ไปช่องวันที่ช่องแรก', d1.dateInput.focusCount, 1);
+
+// 2. เปลี่ยนกลับเป็นเดือนปกติ → ห้ามปิดให้เอง
+const d2 = fakeDom({});
+d2.run();
+d2.change('custom');
+d2.change('2026-08');
+eq('เปลี่ยนกลับเป็นเดือนปกติ → ไม่ปิดที่พับให้เอง', d2.details.open, true);
+eq('เปลี่ยนกลับเป็นเดือนปกติ → ไม่ย้าย focus ซ้ำ', d2.dateInput.focusCount, 1);
+
+// ที่พับที่เซิร์ฟเวอร์กางมาแล้ว (มีช่องอื่นตั้งค่าอยู่) ต้องไม่ถูกปิดจากการเปลี่ยนเดือน
+const d3 = fakeDom({ open: true });
+d3.run();
+d3.change('2026-08');
+eq('ที่พับที่กางมาจากเซิร์ฟเวอร์ ไม่ถูกปิดเพราะเปลี่ยนเดือน', d3.details.open, true);
+eq('ไม่ใช่ custom → ไม่ focus ช่องวันที่', d3.dateInput.focusCount, 0);
+
+// 3. หน้าที่ไม่มี .morefld / ไม่มีช่องเดือน → เงียบ ไม่ throw
+[['ไม่มี details.morefld ในหน้า', { noDetails: true }],
+ ['ไม่มีช่องเดือนในหน้า', { noSelect: true }]].forEach((c) => {
+  let threw = '';
+  try { fakeDom(c[1]).run(); } catch (e) { threw = String(e && e.message); }
+  eq(c[0] + ' → ไม่ throw', threw, '');
+});
+
+// 4. เป็น enhancement ล้วน — ไม่มีบรรทัดไหนไปปิดที่พับหรือแก้ค่าในฟอร์ม
+eq('สคริปต์ไม่มีบรรทัดที่สั่งปิดที่พับ (open = false / removeAttribute)',
+  /open\s*=\s*false|removeAttribute\(\s*['"]open/.test(moreJs), false);
+eq('สคริปต์ไม่แก้ค่าของช่องกรองใด ๆ (.value =)', /\.value\s*=[^=]/.test(moreJs), false);
+
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);

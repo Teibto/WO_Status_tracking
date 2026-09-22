@@ -264,6 +264,18 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // จึงตั้ง flex:0 0 200px ไม่ให้หด ถ้าหดต่ำกว่า 170px ตัว input จะล้นกรอบของ .fld ออกมา
     + '.filterbar .rw-combobox{display:block;width:100%}'
     + '.filterbar .rw-combobox .rw-combobox-input{width:100%}'
+    // ── ที่พับ "ตัวกรองเพิ่มเติม" ของชั้นภาพรวม (issue #86) ───────────
+    // ตัวกรองรอง 5 ช่องเคยอยู่แถวเดียวกันกับแถวหลัก คั่นด้วย .brk — กินแนวตั้งไป 231px
+    // ทั้งที่ส่วนใหญ่ไม่ได้ถูกตั้ง · สถานะกาง/พับมาจาก attribute `open` ที่เซิร์ฟเวอร์ใส่มา ไม่ใช่ JS
+    // † ขอบเขตด้วย .morefld เท่านั้น — กฎ details{}/summary{} รวมด้านล่างเป็นของ
+    // หัวข้อพับในหน้าเจาะลึก แก้กฎรวมเมื่อไหร่หน้านั้นเปลี่ยนหน้าตาตามไปด้วย
+    + '.morefld{margin:var(--sp-3) 0 0}'
+    // width:fit-content ไม่ใช่ display:inline-block — <summary> มีสามเหลี่ยมเปิด/ปิด
+    // ได้เพราะ display เป็น list-item เปลี่ยน display เมื่อไหร่ marker หายทันที
+    // แล้วผู้ใช้จะไม่รู้ว่ากดตรงนี้แล้วมีช่องกรองเพิ่มมา
+    + '.morefld>summary{width:fit-content;padding:3px var(--sp-2);'
+    + 'font-size:var(--fs-sm);color:var(--pj-text-muted)}'
+    + '.morefld>.filterbar{margin-top:var(--sp-3)}'
     // ── ช่องวันที่ (references/date-field.md) ─────────────────────────────────
     // กรอบทั้งก้อนอยู่ที่ .datewrap ใบเดียว (border + focus-ring) · input กับปุ่มข้างในไม่มี
     // กรอบของตัวเอง ปุ่มมีแค่เส้นคั่น border-left · ค่าที่มองเห็น = DATEFORMAT ของบัญชี

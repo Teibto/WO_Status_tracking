@@ -1586,6 +1586,18 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const MAX_ROWS_DEFAULT = 200;
   const MAX_ROWS_HARD = 1000;
 
+  const SORT_OPTIONS = ['item', 'date', 'gap', 'unit'];
+
+  /**
+   * ค่าเริ่มต้นของตัวกรองหน้าภาพรวม — **นิยาม "ค่าเริ่มต้น" มีที่เดียวคือที่นี่** (issue #86)
+   *
+   * `readFilters` ใช้ตั้งค่าเมื่อ param ว่างหรืออ่านไม่ออก · `advancedFiltersOn` ใช้ตัดสินว่า
+   * ช่องไหน "ถูกตั้งไว้" จนที่พับ "ตัวกรองเพิ่มเติม" ต้องกางออกมาเอง · เขียนค่าซ้ำไว้สองที่
+   * เมื่อไหร่ ที่พับจะเริ่มโกหกทันทีที่ใครแก้ค่าเริ่มต้นข้างเดียว แล้วผู้ใช้จะอ่านตารางที่ถูกกรอง
+   * ไปแล้วโดยไม่เห็นว่าอะไรกรองอยู่ — อาการเดียวกับ "ตารางว่างที่อธิบายไม่ได้" ของ #77
+   */
+  const SUMMARY_DEFAULTS = { basis: 'woc', item: '', sort: SORT_OPTIONS[0], max: MAX_ROWS_DEFAULT };
+
   /** วันสุดท้ายของเดือน YYYY-MM */
   function endOfMonth(ym) {
     const mm = /^(\d{4})-(\d{2})$/.exec(asStr(ym));
@@ -1628,7 +1640,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       from: from,
       to: to,
       // จับช่วงวันที่จากใบปิดงานผลิตเป็นหลัก เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
-      basis: asStr(p.basis) === 'wo' ? 'wo' : 'woc',
+      basis: asStr(p.basis) === 'wo' ? 'wo' : SUMMARY_DEFAULTS.basis,
       item: asStr(p.item).trim(),
       wono: asStr(p.wono).trim(),
       // sub/loc เป็น internal id — ค่าที่มีอักขระอื่นปนคือ "ค่าที่ใช้ไม่ได้" ไม่ใช่ค่าที่ต้องขัดให้สะอาด
@@ -1640,9 +1652,29 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       // คำเตือนของค่าที่ทิ้งไป — ปลายทางเป็นคนวาด (renderSummaryPage) ที่นี่แค่บอกว่าเกิดอะไรขึ้น
       badParams: [subParam, locParam].filter(x => x.bad)
         .map(x => ({ name: x.name, label: x.label, raw: x.raw })),
-      sort: ['item', 'date', 'gap', 'unit'].indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : 'item',
-      max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || MAX_ROWS_DEFAULT))
+      sort: SORT_OPTIONS.indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : SUMMARY_DEFAULTS.sort,
+      max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || SUMMARY_DEFAULTS.max))
     };
+  }
+
+  /**
+   * ช่องใน "ตัวกรองเพิ่มเติม" (ที่พับของหน้าภาพรวม) ที่ถูกตั้งไว้ไม่ตรงค่าเริ่มต้น — คืนชื่อป้ายของช่องนั้น
+   *
+   * นับจาก `f` ที่ `readFilters` ทำให้เป็นค่ามาตรฐานแล้ว **ไม่ใช่จาก param ดิบ** ·
+   * `?sort=อะไรก็ไม่รู้` หรือ `?max=abc` ถูกปัดกลับเป็นค่าเริ่มต้นไปแล้ว จึงต้องไม่ทำให้ที่พับ
+   * กางโดยที่ผู้ใช้มองไม่เห็นว่าช่องไหนถูกตั้ง (หลักเดียวกับ `idParam` ของ #77)
+   *
+   * ช่อง "เดือน" ไม่นับที่นี่ เพราะมันอยู่แถวหลักที่มองเห็นตลอดอยู่แล้ว นับด้วยก็เป็นการรายงานซ้ำ ·
+   * แต่ "เดือน = กำหนดวันที่เอง" (`!f.month`) เป็น **เงื่อนไขกางแยกต่างหาก** ที่ `renderSummaryForm`
+   * ดูเอง เพราะช่องวันที่ที่ผู้ใช้ต้องกรอกอยู่ข้างในที่พับ
+   */
+  function advancedFiltersOn(f) {
+    const on = [];
+    if (asStr(f.item) !== SUMMARY_DEFAULTS.item) on.push('รหัสสินค้า');
+    if (f.basis !== SUMMARY_DEFAULTS.basis) on.push('จับจาก');
+    if (f.sort !== SUMMARY_DEFAULTS.sort) on.push('เรียงตาม');
+    if (Number(f.max) !== SUMMARY_DEFAULTS.max) on.push('ไม่เกิน');
+    return on;
   }
 
   /**
@@ -1985,6 +2017,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
     const monthOpts = monthChoices().map(ym =>
       `<option value="${ym}"${f.month === ym ? ' selected' : ''}>${esc(monthLabel(ym))}</option>`).join('');
+    // ที่พับ "ตัวกรองเพิ่มเติม" (issue #86) — **เซิร์ฟเวอร์เป็นคนตัดสินว่ากางหรือพับ ห้ามพึ่ง JS**
+    // JS พังเมื่อไหร่ ตัวกรองที่ตั้งค้างไว้ก็ต้องยังมองเห็น ไม่ใช่ซ่อนอยู่ในที่พับแล้วผู้ใช้
+    // อ่านตารางที่ถูกกรองไปแล้วเป็นตารางเต็ม (อาการเดียวกับ #77)
+    const advOn = advancedFiltersOn(f);
+    // `!f.month` = เลือก "— กำหนดวันที่เอง —" (นิพจน์เดียวกับที่ทำ selected ให้ option นั้น
+    // ด้านล่าง) — ช่องวันที่ที่ต้องกรอกอยู่ในที่พับ จึงกางเสมอ ไม่ว่าจะนับช่องอื่นได้กี่ช่อง
+    const advOpen = advOn.length > 0 || !f.month;
+    const advLabel = 'ตัวกรองเพิ่มเติม'
+      + (advOn.length ? ' · ตั้งไว้ ' + advOn.length + ' ช่อง' : '');
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
@@ -1992,30 +2033,6 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         <div class="fld" style="flex:0 0 190px">
           <label>เดือน</label>
           <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
-        </div>
-        <div class="fld" style="flex:0 0 330px">
-          <label>หรือระบุช่วงวันที่</label>
-          <div class="range">
-            ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
-            <span class="sep">ถึง</span>
-            ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
-          </div>
-        </div>
-        <div class="fld" style="flex:0 0 215px">
-          <label>จับจาก</label>
-          <select name="basis" class="rw-select">
-            <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
-            <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
-          </select>
-        </div>
-        <div class="brk"></div>
-        <div class="fld" style="flex:0 0 165px">
-          <label>รหัสสินค้า</label>
-          <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
-        </div>
-        <div class="fld" style="flex:0 0 185px">
-          <label>เลขที่ใบสั่งผลิต</label>
-          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
         </div>
         <div class="fld" style="flex:0 0 200px">
           <label>บริษัท</label>
@@ -2025,25 +2042,82 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <label>อาคารผลิต</label>
           <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
         </div>
-        <div class="brk"></div>
-        <div class="fld" style="flex:0 0 245px">
-          <label>เรียงตาม</label>
-          <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
-        </div>
-        <div class="fld" style="flex:0 0 110px">
-          <label>ไม่เกิน</label>
-          <div class="range">
-            <input type="text" name="max" value="${esc(String(f.max))}" inputmode="numeric">
-            <span class="sep">ใบ</span>
-          </div>
+        <div class="fld" style="flex:0 0 185px">
+          <label>เลขที่ใบสั่งผลิต</label>
+          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
         </div>
         <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button></div>
       </div>
+      <details class="morefld"${advOpen ? ' open' : ''}>
+        <summary>${esc(advLabel)}</summary>
+        <div class="filterbar">
+          <div class="fld" style="flex:0 0 330px">
+            <label>ช่วงวันที่เอง</label>
+            <div class="range">
+              ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
+              <span class="sep">ถึง</span>
+              ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
+            </div>
+          </div>
+          <div class="fld" style="flex:0 0 215px">
+            <label>จับจาก</label>
+            <select name="basis" class="rw-select">
+              <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
+              <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
+            </select>
+          </div>
+          <div class="fld" style="flex:0 0 165px">
+            <label>รหัสสินค้า</label>
+            <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
+          </div>
+          <div class="fld" style="flex:0 0 245px">
+            <label>เรียงตาม</label>
+            <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
+          </div>
+          <div class="fld" style="flex:0 0 110px">
+            <label>ไม่เกิน</label>
+            <div class="range">
+              <input type="text" name="max" value="${esc(String(f.max))}" inputmode="numeric">
+              <span class="sep">ใบ</span>
+            </div>
+          </div>
+        </div>
+      </details>
       <div class="sub" style="margin:var(--sp-3) 0 0">
         เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
-        · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
+        แล้วกรอกวันที่ใน "ตัวกรองเพิ่มเติม" · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
       </div>
-    </form>${renderListFieldScript()}`;
+    </form>${renderListFieldScript()}${renderMoreFiltersScript()}`;
+  }
+
+  /**
+   * เลือก "— กำหนดวันที่เอง —" → กางที่พับแล้วพาไปที่ช่องวันที่ (issue #86)
+   *
+   * **progressive enhancement ล้วน — ฝั่งเซิร์ฟเวอร์ไม่ได้พึ่งสคริปต์นี้เลย**
+   * `renderSummaryForm` ยังใส่ `open` เองเมื่อ `!f.month` หรือมีช่องในที่พับถูกตั้ง ต้องถูกแม้ JS พัง ·
+   * สคริปต์นี้ปิดช่องว่างเฉพาะ "จังหวะก่อน submit" — ผู้ใช้เพิ่งเลือก "กำหนดวันที่เอง" แต่ช่องวันที่
+   * ที่ต้องกรอกยังอยู่ในที่พับที่เซิร์ฟเวอร์ปิดมา — เจอทางตันโดยไม่มีอะไรบอกว่าต้องไปต่ออย่างไร
+   *
+   * เปลี่ยนกลับเป็นเดือนปกติ **ไม่ปิดที่พับให้เอง** — ผู้ใช้อาจเปิดค้างไว้หรือมีช่องอื่นตั้งค้างอยู่
+   * การปิดให้เองคือ "ตัวกรองซ่อนหาย" อีกแบบหนึ่ง ซึ่งเป็นสิ่งที่ #86 ตั้งใจกันตั้งแต่ต้น
+   *
+   * ทุก element ต้อง guard null — สคริปต์นี้ออกเฉพาะชั้นภาพรวม แต่ถ้าวันหนึ่งมีคนย้ายไปชั้นอื่น
+   * ที่ไม่มี `.morefld` มันต้องเงียบๆ ไม่ใช่ TypeError ที่หยุด JS ทั้งหน้า (รวมถึงคอมโบบ็อกซ์ด้วย)
+   */
+  function renderMoreFiltersScript() {
+    return `<script>
+(function(){
+  var box = document.querySelector('details.morefld');
+  var sel = document.querySelector('select[name="month"]');
+  if (!box || !sel) return;
+  sel.addEventListener('change', function(){
+    if (sel.value !== 'custom') return;
+    box.open = true;
+    var first = box.querySelector('input.dateinput');
+    if (first && first.focus) first.focus();
+  });
+})();
+<\/script>`;
   }
 
   /**

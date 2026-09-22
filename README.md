@@ -343,7 +343,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_qlog_scope.js` | query log สะสมข้าม request |
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |
-| `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) |
+| `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) · ที่พับ "ตัวกรองเพิ่มเติม" ไม่กางเองเมื่อมีตัวกรองข้างในถูกตั้งไว้ · ช่องในที่พับหลุดออกนอกฟอร์ม |
 | `test_datefield.js` | ช่องวันที่ของ WO Cost Trace — parse ไม่เป็น DATEFORMAT/ISO · มี `<input type=date>` · ใช้ `showPicker` |
 | `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |
 | `test_wostatus_cp_fixes.js` | CP4/CP6/CP7/CP8 ของ WO Status — ข้อมูลขาดขึ้นเขียว · CP8 ตายเป็น na · `lang` หลุดลง HTML |
