@@ -312,8 +312,15 @@ define(
       + 'th,td{border:0;border-bottom:1px solid var(--pj-border);padding:9px 10px;'
       + 'white-space:nowrap;vertical-align:middle}'
       + 'th{position:sticky;top:0;z-index:2;background:var(--pj-surface-alt)}'
-      // #80 — checkpoint แคบลง (74→46) ให้ 11 คอลัมน์พอดีจอโน้ตบุ๊ก · pill 30px + padding 4px
-      + 'th.cp,td.cp{text-align:center;width:46px;padding-left:4px;padding-right:4px}'
+      // #80 — checkpoint แคบลง + **หัวคอลัมน์ตัดบรรทัดได้** (ชื่อไทยยาวกว่า 46px มาก
+      // ถ้าปล่อย nowrap หัวจะเป็นตัวกำหนดความกว้างทั้งตาราง) ชื่อเต็มยังอยู่ใน data-tip
+      + 'th.cp{white-space:normal;line-height:1.15;vertical-align:bottom;'
+      + 'text-align:center;width:48px;padding-left:3px;padding-right:3px}'
+      + 'td.cp{text-align:center;width:48px;padding-left:4px;padding-right:4px}'
+      // ชื่อสินค้า/ไลน์ผลิตยาวได้ — ตัดด้วย ellipsis ไม่ให้เป็นตัวกวาดความกว้างทั้งตาราง
+      + '.ell{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}'
+      + '.ell-inline{display:inline-block;overflow:hidden;text-overflow:ellipsis;'
+      + 'white-space:nowrap;max-width:130px;vertical-align:middle}'
       // แถบเครื่องมือเหนือตาราง (ปุ่มขยาย/ย่อทั้งหมด) — #80
       + '.gridbar{display:flex;justify-content:flex-end;align-items:center;'
       + 'padding:var(--sp-2) var(--sp-5) 0}'
@@ -1511,7 +1518,7 @@ define(
     <span class="twist">▶</span>
     <strong>${escapeHtml(wo.woNumber || '')}</strong>
     <span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px">${escapeHtml(fmtDate(wo.woDate))}</span>
-    <div style="padding-left:18px;margin-top:2px">
+    <div style="padding-left:18px;margin-top:2px" class="ell">
       <span style="font-weight:600">${escapeHtml(wo.itemCode || '')}</span>
       <span style="color:var(--muted);font-weight:400"> · ${escapeHtml(wo.itemDisplayName || wo.itemName || '')}</span>
     </div>
@@ -1520,7 +1527,7 @@ define(
     </div>
   </td>
   <td>${escapeHtml(wo.locationName || '')}</td>
-  <td>${escapeHtml(wo.lineName || '')}</td>
+  <td><span class="ell-inline">${escapeHtml(wo.lineName || '')}</span></td>
   ${pillCells}
   <td style="text-align:center">${noteHtml}</td>
 </tr>
