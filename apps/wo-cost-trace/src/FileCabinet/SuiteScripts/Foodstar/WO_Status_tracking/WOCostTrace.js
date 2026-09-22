@@ -157,7 +157,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
              TASK.name                              AS task_no,
              TASK.altname                           AS task_name,
              TASK.custrecord_mfg_tm_releasedbatch   AS batch_id,
-             TASK.custrecord_mfg_tm_pro_qty         AS pro_qty
+             TASK.custrecord_mfg_tm_pro_qty         AS pro_qty,
+             -- ลำดับขั้นตอน/ขั้นสุดท้ายของ task ที่ใบนี้ผูกอยู่ (issue #77) — ใช้กันยอดราย batch
+             -- บวกข้ามขั้น · **เพิ่มคอลัมน์ใน SELECT อย่างเดียว** ห้ามแตะ WHERE/JOIN/GROUP BY
+             -- เพราะชุดแถวที่ query นี้คืนคือฐานของยอดที่ต้องเท่ากับชั้นภาพรวมทุกหลัก
+             TASK.custrecord_mfg_tm_operation_sequence AS op_seq,
+             TASK.custrecord_mfg_tm_last_task          AS last_task
       FROM transaction WOC
       JOIN transactionline TLM ON TLM.transaction = WOC.id AND TLM.mainline = 'T'
       LEFT JOIN customrecord_mfg_task_management TASK ON TASK.id = WOC.custbody_mfg_task_mgn_ref
@@ -313,6 +318,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const at = QLOG.length;
     const rows = runSQL(COST_PER_CARTON_FLAG_LABEL, `
       SELECT I.id                                            AS item_id,
+             I.cseg_subitemtype                              AS subtype_id,
              S.custrecord_subitemtype_r_costpercarton        AS cost_per_carton_flag
       FROM item I
       LEFT JOIN customrecord_cseg_subitemtype S ON S.id = I.cseg_subitemtype
@@ -320,8 +326,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     `);
     let failed = false;
     for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
-    const byItem = {};
-    rows.forEach(r => { byItem[asStr(r.item_id)] = asStr(r.cost_per_carton_flag); });
+    const byItem = {}, subtypeByItem = {};
+    rows.forEach(r => {
+      byItem[asStr(r.item_id)] = asStr(r.cost_per_carton_flag);
+      subtypeByItem[asStr(r.item_id)] = asStr(r.subtype_id);
+    });
     // log.audit ให้เห็นจาก Script Execution Log โดยไม่ต้องถามแอดมินว่า checkbox ถูกสร้างหรือยัง
     log.audit({
       title: COST_PER_CARTON_FLAG_LABEL,
@@ -330,15 +339,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + 'อาจยังไม่ถูกสร้างบนบัญชีนี้ · คิดต้นทุนต่อลังตามเดิมทั้งชุด'
         : 'อ่านได้ ' + rows.length + ' จาก ' + itemIds.length + ' รายการ'
     });
-    return { byItem: byItem, failed: failed };
+    return { byItem: byItem, subtypeByItem: subtypeByItem, failed: failed };
   }
 
   /**
    * ตัวหารต้นทุนต่อลังที่ใช้จริง (issue #54) — คิดครั้งเดียวที่นี่ แล้วปล่อยให้ปลายทาง
    * (flushGroup / unitCell / SUMMARY_EXPORT_COLS / renderTotals) ใช้ `cartons` ตามเดิม
    *
-   *   flag 'T'        → คิดตามเดิม (÷ custitem_item_basepercarton)
-   *   flag 'F'        → conversion = 1 (ไม่คิดต่อลัง)
+   *   flag 'T' + ตั้ง bpc   → ÷ custitem_item_basepercarton
+   *   flag 'T' ไม่ตั้ง bpc  → conversion = 1 **ไม่เตือน** (ติ๊กแล้ว bpc ไม่ใช่ข้อมูลบังคับ)
+   *   flag 'F'              → conversion = 1 (ไม่คิดต่อลัง)
    *   อ่านไม่ได้/ไม่ได้ตั้ง → คิดตามเดิม + หมายเหตุ — ห้ามตกไปทาง conversion 1 เด็ดขาด
    *     (เลขต่อลังที่ผิดมองออกด้วยตา แต่ conversion 1 จาก flag อ่านไม่ได้แยกไม่ออกจาก
    *     สินค้าที่ตั้งใจไม่คิดต่อลัง — กับดักเดียวกับ subsidiary ว่าง = fail-open ของ BomRestrict)
@@ -353,10 +363,28 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     }
     const flag = asStr(f.byItem[asStr(itemId)]);
     if (flag === 'F') return { bpcEff: 1, flag: flag, note: null };
-    if (flag === 'T') return { bpcEff: bpc, flag: flag, note: null };
+    if (flag === 'T') {
+      // ติ๊กช่อง "Report - Cost per Carton" แล้ว `custitem_item_basepercarton` ไม่ใช่ข้อมูลบังคับ
+      // ไม่ได้ตั้งไว้ → conversion = 1 และ **ไม่ต้องเตือน** (เจ้าของงานกำหนด 2026-09-22)
+      // ⚠ ผ่อนได้เฉพาะเคสที่อ่าน flag สำเร็จ **และได้ค่า 'T' จริง** เท่านั้น — เคสอ่านไม่ได้
+      // หรือไม่ได้ตั้งประเภทย่อยสินค้า ยังห้ามตกไปทาง conversion 1 เหมือนเดิม (ดูหัวฟังก์ชัน)
+      return { bpcEff: bpc || 1, flag: flag, note: null };
+    }
+    // flag ว่างเกิดได้สองแบบ และทางแก้ของผู้ใช้คนละทางกัน — บอกผิดแบบจะถูกส่งไปตั้งค่าที่ตั้งอยู่แล้ว
+    //   (ก) สินค้าไม่ได้ตั้ง `cseg_subitemtype` เลย
+    //   (ข) ตั้งประเภทย่อยไว้แล้ว แต่ checkbox บนประเภทย่อยนั้นยังว่าง (ยังไม่มีใครติ๊ก)
+    // บน SB1 (2026-09-22) เคส (ข) คือเคสหลัก: ประเภทย่อย 37 แถว ว่าง 30 แถว ขณะที่สินค้า
+    // ที่ไม่ได้ตั้งประเภทย่อยเลยมีแค่ 15 จาก 6,799 ตัว
+    // ทั้งสองเคสยังคืน bpc ดิบ + เตือนเหมือนเดิม — ห้ามตกไปทาง conversion 1
+    const hasSubtype = asStr((f.subtypeByItem || {})[asStr(itemId)]) !== '';
     return {
       bpcEff: bpc, flag: flag,
-      note: { cls: 'warn', text: 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม' }
+      note: {
+        cls: 'warn',
+        text: hasSubtype
+          ? 'ประเภทย่อยสินค้าของสินค้านี้ยังไม่ได้ติ๊ก Report - Cost per Carton — คิดต้นทุนต่อลังตามเดิม'
+          : 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม'
+      }
     };
   }
 
@@ -507,6 +535,47 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     `);
   }
 
+  /**
+   * batch ที่ปล่อยงานแล้วของใบสั่งผลิต — อ่านจาก task record ตรง ๆ ไม่ผ่านใบปิดงาน (issue #77)
+   *
+   * ทำไมต้องมี: `qCompletions` เห็น batch ได้ผ่าน WOC เท่านั้น · WO ที่แตก 19 batch แต่ปิดงาน
+   * ไปแล้ว 5 batch จึงแสดงได้แค่ 5 กลุ่ม ทั้งที่คำถามของผู้ใช้คือ "ใบนี้แตกกี่ batch เดินไปกี่ batch"
+   * (ตรวจบน SB1: WO-FSC-00001293 = task 19 ใบ · batch 4423–4441 · ใบปิดงาน 5 ใบ)
+   *
+   * ⚠ **ใช้แสดงผลอย่างเดียว** ห้ามเอาไปเป็นตัวตั้ง/ตัวหารของต้นทุนใด ๆ และไม่แตะชั้นภาพรวม —
+   * ยอดทุกช่องยังมาจากชุด query เดิมทั้งหมด กติกา "ยอดสองชั้นต้องเท่ากัน" จึงไม่ถูกแตะ
+   *
+   * ⚠ `custrecord_mfg_tm_operation_sequence` · `custrecord_mfg_tm_last_task` ·
+   * `custrecord_mfg_previous_task` ยืนยันจากการอ่าน record จริงบน 9751184_SB1 (มีค่าจริงทุกตัว)
+   * ไม่ใช่ชื่อที่เดาจาก pattern — ต้องมีเพราะ `pro_qty`/`good_qty` เป็น **ก้อนเดียวกันที่ไหลผ่าน
+   * ขั้นตอน** (`pro_qty` ของขั้น N = `good_qty` ของขั้น N−1) บวกข้ามขั้นเมื่อไหร่ยอดเฟ้อทันที
+   * เช่น batch 1,000 ที่มี 3 ขั้นจะกลายเป็น 3,000 · พิสูจน์บนบัญชีแล้วว่ายอดบน WO เท่ากับ
+   * `SUM(pro_qty WHERE op_seq = 1)` 520/520 ใบ และเท่ากับ `SUM(pro_qty ทั้งหมด)` 0/520 ใบ
+   * (ห้ามใช้ MAX ด้วย — good ของขั้นถัดไปมากกว่าแผนของขั้นแรกได้ เจอจริงที่ WO 183294)
+   *
+   * คืน `{ rows, failed }` แบบเดียวกับ `qCostPerCartonFlags` — คำสั่งพังต้องอ่านเป็น
+   * "อ่านรายการ batch ไม่สำเร็จ" ไม่ใช่ "0 batch" (กติกาเดิมของไฟล์นี้)
+   */
+  function qTasks(woIds) {
+    if (!woIds.length) return { rows: [], failed: false };
+    const at = QLOG.length;
+    const rows = runSQL('งานที่ปล่อยราย batch (task)', `
+      SELECT TM.custrecord_mfg_tm_wo                   AS wo_id,
+             TM.custrecord_mfg_tm_releasedbatch        AS batch_id,
+             TM.custrecord_mfg_tm_pro_qty              AS pro_qty,
+             TM.custrecord_mfg_tm_good_qty             AS good_qty,
+             TM.custrecord_mfg_tm_operation_sequence   AS op_seq,
+             TM.custrecord_mfg_tm_last_task            AS last_task,
+             TM.custrecord_mfg_previous_task           AS prev_task
+      FROM customrecord_mfg_task_management TM
+      WHERE TM.custrecord_mfg_tm_wo IN (${inList(woIds)})
+      ORDER BY TM.custrecord_mfg_tm_releasedbatch, TM.id
+    `);
+    let failed = false;
+    for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
+    return { rows: rows, failed: failed };
+  }
+
   /** เอกสารหนึ่งใบอ้างถึงกี่ใบสั่งผลิต — ใช้เตือนว่ายอด WIP ของใบนั้นรวม WO อื่นด้วย */
   function qDocWoRefs(tranIds) {
     if (!tranIds.length) return [];
@@ -563,7 +632,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const w = [`WO.recordtype = 'workorder'`, `TL.mainline = 'T'`, `TL.taxline = 'F'`];
     const p = [];
     if (f.wono) {
-      w.push(`UPPER(WO.tranid) LIKE ?`);
+      // ตัดขีดทั้งสองฝั่งเหมือน qWO ของชั้นเจาะลึก (#77 ข้อ B5) — ของเดิมเทียบ tranid ตรง ๆ
+      // ทำให้พิมพ์ `WOFSC00001293` ที่ชั้นภาพรวมไม่เจอ ทั้งที่ชั้นเจาะลึกเจอ (สองชั้นตอบไม่ตรงกัน)
+      // ยังเป็น LIKE %…% เหมือนเดิม เพื่อคงพฤติกรรม "ค้นบางส่วน" ของช่องนี้ไว้
+      w.push(`REPLACE(UPPER(WO.tranid), '-', '') LIKE REPLACE(?, '-', '')`);
       p.push('%' + f.wono.toUpperCase() + '%');
     } else if (f.basis === 'woc') {
       w.push(`EXISTS (
@@ -954,6 +1026,223 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   }
 
   /**
+   * ใบปิดงานผลิตของ WO นี้อยู่ batch ไหน — ตัวเดียวที่ทุกที่ใช้ร่วมกัน (issue #77)
+   *
+   * เดิมแผนที่นี้ถูกสร้างอยู่ใน `explainSummaryGap` ซึ่งทำงาน**เฉพาะตอนสมการไม่ปิด** ·
+   * ตารางใบปิดงานผลิตต้องจัดกลุ่มตาม batch ได้ทุกกรณี จึงยกออกมาไว้ที่นี่แล้วให้ทั้งสองฝั่ง
+   * เรียกตัวเดียวกัน — ก๊อปตรรกะไปไว้สองที่เมื่อไหร่ สองที่จะตอบคนละอย่างเรื่อง batch ของใบเดียวกัน
+   *
+   * ⚠ คีย์เป็น `asStr(batch_id)` ซึ่งทำให้ WOC ที่ไม่มี batch ได้คีย์ `''` (สตริงว่าง ไม่ใช่ null)
+   * ต้องคงไว้แบบนี้ เพราะ `explainSummaryGap` ใช้ `b == null` แยก "หา batch ไม่ได้" ออกจาก
+   * "batch ว่าง" และ `renderSummaryGapBreakdown` พึ่งความเป็น falsy ของ `''` ในการขึ้นคำเตือน
+   *
+   * `batch_id` เป็น internal id ของ task record (`custrecord_mfg_tm_releasedbatch` — ไม่ได้ผ่าน
+   * BUILTIN.DF ที่ `qCompletions`) จึงเป็นเลข ไม่ใช่ชื่อ batch · แสดงตามที่ query คืนมาเหมือน
+   * คอลัมน์ batch เดิม ห้ามเดาชื่อให้
+   */
+  /** ผลรวมช่องเดียวของแถวชุดหนึ่ง — ใช้กับแถวที่คัดขั้นตอนมาแล้วเท่านั้น */
+  function sumOf(rows, key) {
+    let t = 0;
+    (rows || []).forEach(r => { t += asNum(r[key]); });
+    return t;
+  }
+
+  /**
+   * แถว "ขั้นแรก" ของ batch — ฐานของยอดแผน (issue #77)
+   *
+   * `pro_qty` เป็นก้อนเดียวกันที่ไหลผ่านสายผลิต (`pro_qty` ขั้น N = `good_qty` ขั้น N−1)
+   * ยอดแผนของ batch จึงเป็นของ**ขั้นแรกขั้นเดียว** · ตรวจกับบัญชีจริง: ยอดบนใบสั่งผลิตเท่ากับ
+   * `SUM(pro_qty WHERE op_seq = 1)` 520/520 ใบ · เท่ากับ `SUM(pro_qty ทั้งหมด)` 0/520 ใบ
+   * ตัวอย่าง WO-FSC-00000216 batch 2888 (3 ขั้น) pro = 96,000 / 104,698 / 93,424 → แผนคือ 96,000
+   *
+   * ลำดับการตัดสิน: `operation_sequence` → แถวที่ไม่มี `previous_task` → มีแถวเดียวก็คือขั้นนั้น
+   * ตัดสินไม่ได้ให้คืน `null` เพื่อให้ปลายทางแสดงว่า "ไม่ทราบ" — **ห้ามเดาเป็น SUM หรือ MAX**
+   * (MAX ก็ผิด: good ของขั้นถัดไปมากกว่าแผนขั้นแรกได้ เจอจริงที่ WO 183294 op2 152,110 > op1 146,160)
+   */
+  function firstStepRows(rows) {
+    const list = rows || [];
+    if (!list.length) return null;
+    const withSeq = list.filter(r => asStr(r.op_seq) !== '');
+    if (withSeq.length) {
+      let min = null;
+      withSeq.forEach(r => { const n = asNum(r.op_seq); if (min === null || n < min) min = n; });
+      return withSeq.filter(r => asNum(r.op_seq) === min);
+    }
+    // ถอยไปดู previous_task ได้เฉพาะตอนที่ field มีค่ามาจริงบางแถว — ถ้าว่างทุกแถวแปลว่า
+    // ไม่ได้ดึงมา/ไม่มีค่า ไม่ใช่ "ทุกแถวเป็นขั้นแรก"
+    const noPrev = list.filter(r => asStr(r.prev_task) === '');
+    if (noPrev.length && noPrev.length < list.length) return noPrev;
+    if (list.length === 1) return list;
+    return null;
+  }
+
+  /**
+   * แถว "ขั้นสุดท้าย" ของ batch — ฐานของยอดดี (issue #77)
+   *
+   * `good_qty` ของขั้นสุดท้ายคือของที่ผลิตได้จริงของ batch นั้น · บนบัญชีมี 134 จาก 192 batch
+   * ที่ `good_qty` เท่ากันทั้งสามขั้น (ไม่มีของเสีย) บวกข้ามขั้นเมื่อไหร่เฟ้อสามเท่าทันที
+   *
+   * ลำดับการตัดสิน: `last_task='T'` → `operation_sequence` มากสุด → ทุกแถวอยู่ขั้นเดียวกัน
+   * ตัดสินไม่ได้คืน `null` ให้ปลายทางแสดงว่า "ไม่ทราบ"
+   */
+  function lastStepRows(rows) {
+    const list = rows || [];
+    if (!list.length) return null;
+    const flagged = list.filter(r => asStr(r.last_task) === 'T');
+    if (flagged.length) return flagged;
+    const withSeq = list.filter(r => asStr(r.op_seq) !== '');
+    if (withSeq.length) {
+      let max = null;
+      withSeq.forEach(r => { const n = asNum(r.op_seq); if (max === null || n > max) max = n; });
+      return withSeq.filter(r => asNum(r.op_seq) === max);
+    }
+    if (list.length === 1) return list;
+    // ไม่มีข้อมูลขั้นตอนเลย แต่ทุกใบอยู่ขั้นเดียวกัน → บวกกันได้ ไม่มีความเสี่ยงข้ามขั้น
+    const steps = uniq(list.map(r => asStr(r.task_no) || asStr(r.task_name)));
+    if (steps.length === 1) return list;
+    return null;
+  }
+
+  /**
+   * ใบปิดงานที่อยู่ขั้นเดียวกับ `stepRows` (ชุดแถวขั้นสุดท้ายที่มาจากฝั่ง task)
+   * จับคู่ด้วยธง `last_task` ก่อน แล้วค่อยใช้ `op_seq` — ตรงกับลำดับที่ `lastStepRows` ใช้ตัดสิน
+   * คืน [] เมื่อขั้นนั้นยังไม่มีใบปิดงาน (คนละความหมายกับ "ตัดสินขั้นไม่ได้")
+   */
+  function wocsOnStep(wocs, stepRows) {
+    const list = wocs || [], step = stepRows || [];
+    if (!list.length || !step.length) return [];
+    if (step.filter(r => asStr(r.last_task) === 'T').length === step.length) {
+      const flagged = list.filter(w => asStr(w.last_task) === 'T');
+      if (flagged.length) return flagged;
+      // ใบปิดงานไม่ได้ติดธงมา (เช่น task ถูกแก้ทีหลัง) — ถอยไปเทียบด้วยลำดับขั้น
+    }
+    const seqs = {};
+    step.forEach(r => { if (asStr(r.op_seq) !== '') seqs[asNum(r.op_seq)] = true; });
+    if (!Object.keys(seqs).length) return [];
+    return list.filter(w => asStr(w.op_seq) !== '' && seqs[asNum(w.op_seq)]);
+  }
+
+  function batchIndex(wocs) {
+    const batchByWoc = {}, wocsByBatch = {}, order = [];
+    (wocs || []).forEach(w => {
+      const b = asStr(w.batch_id);
+      batchByWoc[asStr(w.woc_id)] = b;
+      if (!wocsByBatch[b]) { wocsByBatch[b] = []; order.push(b); }
+      wocsByBatch[b].push(w);
+    });
+    return { batchByWoc: batchByWoc, wocsByBatch: wocsByBatch, order: order };
+  }
+
+  /**
+   * ใบปิดงานผลิตแตกเป็นกลุ่มราย batch พร้อมยอดรวมและสถานะการผูกใบ MFG Summary Cost (issue #77)
+   *
+   * นิยามที่ใช้ — ตรงกับที่ชั้นภาพรวมใช้ ไม่ใช่ของใหม่
+   *   "ปิดงานแล้ว" = batch นั้นมีใบปิดงานที่**ปริมาณ ≠ 0** อย่างน้อยหนึ่งใบ
+   *                  (WOC เกิดต่อขั้นตอน ใบขั้นกลางปริมาณ 0 ไม่ได้ตีราคา — ดู `qCompletions`)
+   *   "ธงแดง"     = batch ที่ปิดงานแล้วแต่มีใบปิดงานที่ยังไม่มีใบ summary cost ผูก
+   *
+   * ⚠ ตัวตัดสินธงคือ **การผูก** ไม่ใช่จำนวนใบ · และต้องอ่านจาก `s.summaryLink.unlinkedWocs`
+   * ตัวเดียวกับที่ชั้น WO ใช้ ไม่ใช่เขียนเงื่อนไข "sc_ia อยู่ในชุดใบ summary cost" ซ้ำที่นี่
+   * ไม่งั้นวันหนึ่งสองระดับจะตอบคนละอย่างกับใบเดียวกัน ซึ่งเป็นอาการที่ #77 ตั้งใจกัน
+   *
+   * กลุ่มมาจากสองทางรวมกัน (issue #77 ข้อ A1)
+   *   task record → batch ที่**ปล่อยงานแล้ว** แม้ยังไม่มีใบปิดงานเลย (`released`)
+   *   ใบปิดงาน   → batch ที่มีความเคลื่อนไหวจริง
+   * batch ที่ปล่อยงานแล้วแต่ยังไม่ปิดงาน = "ยังไม่ปิดงาน" **ไม่ใช่ธงแดง** (เป็นงานที่ยังไม่ถึงคิว
+   * ไม่ใช่ข้อมูลผิด) · ธงแดงสงวนไว้ให้ batch ที่ปิดงานแล้วแต่ไม่มีใบ summary cost ผูกเท่านั้น
+   *
+   * ⚠ ธงต้องตัดสินจาก **ใบขั้นสุดท้ายเท่านั้น** — ใบขั้นกลางมี `sc_ia` เป็น null ตามปกติของระบบ
+   * ถ้าเอาไปนับด้วย ทุก batch ที่มีหลายขั้นตอนจะขึ้นธงแดงปลอม · ที่นี่คัดด้วย `fg_qty !== 0`
+   * ซึ่งเป็นตัวกรองเดียวกับที่ `summaryLink()` ใช้ และตรวจกับบัญชีแล้วว่าสอดคล้องกับ
+   * `last_task = 'T'` ทุกใบ (fg_qty = 0 บนใบที่ไม่ใช่ขั้นสุดท้าย 384/384 · ไม่เป็น 0 บนใบ
+   * ขั้นสุดท้าย 686/686 · `custbody_mfg_adjsummarycost` เป็น null 384/384 และมีค่า 686/686)
+   */
+  function batchGroups(s) {
+    const idx = batchIndex(s.wocs);
+    const lk = s.summaryLink || { unlinkedWocs: [] };
+    const unlinked = {};
+    (lk.unlinkedWocs || []).forEach(w => { unlinked[asStr(w.woc_id)] = true; });
+
+    // ลำดับกลุ่ม: batch ที่ปล่อยงานแล้วก่อน (ตามลำดับที่ query คืนมา) แล้วค่อยต่อด้วย batch
+    // ที่โผล่จากใบปิดงานแต่ไม่มี task (รวมถึงกลุ่ม "ไม่ระบุ batch") — ห้ามมีกลุ่มไหนหายไป
+    const released = {};
+    const order = [];
+    (s.tasks || []).forEach(t => {
+      const b = asStr(t.batch_id);
+      if (!released[b]) { released[b] = []; order.push(b); }
+      released[b].push(t);
+    });
+    idx.order.forEach(b => { if (!released[b]) order.push(b); });
+
+    const groups = order.map(key => {
+      const wocs = idx.wocsByBatch[key] || [];
+      const tasks = released[key] || [];
+      // แผน = ขั้นแรกเท่านั้น · ดี = ขั้นสุดท้ายเท่านั้น (ห้ามบวกข้ามขั้น — ดูหัว qTasks)
+      // อ่านจากฝั่ง task ก่อนเพราะครบกว่า (มีแม้ batch ที่ยังไม่มีใบปิดงาน)
+      // แล้วถอยมาใช้ฝั่งใบปิดงานเมื่อไม่มีแถว task ให้ใช้
+      const planRows = firstStepRows(tasks) || firstStepRows(wocs);
+      // ⚠ "ขั้นสุดท้ายของ batch" ต้องตัดสินจากฝั่ง **task** ก่อนเสมอ ไม่ใช่จากชุดใบปิดงาน
+      // ที่มีอยู่ — `lastStepRows(wocs)` ตอบได้แค่ "ขั้นสูงสุดเท่าที่ปิดไปแล้ว" · batch ที่มี
+      // op1+op2 แต่ปิดงานแค่ op1 จะได้ ดี = good ของ op1 ทั้งที่ขั้นสุดท้ายยังไม่ปิด แล้วขัดกับ
+      // closed=false / รับเข้าคลัง = 0 ในหน้าเดียวกัน และไม่ตรงกับชั้นภาพรวม
+      const lastTasks = lastStepRows(tasks);
+      let goodRows = null, goodPending = false;
+      if (lastTasks) {
+        const onLast = wocsOnStep(wocs, lastTasks);
+        if (onLast.length) goodRows = onLast;
+        else goodPending = true;          // ขั้นสุดท้ายยังไม่มีใบปิดงาน = "ยังไม่ปิดงาน" ไม่ใช่เลขของขั้นกลาง
+      } else {
+        goodRows = lastStepRows(wocs);    // ไม่มีข้อมูล task เลย — ได้แค่ขั้นสูงสุดเท่าที่เห็น
+      }
+      const g = {
+        key: key, wocs: wocs, tasks: tasks.length, released: tasks.length > 0,
+        // null = ตัดสินขั้นไม่ได้ → ต้องแสดงว่า "ไม่ทราบ" ห้ามกลายเป็นเลขศูนย์หรือยอดรวมข้ามขั้น
+        plan: planRows ? sumOf(planRows, 'pro_qty') : null,
+        good: goodRows ? sumOf(goodRows, 'good_qty') : null,
+        // แยกสองสาเหตุที่ไม่มีเลข: ยังไม่ปิดขั้นสุดท้าย (รู้ว่าขั้นไหน) กับ ตัดสินขั้นไม่ได้
+        goodPending: goodPending,
+        scrap: 0, fg: 0, fgWocs: 0, unlinkedWocs: 0, scDocs: []
+      };
+      // ของเสียของแต่ละขั้นเป็นคนละก้อน และใบที่ไม่ใช่ขั้นสุดท้ายมี fg_qty = 0 อยู่แล้ว
+      // สองช่องนี้จึงบวกข้ามขั้นได้ (ตรวจกับของจริง: ขั้น2 เสีย 11,274 · 104,698−11,274 = ดีของขั้น3)
+      wocs.forEach(w => {
+        g.scrap += asNum(w.scrap_qty); g.fg += asNum(w.fg_qty);
+        if (asNum(w.fg_qty) === 0) return;              // ใบขั้นกลาง ไม่นับเป็นรอบที่ปิดงาน
+        g.fgWocs++;
+        if (unlinked[asStr(w.woc_id)]) g.unlinkedWocs++;
+        else g.scDocs.push(asStr(w.sc_ia));
+      });
+      g.closed = g.fgWocs > 0;
+      g.flagged = g.closed && g.unlinkedWocs > 0;
+      g.scDocs = uniq(g.scDocs);
+      // ยอดแผนของ batch ที่ยังไม่มีใบปิดงานเลย ใช้ช่องเดียวกัน — ไม่มีเลขคนละชุดให้สับสน
+      g.releasedPlan = g.plan;
+      return g;
+    });
+
+    // ⚠ กลุ่ม "ไม่ระบุ batch" **ไม่ใช่ batch** — เป็นใบปิดงานที่ระบุ batch ไม่ได้
+    // จึงห้ามนับรวมใน "แตกกี่ batch / ปิดงานแล้วกี่ batch" ไม่งั้น WO ที่แตก 19 batch
+    // แล้วมี WOC หลุด batch หนึ่งใบจะรายงานว่าแตก 20 batch · แต่กลุ่มนี้ยังต้องมีแถว
+    // มียอดรวม และขึ้นธงของตัวเองตามปกติ (ห้ามหายเงียบ ๆ)
+    const real = groups.filter(g => g.key !== '');
+    const unbatched = groups.filter(g => g.key === '')[0] || null;
+    return {
+      groups: groups,
+      groupCount: groups.length,
+      batches: real.length,
+      releasedBatches: groups.filter(g => g.released).length,
+      wocCount: (s.wocs || []).length,
+      unbatchedWocs: unbatched ? unbatched.wocs.length : 0,
+      closedBatches: real.filter(g => g.closed).length,
+      // ธงนับทุกกลุ่มรวมกลุ่มที่ไม่ระบุ batch ด้วย — ปัญหาต้นทุนที่ยังไม่ถูกสรุปไม่ได้หายไป
+      // เพราะระบุ batch ไม่ได้ · ข้อความจึงใช้คำว่า "กลุ่ม" ไม่ใช่ "batch"
+      flaggedBatches: groups.filter(g => g.flagged).length,
+      // อ่านรายการ batch ที่ปล่อยงานไม่สำเร็จ ≠ "ไม่มี batch" — ปลายทางต้องบอกผู้ใช้ให้รู้
+      tasksFailed: !!s.tasksFailed
+    };
+  }
+
+  /**
    * แยกส่วนผลต่าง summary cost — ชี้ว่าผลต่างมาจากการนับยอดใบเบิกวัตถุดิบซ้ำหรือไม่
    *
    * เคสที่ผู้ใช้ชี้ (WO-FSC-00000227 บน SB1) ฝั่งสร้างใบ summary cost คิดยอดแต่ละใบเป็น
@@ -979,13 +1268,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     })();
 
     // ต้นทุนแปรสภาพต่อ batch — เอกสารปันส่วนอ้าง WOC ราย ขั้นตอน ซึ่งผูก batch อยู่แล้ว
-    const batchByWoc = {}, wocsByBatch = {};
-    (s.wocs || []).forEach(w => {
-      const b = asStr(w.batch_id);
-      batchByWoc[asStr(w.woc_id)] = b;
-      if (!wocsByBatch[b]) wocsByBatch[b] = [];
-      wocsByBatch[b].push(w);
-    });
+    // แผนที่ batch ยกไปเป็น `batchIndex()` แล้ว (issue #77) ตารางใบปิดงานผลิตใช้ตัวเดียวกันนี้
+    const batchByWoc = batchIndex(s.wocs).batchByWoc;
     const convByBatch = {};
     (s.ca || []).forEach(r => {
       if (asNum(r.cost_class) === CLASS_WIP) return;  // ยอดรวม ไม่ใช่องค์ประกอบ
@@ -1136,6 +1420,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       rmTotal: rmTotal,
       produced: produced,
       wocs: wocs,
+      // batch ที่ปล่อยงานแล้ว (issue #77) — ใช้ตอบ "แตกกี่ batch เดินไปกี่ batch" เท่านั้น
+      // `tasksFailed` ต้องเดินทางมาด้วย เพื่อให้ปลายทางแยก "ไม่มี batch" ออกจาก "อ่านไม่สำเร็จ"
+      tasks: (ctx.tasksByWO || {})[woId] || [],
+      tasksFailed: !!(ctx && ctx.tasksFailed),
       ca: ca,
       convStd: convStd,
       convAct: convAct,
@@ -1154,6 +1442,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     const woRows = qWO(woKey);
     if (!woRows.length) { m.notFound = true; return m; }
+    // เลขที่เอกสารเทียบแบบตัดขีด (#77 ข้อ B5) จึงชนกันได้ — `qWO` เรียงให้ใบที่ตรงตัวมาก่อนแล้ว
+    // แต่ห้ามเลือกใบให้เงียบ ๆ ต้องบอกบนหน้าว่ากำกวมและกำลังแสดงใบไหน
+    if (woRows.length > 1) {
+      m.ambiguous = {
+        count: woRows.length,
+        picked: asStr(woRows[0].wo_no),
+        others: woRows.slice(1).map(r => asStr(r.wo_no))
+      };
+    }
     const rootId = asStr(woRows[0].wo_id);
 
     // ─── รอบที่ 1: WO แม่ ─────────────────────────────────────────────────
@@ -1203,6 +1500,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     ctx.woLinesByWO = groupBy(lines, 'wo_id');
     ctx.wocByWO = groupBy(wocs, 'wo_id');
     ctx.caByWO = groupBy(cas, 'wo_id');
+    // batch ที่ปล่อยงานแล้ว (issue #77) — แสดงผลอย่างเดียว ไม่ได้เข้าไปในสูตรต้นทุนช่องไหน
+    const tasks = qTasks(woIds);
+    ctx.tasksByWO = groupBy(tasks.rows, 'wo_id');
+    ctx.tasksFailed = tasks.failed;
     lots.forEach(l => {
       const k = asStr(l.tran_id) + ':' + asStr(l.line_id);
       if (!ctx.lotsByLine[k]) ctx.lotsByLine[k] = [];
@@ -1308,6 +1609,18 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const MAX_ROWS_DEFAULT = 200;
   const MAX_ROWS_HARD = 1000;
 
+  const SORT_OPTIONS = ['item', 'date', 'gap', 'unit'];
+
+  /**
+   * ค่าเริ่มต้นของตัวกรองหน้าภาพรวม — **นิยาม "ค่าเริ่มต้น" มีที่เดียวคือที่นี่** (issue #86)
+   *
+   * `readFilters` ใช้ตั้งค่าเมื่อ param ว่างหรืออ่านไม่ออก · `advancedFiltersOn` ใช้ตัดสินว่า
+   * ช่องไหน "ถูกตั้งไว้" จนที่พับ "ตัวกรองเพิ่มเติม" ต้องกางออกมาเอง · เขียนค่าซ้ำไว้สองที่
+   * เมื่อไหร่ ที่พับจะเริ่มโกหกทันทีที่ใครแก้ค่าเริ่มต้นข้างเดียว แล้วผู้ใช้จะอ่านตารางที่ถูกกรอง
+   * ไปแล้วโดยไม่เห็นว่าอะไรกรองอยู่ — อาการเดียวกับ "ตารางว่างที่อธิบายไม่ได้" ของ #77
+   */
+  const SUMMARY_DEFAULTS = { basis: 'woc', item: '', sort: SORT_OPTIONS[0], max: MAX_ROWS_DEFAULT };
+
   /** วันสุดท้ายของเดือน YYYY-MM */
   function endOfMonth(ym) {
     const mm = /^(\d{4})-(\d{2})$/.exec(asStr(ym));
@@ -1335,6 +1648,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw
       : (custom || fromIso || toIso ? '' : today.substring(0, 7));
 
+    const subParam = idParam('sub', 'บริษัท', p.sub);
+    const locParam = idParam('loc', 'สถานที่ผลิต', p.loc);
+
     let from, to;
     if (month) { from = month + '-01'; to = endOfMonth(month); }
     else {
@@ -1347,13 +1663,65 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       from: from,
       to: to,
       // จับช่วงวันที่จากใบปิดงานผลิตเป็นหลัก เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
-      basis: asStr(p.basis) === 'wo' ? 'wo' : 'woc',
+      basis: asStr(p.basis) === 'wo' ? 'wo' : SUMMARY_DEFAULTS.basis,
       item: asStr(p.item).trim(),
       wono: asStr(p.wono).trim(),
-      sub: asStr(p.sub).replace(/[^0-9]/g, ''),
-      loc: asStr(p.loc).replace(/[^0-9]/g, ''),
-      sort: ['item', 'date', 'gap', 'unit'].indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : 'item',
-      max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || MAX_ROWS_DEFAULT))
+      // sub/loc เป็น internal id — ค่าที่มีอักขระอื่นปนคือ "ค่าที่ใช้ไม่ได้" ไม่ใช่ค่าที่ต้องขัดให้สะอาด
+      // (ดู idParam) · ของเดิมกรองเหลือแต่ตัวเลข ทำให้ `?sub=<script>alert(1)</script>`
+      // กลายเป็น sub=1 แล้วหน้ารายงานกรองด้วย "บริษัท FS Group" เงียบ ๆ โดยผู้ใช้ไม่ได้เลือก
+      // — ปลอดภัย (ทุกช่องผ่าน esc) แต่เป็น "ตารางที่อธิบายไม่ได้" ซึ่งเป็นโจทย์ของ #77 เอง
+      sub: subParam.value,
+      loc: locParam.value,
+      // คำเตือนของค่าที่ทิ้งไป — ปลายทางเป็นคนวาด (renderSummaryPage) ที่นี่แค่บอกว่าเกิดอะไรขึ้น
+      badParams: [subParam, locParam].filter(x => x.bad)
+        .map(x => ({ name: x.name, label: x.label, raw: x.raw })),
+      sort: SORT_OPTIONS.indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : SUMMARY_DEFAULTS.sort,
+      max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || SUMMARY_DEFAULTS.max))
+    };
+  }
+
+  /**
+   * ช่องใน "ตัวกรองเพิ่มเติม" (ที่พับของหน้าภาพรวม) ที่ถูกตั้งไว้ไม่ตรงค่าเริ่มต้น — คืนชื่อป้ายของช่องนั้น
+   *
+   * นับจาก `f` ที่ `readFilters` ทำให้เป็นค่ามาตรฐานแล้ว **ไม่ใช่จาก param ดิบ** ·
+   * `?sort=อะไรก็ไม่รู้` หรือ `?max=abc` ถูกปัดกลับเป็นค่าเริ่มต้นไปแล้ว จึงต้องไม่ทำให้ที่พับ
+   * กางโดยที่ผู้ใช้มองไม่เห็นว่าช่องไหนถูกตั้ง (หลักเดียวกับ `idParam` ของ #77)
+   *
+   * ช่อง "เดือน" ไม่นับที่นี่ เพราะมันอยู่แถวหลักที่มองเห็นตลอดอยู่แล้ว นับด้วยก็เป็นการรายงานซ้ำ ·
+   * แต่ "เดือน = กำหนดวันที่เอง" (`!f.month`) เป็น **เงื่อนไขกางแยกต่างหาก** ที่ `renderSummaryForm`
+   * ดูเอง เพราะช่องวันที่ที่ผู้ใช้ต้องกรอกอยู่ข้างในที่พับ
+   */
+  function advancedFiltersOn(f) {
+    const on = [];
+    if (asStr(f.item) !== SUMMARY_DEFAULTS.item) on.push('รหัสสินค้า');
+    if (f.basis !== SUMMARY_DEFAULTS.basis) on.push('จับจาก');
+    if (f.sort !== SUMMARY_DEFAULTS.sort) on.push('เรียงตาม');
+    if (Number(f.max) !== SUMMARY_DEFAULTS.max) on.push('ไม่เกิน');
+    return on;
+  }
+
+  /**
+   * ค่าตัวกรองที่เป็น internal id (`sub` · `loc`) — ตัวเลขล้วนเท่านั้นจึงใช้กรองได้ (issue #77)
+   *
+   * แยกสามสภาพออกจากกันให้ชัด ไม่ยุบรวม
+   *   ว่าง              → ไม่กรอง (ปกติ)
+   *   ตัวเลขล้วน        → ใช้กรอง · ไม่อยู่ในรายชื่อก็ยังใช้ แล้วให้หน้าจอฟ้องว่า "id นี้ไม่อยู่ในรายชื่อ"
+   *   มีอักขระอื่นปน    → **ทิ้งทั้งค่า** ไม่กรองด้วยค่านั้น แล้วขึ้นคำเตือน
+   *
+   * ของเดิมใช้ `replace(/[^0-9]/g,'')` ซึ่งขัดค่าขยะให้กลายเป็น id ที่ใช้ได้เงียบ ๆ —
+   * `?sub=<script>alert(1)</script>` เหลือ `1` แล้วรายงานกรองด้วยบริษัทแรกโดยไม่มีใครสั่ง
+   *
+   * `raw` ตัดความยาวไว้ที่ 40 ตัวอักษรก่อนส่งต่อ — คำเตือนต้องบอกว่า "ค่าที่ส่งมาหน้าตาประมาณนี้"
+   * ไม่ใช่สะท้อน payload ยาว ๆ กลับลงหน้า (ปลายทาง esc() อีกชั้นอยู่แล้ว)
+   */
+  function idParam(name, label, v) {
+    const raw = asStr(v).trim();
+    const digits = raw.replace(/[^0-9]/g, '');
+    const bad = !!raw && raw !== digits;
+    return {
+      name: name, label: label, bad: bad,
+      value: bad ? '' : digits,
+      raw: raw.length > 40 ? raw.substring(0, 40) + '…' : raw
     };
   }
 
@@ -1372,7 +1740,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
   /**
    * ภาพรวมหลายใบสั่งผลิต — 1 คำสั่งหารายการ + 4 ชุดรวมยอดต่อทุก 150 ใบ
-   * (200 ใบ = 9 คำสั่ง · ชั้นเจาะลึกใช้ 19 คำสั่งต่อใบ ถ้าวนเรียกจะกลายเป็นพันคำสั่ง)
+   * (200 ใบ = 9 คำสั่ง · ชั้นเจาะลึกใช้ 20 คำสั่งต่อใบ ถ้าวนเรียกจะกลายเป็นพันคำสั่ง)
    *
    * ทุกยอดในชั้นนี้ต้องเท่ากับชั้นเจาะลึกของใบเดียวกันทุกหลัก — ถ้าไม่เท่าคือ aggregate เพี้ยน
    * ไม่ใช่เรื่องปัดเศษ
@@ -1472,13 +1840,20 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + ' ใบ summary cost — นับเกิน ' + fmt(over, 2)
           + ' คิดเป็น ' + fmt(over / scGap * 100, 1) + '% ของผลต่าง · ประเด็นฝั่งสร้างเอกสาร' });
       }
-      // flag = F ไม่คิดต่อลังตั้งใจ — ห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton (ไม่เกี่ยวกันแล้ว)
-      if (cpc.flag !== 'F' && !bpc) notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      // flag F = ไม่คิดต่อลังตั้งใจ · flag T = ติ๊กแล้ว bpc ไม่ใช่ข้อมูลบังคับ
+      // ทั้งสองกรณีห้ามขึ้นเตือนว่าไม่ได้ตั้ง basepercarton — เหลือเตือนเฉพาะตอนที่ยัง
+      // ตัดสินไม่ได้ (อ่าน flag ไม่สำเร็จ หรือไม่ได้ตั้งประเภทย่อยสินค้า)
+      if (cpc.flag !== 'F' && cpc.flag !== 'T' && !bpc) {
+        notes.push({ cls: 'warn', text: 'ไม่ได้ตั้ง custitem_item_basepercarton' });
+      }
       if (cpc.note) notes.push(cpc.note);
       // F ไม่ใช่ปัญหา — แต่ถ้าไม่บอกไว้ คนอ่าน Excel/หน้าเว็บจะเห็นต้นทุน/ลัง = ต้นทุน/หน่วยเฉย ๆ
       // แล้วเข้าใจผิดว่าเป็นบั๊ก จึงต้องมีคำอธิบายกำกับไว้เสมอ (ไม่ใช่แค่ปล่อยให้ตัวเลขพูดเอง)
       if (cpc.flag === 'F') {
         notes.push({ cls: 'info', text: 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — ต้นทุน/ลัง = ต้นทุน/หน่วย (conversion = 1)' });
+      } else if (cpc.flag === 'T' && !bpc) {
+        notes.push({ cls: 'info', text: 'ประเภทย่อยสินค้าติ๊ก Report - Cost per Carton ไว้ '
+          + 'จึงไม่บังคับ custitem_item_basepercarton — ต้นทุน/ลัง = ต้นทุน/หน่วย (conversion = 1)' });
       }
 
       return {
@@ -1667,42 +2042,55 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return `<option value=""${sel ? '' : ' selected'}>${esc(allLabel)}</option>` + opts.join('');
   }
 
-  function renderSummaryForm(f) {
+  /**
+   * ฟอร์มตัวกรองของชั้นภาพรวม
+   *
+   * `sm` เป็น **ตัวเลือก** — ทางที่ `buildSummary` พังเรียกฟอร์มนี้โดยไม่มีผลลัพธ์ (ดูท้ายไฟล์)
+   * และเทสหลายไฟล์เรียกด้วยอาร์กิวเมนต์เดียวเพื่อดูโครง markup เท่านั้น ·
+   * ไม่มี `sm` = ไม่มีปุ่ม export (ไม่ใช่ปุ่มที่กดแล้วได้ไฟล์ว่าง และไม่ใช่คำว่า "undefined" ในหน้า)
+   *
+   * ── ทั้งกล่องตัวกรองหุบได้ `<details class="filterbox">` ──────────────────────
+   * `open` ใส่มา**เสมอ** ไม่มีเงื่อนไข — กางเป็นค่าเริ่มต้นตามที่ผู้ใช้สั่ง และที่สำคัญกว่านั้น
+   * มันทำให้เคส "`morefld` กางอยู่แต่ถูก `filterbox` ที่หุบบังไว้" เกิดไม่ได้เลย ·
+   * ถ้าวันหนึ่งจะทำให้จำสถานะหุบได้ ต้องคิดเรื่องนี้ก่อนเป็นข้อแรก
+   *
+   * `<summary>` พิมพ์เงื่อนไขที่กรองอยู่จริงด้วย `activeFilterText` **ตัวเดียวกับ**ที่ตารางว่าง
+   * ใช้ (#77) — หุบแล้วต้องยังรู้ว่ากรองอะไรอยู่ ไม่งั้นได้บั๊กเดียวกับที่ #77/#86 เพิ่งปิด
+   * ห้ามเขียนตรรกะสรุปเงื่อนไขซ้ำที่สอง
+   *
+   * `.act` (ปุ่มดูภาพรวม + ปุ่ม export) อยู่ **นอก** `filterbox` โดยตั้งใจ — หุบกล่องแล้ว
+   * ปุ่มทั้งสองต้องยังกดได้ · ลำดับปุ่มใน DOM แบกน้ำหนัก: `_avoid` ของคอมโบบ็อกซ์หยิบ
+   * `querySelector('button[type="submit"],.act button,#btnSearch')` ซึ่งคืน**ตัวแรกตามลำดับเอกสาร**
+   * ปุ่ม submit จึงต้องมาก่อน `#btnXlsx` เสมอ (test_filterbar_layout.js เฝ้าอยู่)
+   */
+  function renderSummaryForm(f, sm) {
     const s = runtime.getCurrentScript();
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
     const monthOpts = monthChoices().map(ym =>
       `<option value="${ym}"${f.month === ym ? ' selected' : ''}>${esc(monthLabel(ym))}</option>`).join('');
+    // ที่พับ "ตัวกรองเพิ่มเติม" (issue #86) — **เซิร์ฟเวอร์เป็นคนตัดสินว่ากางหรือพับ ห้ามพึ่ง JS**
+    // JS พังเมื่อไหร่ ตัวกรองที่ตั้งค้างไว้ก็ต้องยังมองเห็น ไม่ใช่ซ่อนอยู่ในที่พับแล้วผู้ใช้
+    // อ่านตารางที่ถูกกรองไปแล้วเป็นตารางเต็ม (อาการเดียวกับ #77)
+    const advOn = advancedFiltersOn(f);
+    // `!f.month` = เลือก "— กำหนดวันที่เอง —" (นิพจน์เดียวกับที่ทำ selected ให้ option นั้น
+    // ด้านล่าง) — ช่องวันที่ที่ต้องกรอกอยู่ในที่พับ จึงกางเสมอ ไม่ว่าจะนับช่องอื่นได้กี่ช่อง
+    const advOpen = advOn.length > 0 || !f.month;
+    const advLabel = 'ตัวกรองเพิ่มเติม'
+      + (advOn.length ? ' · ตั้งไว้ ' + advOn.length + ' ช่อง' : '');
+    // ป้ายของกล่องต้องครอบ **ทุกช่องที่ถูกตั้ง** — `activeFilterText` ไม่ได้พูดถึง sort/max
+    // ซึ่งอยู่ในที่พับชั้นใน ถ้าไม่ต่อจำนวนนี้เข้าไป หุบกล่องแล้วป้ายจะเหมือนตอนไม่ได้ตั้งอะไรเลย
+    // ทุกตัวอักษร (รีวิว #86: `?sort=gap&max=10` เคยได้ป้ายเดียวกับค่าเริ่มต้น)
+    const boxLabel = 'ตัวกรอง · ' + activeFilterText(f)
+      + (advOn.length ? ' · ตัวกรองเพิ่มเติม ' + advOn.length + ' ช่อง' : '');
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      <details class="filterbox" open>
+      <summary>${esc(boxLabel)}</summary>
       <div class="filterbar">
         <div class="fld" style="flex:0 0 190px">
           <label>เดือน</label>
           <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
-        </div>
-        <div class="fld" style="flex:0 0 330px">
-          <label>หรือระบุช่วงวันที่</label>
-          <div class="range">
-            ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
-            <span class="sep">ถึง</span>
-            ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
-          </div>
-        </div>
-        <div class="fld" style="flex:0 0 215px">
-          <label>จับจาก</label>
-          <select name="basis" class="rw-select">
-            <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
-            <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
-          </select>
-        </div>
-        <div class="brk"></div>
-        <div class="fld" style="flex:0 0 165px">
-          <label>รหัสสินค้า</label>
-          <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
-        </div>
-        <div class="fld" style="flex:0 0 185px">
-          <label>เลขที่ใบสั่งผลิต</label>
-          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
         </div>
         <div class="fld" style="flex:0 0 200px">
           <label>บริษัท</label>
@@ -1712,25 +2100,83 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <label>อาคารผลิต</label>
           <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
         </div>
-        <div class="brk"></div>
-        <div class="fld" style="flex:0 0 245px">
-          <label>เรียงตาม</label>
-          <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
+        <div class="fld" style="flex:0 0 185px">
+          <label>เลขที่ใบสั่งผลิต</label>
+          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
         </div>
-        <div class="fld" style="flex:0 0 110px">
-          <label>ไม่เกิน</label>
-          <div class="range">
-            <input type="text" name="max" value="${esc(String(f.max))}" inputmode="numeric">
-            <span class="sep">ใบ</span>
+      </div>
+      <details class="morefld"${advOpen ? ' open' : ''}>
+        <summary>${esc(advLabel)}</summary>
+        <div class="filterbar">
+          <div class="fld" style="flex:0 0 330px">
+            <label>ช่วงวันที่เอง</label>
+            <div class="range">
+              ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
+              <span class="sep">ถึง</span>
+              ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
+            </div>
+          </div>
+          <div class="fld" style="flex:0 0 215px">
+            <label>จับจาก</label>
+            <select name="basis" class="rw-select">
+              <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
+              <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
+            </select>
+          </div>
+          <div class="fld" style="flex:0 0 165px">
+            <label>รหัสสินค้า</label>
+            <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
+          </div>
+          <div class="fld" style="flex:0 0 245px">
+            <label>เรียงตาม</label>
+            <select name="sort" class="rw-select">${sortOpt('item', 'รหัสสินค้า')}${sortOpt('date', 'วันที่')}${sortOpt('gap', 'ผลต่าง summary cost มากสุด')}${sortOpt('unit', 'ต้นทุน/หน่วย สูงสุด')}</select>
+          </div>
+          <div class="fld" style="flex:0 0 110px">
+            <label>ไม่เกิน</label>
+            <div class="range">
+              <input type="text" name="max" value="${esc(String(f.max))}" inputmode="numeric">
+              <span class="sep">ใบ</span>
+            </div>
           </div>
         </div>
-        <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button></div>
-      </div>
+      </details>
       <div class="sub" style="margin:var(--sp-3) 0 0">
         เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
-        · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
+        แล้วกรอกวันที่ใน "ตัวกรองเพิ่มเติม" · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
       </div>
-    </form>${renderListFieldScript()}`;
+      </details>
+      <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button>${renderSummaryExportBtn(sm)}</div>
+    </form>${renderListFieldScript()}${renderMoreFiltersScript()}`;
+  }
+
+  /**
+   * เลือก "— กำหนดวันที่เอง —" → กางที่พับแล้วพาไปที่ช่องวันที่ (issue #86)
+   *
+   * **progressive enhancement ล้วน — ฝั่งเซิร์ฟเวอร์ไม่ได้พึ่งสคริปต์นี้เลย**
+   * `renderSummaryForm` ยังใส่ `open` เองเมื่อ `!f.month` หรือมีช่องในที่พับถูกตั้ง ต้องถูกแม้ JS พัง ·
+   * สคริปต์นี้ปิดช่องว่างเฉพาะ "จังหวะก่อน submit" — ผู้ใช้เพิ่งเลือก "กำหนดวันที่เอง" แต่ช่องวันที่
+   * ที่ต้องกรอกยังอยู่ในที่พับที่เซิร์ฟเวอร์ปิดมา — เจอทางตันโดยไม่มีอะไรบอกว่าต้องไปต่ออย่างไร
+   *
+   * เปลี่ยนกลับเป็นเดือนปกติ **ไม่ปิดที่พับให้เอง** — ผู้ใช้อาจเปิดค้างไว้หรือมีช่องอื่นตั้งค้างอยู่
+   * การปิดให้เองคือ "ตัวกรองซ่อนหาย" อีกแบบหนึ่ง ซึ่งเป็นสิ่งที่ #86 ตั้งใจกันตั้งแต่ต้น
+   *
+   * ทุก element ต้อง guard null — สคริปต์นี้ออกเฉพาะชั้นภาพรวม แต่ถ้าวันหนึ่งมีคนย้ายไปชั้นอื่น
+   * ที่ไม่มี `.morefld` มันต้องเงียบๆ ไม่ใช่ TypeError ที่หยุด JS ทั้งหน้า (รวมถึงคอมโบบ็อกซ์ด้วย)
+   */
+  function renderMoreFiltersScript() {
+    return `<script>
+(function(){
+  var box = document.querySelector('details.morefld');
+  var sel = document.querySelector('select[name="month"]');
+  if (!box || !sel) return;
+  sel.addEventListener('change', function(){
+    if (sel.value !== 'custom') return;
+    box.open = true;
+    var first = box.querySelector('input.dateinput');
+    if (first && first.focus) first.focus();
+  });
+})();
+<\/script>`;
   }
 
   /**
@@ -1806,6 +2252,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     var vh = (typeof window !== 'undefined' && window.innerHeight) || 0;
     var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect())
       || { top: 0, bottom: 0, left: 0, right: 0, width: 0, height: 0 };
+    // ล้าง max-height ที่รอบก่อนย่อไว้ **ก่อนวัด** — ไม่งั้นรอบนี้วัดความสูงที่ย่อแล้ว
+    // แล้วย่อซ้ำลงไปเรื่อย ๆ และไม่มีวันขยายกลับจนกว่าจะปิด-เปิดรายการใหม่
+    if (list.style) list.style.maxHeight = '';
     var listRect = (list.getBoundingClientRect && list.getBoundingClientRect()) || {};
     var width  = rect.width  || 200;
     var height = listRect.height || 280;
@@ -1814,14 +2263,63 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     if (vw && left + width > vw - pad) left = vw - pad - width;
     if (left < pad) left = pad;
 
-    var spaceBelow = vh ? (vh - rect.bottom) : (height + pad);
-    var flipUp = !!(vh && spaceBelow < (height + pad) && rect.top > (height + pad));
+    // ── เลือกด้านและความสูงของ popup (#77) ────────────────────────────────
+    //
+    // สามอย่างที่ต้องจริงพร้อมกัน เรียงตามลำดับความสำคัญ
+    //   1. รายการต้องกดใช้งานได้เสมอ — ห้ามยุบจนเหลือ 0/ติดลบ (รายการที่กดไม่ได้
+    //      แย่กว่าปุ่มที่ถูกทับ) ถ้าที่ไม่พอทั้งสองทางให้ยอมทับปุ่มไปตามเดิม
+    //   2. ไม่บังปุ่มหลักของฟอร์มถ้ายังมีทางเลี่ยง — QA วัดด้วย document.elementFromPoint()
+    //      ที่กึ่งกลางปุ่มขณะรายการเปิดอยู่ แล้วได้ div.rw-combobox-option ไม่ใช่ปุ่ม
+    //      ผู้ใช้จึงกดปุ่มแล้วกลายเป็นเลือกตัวกรองโดยไม่รู้ตัว (แก้ที่ตำแหน่ง ไม่ใช่ z-index —
+    //      ดันปุ่มขึ้นมาทับจะได้รายการที่เป็นรู และคลิกที่ตั้งใจเลือกตัวเลือกจะไปกดปุ่มแทน)
+    //   3. ไม่ล้นจอ — จำกัดด้วยพื้นที่ viewport ที่เหลือจริงเสมอ ไม่ว่าจะมีปุ่มให้หลบหรือไม่
+    var MIN_LIST = 120;   // ต่ำกว่านี้เลื่อนหาตัวเลือกไม่ไหว
+    // anchor เลื่อนพ้นจอไปแล้ว (เปิดรายการค้างไว้แล้วสกรอลล์) — ปิดรายการไปเลย
+    // ดีกว่าปล่อยให้ popup ลอยทับหัวหน้า · ห้ามซ่อนด้วย style.display (list-field.md ห้าม
+    // และ test_summary_listfield.js / test_wostatus_listfield.js เฝ้าอยู่)
+    if (vh && (rect.bottom < 0 || rect.top > vh)) {
+      list.setAttribute('data-offscreen', '1');
+      if (typeof _close === 'function') _close(w);
+      return;
+    }
+    list.setAttribute('data-offscreen', '0');
+
+    var avoid = w._avoid && w._avoid.getBoundingClientRect
+      ? w._avoid.getBoundingClientRect() : null;
+    var hitsBtn = !!(avoid && avoid.top >= rect.bottom
+      && !(avoid.right < left || avoid.left > left + width));
+
+    var roomDown = vh ? Math.max(0, vh - pad - (rect.bottom + pad)) : height;
+    var roomUp   = vh ? Math.max(0, rect.top - pad * 2) : height;
+    var roomBtn  = hitsBtn ? Math.max(0, avoid.top - pad - (rect.bottom + pad)) : roomDown;
+    var downRoom = Math.min(roomDown, roomBtn);
+    var need = Math.min(height, MIN_LIST);
+
+    var flipUp, avail;
+    if (downRoom >= need) { flipUp = false; avail = downRoom; }        // ลงได้ (อาจต้องย่อ)
+    else if (roomUp >= need) { flipUp = true; avail = roomUp; }        // ลงไม่พอ แต่ขึ้นได้
+    else if (roomDown >= need) { flipUp = false; avail = roomDown; }   // ยอมทับปุ่ม ดีกว่ากดไม่ได้
+    else if (roomUp >= roomDown) { flipUp = true; avail = roomUp; }    // แคบทั้งคู่ — เอาที่กว้างกว่า
+    else { flipUp = false; avail = roomDown; }
+    if (height > avail) height = avail;
+    if (height < MIN_LIST) height = Math.min(MIN_LIST, vh ? Math.max(0, vh - pad * 2) : MIN_LIST);
+    if (!(height > 0)) height = MIN_LIST;   // กันค่า 0/ติดลบ/NaN ทุกทาง
+
     var top = flipUp ? (rect.top - pad - height) : (rect.bottom + pad);
+    if (top < pad) top = pad;
+    if (vh && top + height > vh - pad) {
+      // จอเตี้ยกว่ารายการ — ย่อให้อยู่ในจอ · ที่นี่ยอมต่ำกว่า MIN_LIST ได้ เพราะเป็นข้อจำกัด
+      // ของ viewport เองไม่ใช่การยุบหลบปุ่ม (ล้นจอ = ตัวเลือกล่างเข้าไม่ถึงเลย)
+      var fit = vh - pad - top;
+      if (fit > 0) height = fit;
+    }
 
     list.style.position = 'fixed';
     list.style.left = left + 'px';
     list.style.top  = top  + 'px';
     list.style.width = width + 'px';
+    // ย่อด้วย inline max-height เท่านั้น — ค่าเริ่มต้น 280px อยู่ที่ .rw-combobox-list ของ theme
+    list.style.maxHeight = height + 'px';
     list.setAttribute('data-flip', flipUp ? 'up' : 'down');
   }
 
@@ -1921,6 +2419,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     wrapper.className = 'rw-combobox';
     select.parentNode.insertBefore(wrapper, select);
     wrapper.appendChild(select);
+
+    // ปุ่มหลักของฟอร์มเดียวกัน — popup ต้องไม่ไปนั่งทับจนกดไม่ได้ (#77 · ดู _position)
+    // ตัวเลือก selector ครอบทั้งสองแอปด้วยสตริงเดียวกัน (เอนจินนี้เป็นสำเนาที่ต้องเท่ากันทุกตัวอักษร
+    // — test/test_listfield_sync.js เฝ้าอยู่) · wo-cost-trace ใช้ปุ่ม type=submit ใน .act ·
+    // wo-status ใช้ #btnSearch ที่เป็น type=button · ห้ามใช้ querySelector('button') ลอย ๆ
+    // เพราะจะไปโดนปุ่มปฏิทินเล็ก ๆ ในช่องวันที่แทนปุ่มหลัก
+    var ownerForm = select.form || (select.closest && select.closest('form')) || null;
+    wrapper._avoid = ownerForm && ownerForm.querySelector
+      ? ownerForm.querySelector('button[type="submit"],.act button,#btnSearch')
+      : null;
 
     var input = document.createElement('input');
     input.type = 'text';
@@ -2049,17 +2557,22 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       if (!r.rm_cost) noIssue++;
       if (r.notes.some(n => n.cls === 'bad')) flagged++;
     });
+    // ทุกยอดในแถบนี้คิดจากแถวที่ถูกตัดแล้ว (`heads.slice(0, f.max)` ใน buildSummary)
+    // ป้ายจึงต้องบอกฐานที่นับไว้ทุกใบ ไม่ใช่เขียน "รวม…" เฉย ๆ แล้วให้คนอ่านเดาว่ารวมของอะไร
+    // (issue #77 ข้อ 2.1 — ตัดแถวแล้วยอดไม่ครบ คือเรื่องที่ต้องบอกที่ตัวป้าย ไม่ใช่แค่ในคำเตือน)
+    const ofShown = 'ยอดของ ' + esc(String(sm.shown)) + ' ใบที่แสดง'
+      + (sm.truncated ? ' (จาก ' + esc(String(sm.total)) + ' ใบที่เข้าเงื่อนไข)' : '');
     // ผลต่างสุทธิกับค่าสัมบูรณ์แยกเป็นค่าและคำขยาย ไม่ยัดสองเลขในช่องเดียวแล้วย่อฟอนต์เอง
     return '<div class="kpi-grid">'
       + kpi('ใบสั่งผลิต', esc(String(sm.shown)), null,
         sm.truncated ? 'จาก ' + esc(String(sm.total)) + ' ใบที่เข้าเงื่อนไข' : '')
-      + kpi('รวมวัตถุดิบและบรรจุภัณฑ์', esc(fmt(rm, 2)))
-      + kpi('รวมต้นทุนแปรสภาพ', esc(fmt(dl, 2)))
-      + kpi('รวมต้นทุนการผลิต', esc(fmt(cost, 2)))
+      + kpi('รวมวัตถุดิบและบรรจุภัณฑ์', esc(fmt(rm, 2)), null, ofShown)
+      + kpi('รวมต้นทุนแปรสภาพ', esc(fmt(dl, 2)), null, ofShown)
+      + kpi('รวมต้นทุนการผลิต', esc(fmt(cost, 2)), null, ofShown)
       + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
-        'จาก ' + esc(String(sm.shown)) + ' ใบ')
+        'จาก ' + esc(String(sm.shown)) + ' ใบที่แสดง')
       + kpi('ผลต่างสุทธิ', esc(fmt(gap, 0)), gapCount ? 'bad' : 'ok',
-        'รวมค่าสัมบูรณ์ ' + esc(fmt(gapAbs, 0)))
+        'รวมค่าสัมบูรณ์ ' + esc(fmt(gapAbs, 0)) + ' · ' + ofShown)
       + kpi('ยังไม่เบิกวัตถุดิบ', esc(String(noIssue)), noIssue ? 'warn' : 'ok')
       + kpi('ยังไม่ปิดงานผลิต', esc(String(noWoc)), noWoc ? 'warn' : 'ok')
       + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv)), noConv ? 'warn' : 'ok',
@@ -2086,14 +2599,75 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + esc(fmt(v, dp)) + ' ' + theme.iconImg('warn', esc(partialNote)) + '</td>';
   }
 
+  /**
+   * ตัวชี้สถานะของแถวในตารางภาพรวม — ย่อ "หมายเหตุ" มาไว้ต้นแถว (issue #77 ข้อ 2.2)
+   *
+   * คอลัมน์หมายเหตุอยู่ขวาสุดของตาราง 16 คอลัมน์ ต้องเลื่อนจอไปสุดถึงจะเห็นว่าแถวไหนมีปัญหา ·
+   * ตัวนี้ไม่ได้แทนคอลัมน์นั้น (ข้อความเต็มยังอยู่ที่เดิม และ export Excel ยังอ่านจากที่เดิม)
+   * แค่บอกว่า "แถวนี้มีอะไรให้อ่าน" ตั้งแต่คอลัมน์แรก
+   *
+   * ⚠ ข้อความหมายเหตุมาจากข้อมูล (เลขที่เอกสาร จำนวนใบ) — ต้องผ่าน esc() ก่อนลง title เสมอ
+   */
+  function rowStatus(notes) {
+    const list = notes || [];
+    const bad = list.filter(n => n && n.cls === 'bad');
+    const warn = list.filter(n => n && n.cls === 'warn');
+    const pick = bad.length ? { cls: 'bad', icon: 'cross', rows: bad, word: 'ต้องแก้' }
+      : (warn.length ? { cls: 'warn', icon: 'warn', rows: warn, word: 'ดูหมายเหตุ' } : null);
+    if (!pick) return '';
+    const full = pick.rows.map(n => asStr(n.text)).join(' · ');
+    return '<div class="rowstat ' + pick.cls + '" title="' + esc(full) + '">'
+      + theme.ICONS[pick.icon] + '<span>' + esc(pick.word) + ' '
+      + esc(String(pick.rows.length)) + ' ข้อ</span></div>';
+  }
+
   /** ต้นทุนที่ยังไม่รวมวัตถุดิบ = อ่านเป็นต้นทุนเต็มไม่ได้ */
   function partialCostNote(rm, cost) {
     return (rm === 0 && cost > 0) ? 'ยังไม่มีใบเบิกวัตถุดิบ — เลขนี้เป็นต้นทุนแปรสภาพล้วน ไม่ใช่ต้นทุนเต็ม' : '';
   }
 
+  /**
+   * ชื่อของค่าที่เลือกในช่องรายการ — ไม่เจอในรายการให้บอกเป็น id ไม่ใช่เงียบ
+   * (id ที่ค้างมากับ URL แต่ไม่อยู่ในรายชื่อ เป็นสาเหตุของ "ตารางว่าง" ที่หาไม่เจอมาแล้ว)
+   */
+  function pickedName(rows, id) {
+    const sel = asStr(id);
+    if (!sel) return '';
+    const hit = (rows || []).filter(r => asStr(r.id) === sel)[0];
+    return hit ? asStr(hit.name) : ('id ' + sel);
+  }
+
+  /**
+   * เงื่อนไขที่ใช้กรองอยู่จริง เป็นข้อความสั้น ๆ (issue #77)
+   *
+   * ที่ต้องมี: QA บน SB1 เลือกบริษัทค้างไว้โดยไม่ตั้งใจ (รายการที่เปิดอยู่บังปุ่ม) แล้วได้
+   * ตารางว่างกับคำว่า "ไม่พบใบสั่งผลิตตามเงื่อนไขนี้" ซึ่งไม่ได้บอกว่าเงื่อนไขไหนตัดออกไป ·
+   * ช่องบริษัท/สถานที่ผลิตอยู่ในแถบตัวกรองที่ต้องเลื่อนขึ้นไปดู จึงต้องพิมพ์ซ้ำตรงจุดที่ผลลัพธ์ว่าง
+   */
+  function activeFilterText(f) {
+    const k = f || {};
+    const parts = [];
+    if (k.wono) parts.push('เลขที่ใบสั่งผลิตมีคำว่า "' + asStr(k.wono) + '"');
+    if (k.item) parts.push('รหัสสินค้ามีคำว่า "' + asStr(k.item) + '"');
+    const sub = pickedName(k.subRows, k.sub);
+    if (sub) parts.push('บริษัท ' + sub);
+    const loc = pickedName(k.locRows, k.loc);
+    if (loc) parts.push('สถานที่ผลิต ' + loc);
+    if (!k.wono) {
+      parts.push('ช่วง ' + (k.month ? monthLabel(k.month) : asStr(k.from) + ' ถึง ' + asStr(k.to))
+        + ' จับจาก' + (k.basis === 'woc' ? 'วันที่ปิดงานผลิต' : 'วันที่ใบสั่งผลิต'));
+    }
+    return parts.join(' · ');
+  }
+
   function renderSummaryGrid(sm) {
     if (!sm.rows.length) {
-      return '<div class="card">ไม่พบใบสั่งผลิตตามเงื่อนไขนี้ — ลองขยายช่วงวันที่ หรือล้างช่องรหัสสินค้า</div>';
+      // ต้องพิมพ์เงื่อนไขที่ใช้อยู่ออกมาด้วยเสมอ — "ไม่พบ" เฉย ๆ อ่านเป็น "ไม่มีข้อมูล" ได้
+      // ทั้งที่จริงคือถูกตัวกรองตัดออก (ดู activeFilterText)
+      return '<div class="card">ไม่พบใบสั่งผลิตตามเงื่อนไขนี้'
+        + '<div class="sub">เงื่อนไขที่ใช้อยู่: ' + esc(activeFilterText(sm.filters)) + '</div>'
+        + '<div class="sub">ถ้าไม่ได้ตั้งใจกรอง ให้ล้างช่องบริษัท/สถานที่ผลิต/รหัสสินค้า '
+        + 'หรือขยายช่วงวันที่แล้วค้นใหม่</div></div>';
     }
     const groupByItem = sm.filters.sort === 'item';
 
@@ -2133,9 +2707,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
       const gapBad = Math.abs(r.sc_gap) > 0.01;
       h += '<tr>'
+        // ตัวชี้สถานะของแถวที่คอลัมน์แรก (#77 ข้อ 2.2) — เหตุผลว่าแถวไหนผิดอยู่ในคอลัมน์
+        // "หมายเหตุ" ขวาสุดของตาราง 16 คอลัมน์ ต้องเลื่อนจอไปสุดถึงจะเห็น · ย่อมาไว้ต้นแถวเป็น
+        // จำนวนข้อ + ข้อความเต็มใน title · ไอคอนมีข้อความข้างๆ บอกความหมายอยู่แล้วจึงใช้
+        // ICONS ตรง ๆ (aria-hidden) ตามกติกา meaningful/decorative ของ #64 ขั้น 2b
+        // ⚠ ห้ามเปลี่ยนเป็นคอลัมน์ใหม่ — หัวและลำดับคอลัมน์ล็อกไว้กับ SUMMARY_EXPORT_COLS
+        // (export Excel ต้องได้หัวและลำดับเดียวกับตารางบนจอ) จึงวางไว้ในเซลล์แรกที่มีอยู่แล้ว
+        //
         // สองลิงก์คนละปลายทางในเซลล์เดียว ต้องแยกให้ชัด — ของเดิมวางติดกันแล้วเลข WO ตัดบรรทัด
         // ทำให้ไอคอนลิงก์นอกไปอยู่ต่อท้ายเลขพอดี กดโดนลิงก์ record แทนรายงานเป็นประจำ
-        + `<td><a class="drill" href="${selfUrl(Object.assign(filterParams(sm.filters), { wo: r.wo_no }))}"
+        + `<td>${rowStatus(r.notes)}<a class="drill" href="${selfUrl(Object.assign(filterParams(sm.filters), { wo: r.wo_no }))}"
               title="ดูที่มาของต้นทุนใบนี้ — เปิดหน้าเจาะลึกในรายงานนี้">${esc(r.wo_no)}</a>`
         + `<div class="nsrec"><a href="${selfUrl(Object.assign(filterParams(sm.filters), { ready: r.wo_no }))}"
               title="ตรวจว่า master ของสายการผลิตใบนี้ตั้งครบหรือยัง">ตรวจความพร้อม master</a></div>`
@@ -2246,28 +2827,57 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const XLSX_CDN = 'https://cdn.jsdelivr.net/npm/xlsx-js-style@1.2.0/dist/xlsx.bundle.js';
 
   /**
-   * ปุ่ม export + ข้อมูลของตารางฝังมากับหน้า
+   * คำอธิบายรูปแบบไฟล์ — ยาวเกินกว่าจะอยู่ข้างปุ่มในแถว `.act` จึงย้ายไป `title` ของปุ่ม
+   * **จำนวนแถวไม่ได้อยู่ในนี้** เพราะต้องเห็นได้โดยไม่ต้อง hover (ดู `summaryExportNote`)
+   */
+  const XLSX_HINT = 'หัวและลำดับคอลัมน์ตรงกับตาราง · ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้';
+
+  /** จำนวนแถวที่จะได้จริง — ข้อความนี้ต้องมองเห็นตลอด ไม่ใช่ซ่อนใน tooltip */
+  function summaryExportNote(sm) {
+    return sm.truncated
+      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
+      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
+  }
+
+  /**
+   * ปุ่ม Export Excel — อยู่ใน `.act` ของฟอร์ม ต่อจากปุ่ม "ดูภาพรวม" (ไม่ใช่แถบลอยกลางหน้า)
+   *
+   * ⚠ `type="button"` ห้ามลืม — ปุ่มนี้อยู่ใน `<form method="get">` ค่าเริ่มต้นของ `<button>`
+   * คือ submit กดแล้วจะได้หน้าใหม่แทนไฟล์ Excel
+   *
+   * ไม่มี `sm` (ทาง error ของ `buildSummary` และเทสที่ดูโครงฟอร์มอย่างเดียว) = ไม่มีปุ่มเลย ·
+   * มี `sm` แต่ 0 แถว = ปุ่มปิด + บอกเหตุผล ไม่ใช่ปุ่มที่กดแล้วได้ไฟล์เปล่า
+   */
+  function renderSummaryExportBtn(sm) {
+    if (!sm) return '';
+    if (!sm.rows || !sm.rows.length) {
+      return '<button type="button" class="btn" disabled>⬇ Export Excel</button>'
+        + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span>';
+    }
+    return '<button type="button" class="btn" id="btnXlsx" title="' + esc(XLSX_HINT) + '">'
+      + '⬇ Export Excel</button>'
+      + '<span class="xnote">' + esc(summaryExportNote(sm)) + '</span>';
+  }
+
+  /**
+   * ตัวสร้างไฟล์ + ข้อมูลของตารางฝังมากับหน้า — **สคริปต์ล้วน ไม่มีอะไรให้เห็นบนจอ**
+   * ตัวปุ่มอยู่ใน `.act` ของฟอร์มด้านบนแล้ว (`renderSummaryExportBtn`) สคริปต์นี้จึงต้อง
+   * ถูกวาดหลังฟอร์มเสมอ ไม่งั้น `getElementById("btnXlsx")` ได้ null
+   *
    * ฝังข้อมูลแทนการยิง mode=json ใหม่ตอนกด เพราะการยิงใหม่รันคำสั่งรวมยอดอีกรอบ
    * และอาจได้แถวไม่เท่ากับที่ผู้ใช้เห็นอยู่ตรงหน้า
    */
   function renderSummaryExport(sm) {
-    if (!sm.rows.length) {
-      return '<div class="xbar"><button type="button" class="btn" disabled>⬇ Export Excel</button>'
-        + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span></div>';
-    }
+    if (!sm.rows.length) return '';
     const d = summaryExportData(sm);
     // ข้อมูลฝังเป็น object literal ในหน้า — ต้องกัน "<" ไม่ให้ปิดแท็ก script กลางคัน
     const json = JSON.stringify(d).replace(/</g, '\\u003c');
-    const note = sm.truncated
-      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
-      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
-    return '<div class="xbar"><button type="button" class="btn" id="btnXlsx">⬇ Export Excel</button>'
-      + '<span class="xnote">' + esc(note) + ' · หัวและลำดับคอลัมน์ตรงกับตาราง · '
-      + 'ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้</span></div>'
-      + '<script src="' + XLSX_CDN + '"><\/script>'
+    return '<script src="' + XLSX_CDN + '"><\/script>'
       + '<script>(function(){\n'
       + 'var D=' + json + ';\n'
       + 'var btn=document.getElementById("btnXlsx");\n'
+      // ปุ่มถูกวาดในฟอร์มด้านบน — ไม่เจอ = มีคนย้ายโครง อย่าให้ทั้งหน้าตายเพราะ null
+      + 'if(!btn)return;\n'
       + 'function p2(n){return n<10?"0"+n:""+n;}\n'
       + 'function stamp(){var d=new Date();return d.getFullYear()+p2(d.getMonth()+1)+p2(d.getDate())+"-"+p2(d.getHours())+p2(d.getMinutes());}\n'
       + 'btn.onclick=function(){\n'
@@ -2307,7 +2917,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     let h = '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
       + '<div class="sub">ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน แล้วกดเลขที่ใบสั่งผลิตเพื่อเจาะที่มาของทุกตัวเลข '
       + 'จนถึงเอกสารต้นทาง · ยอดในหน้านี้ใช้แหล่งข้อมูลเดียวกับหน้าเจาะลึกทุกช่อง</div>'
-      + renderSummaryForm(f);
+      + renderSummaryForm(f, sm);
 
     h += renderErrors();
     h += '<div class="sub">' + (f.wono
@@ -2317,13 +2927,28 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + (f.basis === 'woc'
           ? ' — ได้ใบสั่งผลิตที่มีการปิดงานในช่วงนี้ แม้จะสั่งผลิตไว้ก่อนหน้า'
           : ' — ได้ใบที่ออกในช่วงนี้ ใบที่ยังไม่ปิดงานก็ติดมาด้วย'))
+      // ช่องบริษัท/สถานที่ผลิตอยู่ในแถบตัวกรองด้านบนซึ่งเลื่อนพ้นจอได้ · ต้องพิมพ์ไว้ตรงนี้ด้วย
+      // ไม่งั้นค่าที่ค้างอยู่จะตัดแถวออกเงียบ ๆ (#77 — QA เลือกบริษัทโดยไม่ตั้งใจแล้วได้ตารางว่าง)
+      + (pickedName(f.subRows, f.sub) ? ' · บริษัท <b>' + esc(pickedName(f.subRows, f.sub)) + '</b>' : '')
+      + (pickedName(f.locRows, f.loc) ? ' · สถานที่ผลิต <b>' + esc(pickedName(f.locRows, f.loc)) + '</b>' : '')
+      + (f.item ? ' · รหัสสินค้ามีคำว่า <b>' + esc(f.item) + '</b>' : '')
       + '</div>';
-    h += renderSummaryKpis(sm);
+    // ค่าตัวกรองที่ใช้ไม่ได้ต้องดังก่อนตัวเลขทุกตัว — ไม่งั้นผู้ใช้อ่านตารางที่กรองไม่ตรงที่สั่ง
+    (f.badParams || []).forEach(b => {
+      h += '<div class="err">ค่าที่ส่งมาในช่อง <b>' + esc(b.label) + '</b> ใช้ไม่ได้ '
+        + '(<code>' + esc(b.name) + '=' + esc(b.raw) + '</code>) — ต้องเป็นเลข id เท่านั้น · '
+        + 'รายงานนี้<b>ไม่ได้กรองด้วยค่านั้น</b> ตัวเลขที่เห็นจึงเป็นของทุก' + esc(b.label)
+        + ' · เลือกจากช่องในแถบตัวกรองด้านบนแทนการพิมพ์ใน URL</div>';
+    });
+
+    // คำเตือนเรื่องตัดแถวต้องมาก่อน KPI — อ่านตัวเลขไปแล้วค่อยรู้ว่ามันไม่ครบคือสายไป
+    // (issue #77 ข้อ 2.1 · ของเดิมอยู่ใต้ KPI จึงเขียนว่า "ด้านบน" — ย้ายแล้วต้องเป็น "ด้านล่าง")
     if (sm.truncated) {
       h += '<div class="err">เงื่อนไขนี้เข้าเกณฑ์ ' + sm.total + ' ใบ แต่แสดงเพียง ' + sm.shown
-        + ' ใบแรก (เรียงตามรหัสสินค้าและวันที่) — ยอดรวมและ KPI ด้านบนนับแค่ที่แสดง '
+        + ' ใบแรก (เรียงตามรหัสสินค้าและวันที่) — ยอดรวมและ KPI ด้านล่างนับแค่ที่แสดง '
         + 'ให้แคบช่วงวันที่ลง หรือเพิ่มค่าในช่อง "ไม่เกิน" (สูงสุด ' + MAX_ROWS_HARD + ')</div>';
     }
+    h += renderSummaryKpis(sm);
     h += renderSummaryExport(sm);
     h += renderSummaryGrid(sm);
 
@@ -2364,39 +2989,142 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     </table></div>`;
   }
 
+  /**
+   * ใบปิดงานผลิต — แตกเป็นกลุ่มราย batch (issue #77)
+   *
+   * WO ที่แตก 10 batch มีใบปิดงานได้ 30 ใบ (ใบต่อขั้นตอน) · ของเดิมวนแถวเรียบ ๆ ผู้ใช้ต้องไล่อ่าน
+   * คอลัมน์ batch เองทีละบรรทัด · จัดกลุ่มแล้วอ่าน "batch นี้ปิดงานได้เท่าไหร่ ตีราคาหรือยัง" ได้ทันที
+   *
+   * WO ที่มี batch เดียว (เคสส่วนใหญ่) ตั้งใจ**ไม่**ใส่หัวกลุ่ม/แถวรวมกลุ่ม — ตารางเหมือนเดิม
+   * เพราะกลุ่มเดียวไม่ได้บอกอะไรเพิ่ม มีแต่ทำให้รก · บรรทัดสรุปเหนือตารางยังมีให้ทุกกรณี
+   */
+  /**
+   * ช่องยอดราย batch ที่ต้องมาจากขั้นตอนเดียว (แผน/ดี)
+   * `null` = ตัดสินไม่ได้ว่าแถวไหนคือขั้นแรก/ขั้นสุดท้าย → บอกว่า "ไม่ทราบ"
+   * ห้ามแสดงเป็น 0 หรือยอดรวมข้ามขั้น ซึ่งอ่านเหมือนคำตอบจริงทั้งคู่
+   */
+  function stepCell(v, pending) {
+    if (v == null && pending) {
+      return '<td class="n miss" title="ขั้นสุดท้ายของ batch นี้ยังไม่มีใบปิดงานผลิต — '
+        + 'ยอดของขั้นกลางไม่ใช่ยอดที่ผลิตได้ของ batch จึงไม่เอามาแสดง">ยังไม่ปิดงาน</td>';
+    }
+    if (v == null) {
+      return '<td class="n miss" title="ระบุไม่ได้ว่าแถวไหนเป็นขั้นแรก/ขั้นสุดท้ายของ batch นี้ '
+        + '(ไม่มีลำดับขั้นตอนบน task) — ยอดนี้บวกข้ามขั้นไม่ได้ จึงไม่แสดงตัวเลข">ไม่ทราบ</td>';
+    }
+    return numCell(v, 4);
+  }
+
   function renderWOCs(s) {
-    if (!s.wocs.length) return '<p class="warn">ยังไม่มีใบปิดงานผลิต</p>';
+    const bg = batchGroups(s);
+    if (!s.wocs.length && !bg.groupCount) {
+      return '<p class="warn">ยังไม่มีใบปิดงานผลิต</p>'
+        + (bg.tasksFailed ? '<div class="err">อ่านรายการ batch ที่ปล่อยงานไม่สำเร็จ '
+          + '— ดูสาเหตุที่หัวข้อ "เอกสารอ้างอิงทางเทคนิค" ท้ายหน้า (ไม่ได้แปลว่าใบนี้ไม่มี batch)</div>' : '');
+    }
     // ใบปิดงานเกิดต่อขั้นตอน — คอลัมน์ batch กับใบ summary cost ทำให้เห็นว่าใบไหนคือรอบที่ตีราคา
     const scDoc = {};
     (s.summaryLines || []).forEach(r => { scDoc[asStr(r.tran_id)] = r; });
-    let h = `<table><tr><th>ใบปิดงานผลิต</th><th>วันที่</th><th>batch</th><th>ขั้นตอน</th>
+    // แบ่งกลุ่มบนหน้าจอเมื่อมีมากกว่าหนึ่งกลุ่ม — นับรวมกลุ่ม "ไม่ระบุ batch" ด้วย
+    // (คนละตัวกับจำนวน batch ที่รายงานในบรรทัดสรุป ซึ่งไม่นับกลุ่มนั้น)
+    const grouped = bg.groupCount > 1;
+
+    // บรรทัดสรุปเหนือตาราง — "ปิดงานแล้ว" นับจาก batch ที่มีใบปิดงานปริมาณ ≠ 0 ไม่ใช่นับ WOC
+    let h = '';
+    if (bg.tasksFailed) {
+      h += '<div class="err">อ่านรายการ batch ที่ปล่อยงานไม่สำเร็จ — ตัวเลข batch ข้างล่าง'
+        + 'นับเฉพาะ batch ที่มีใบปิดงานผลิตแล้วเท่านั้น ไม่ใช่จำนวน batch ที่ใบนี้แตกจริง '
+        + '· ดูสาเหตุที่หัวข้อ "เอกสารอ้างอิงทางเทคนิค" ท้ายหน้า</div>';
+    }
+    h += '<div class="sub">แตก ' + esc(String(bg.batches)) + ' batch · ปิดงานแล้ว '
+      + esc(String(bg.closedBatches)) + ' batch (นับจากใบปิดงานที่มีปริมาณ ไม่ใช่นับใบ) · '
+      + esc(String(bg.wocCount)) + ' ใบปิดงานผลิต (เกิดต่อขั้นตอน)'
+      // ใบที่ระบุ batch ไม่ได้ไม่ถูกนับเป็น batch — แต่ต้องบอกว่ามีอยู่กี่ใบ ไม่ใช่เงียบ
+      + (bg.unbatchedWocs
+        ? ' · <span class="warn">ระบุ batch ไม่ได้ ' + esc(String(bg.unbatchedWocs)) + ' ใบ</span>'
+        : '')
+      + (bg.flaggedBatches
+        ? ' · <span class="bad">' + esc(String(bg.flaggedBatches))
+          + ' กลุ่มปิดงานแล้วแต่ยังไม่มีใบ MFG Summary Cost ผูก</span>'
+        : '')
+      + '</div>';
+
+    h += `<div class="scroll"><table><thead><tr><th>ใบปิดงานผลิต</th><th>วันที่</th><th>batch</th><th>ขั้นตอน</th>
       <th class="n">แผน</th><th class="n">ดี</th><th class="n">เสีย</th><th class="n">รับเข้าคลัง</th>
-      <th>ใบ MFG Summary Cost</th></tr>`;
-    s.wocs.forEach(r => {
-      const ia = asStr(r.sc_ia), d = scDoc[ia];
-      // ค่าที่ไม่ว่างแต่ไม่ใช่ใบ summary cost = move adjustment (engine ใช้ field เดียวกัน)
-      const scCell = !ia
-        ? (asNum(r.fg_qty) !== 0 ? '<span class="bad">ยังไม่ผูก</span>' : '')
-        : (d ? tranLink(d.recordtype, ia, asStr(d.doc_no))
-             : '<span class="warn">ผูกเอกสาร id ' + esc(ia) + ' ที่ไม่ใช่ใบ summary cost</span>');
-      h += `<tr><td>${tranLink('workordercompletion', r.woc_id, asStr(r.woc_no))}</td>
-        <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.batch_id))}</td>
-        <td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
-        + numCell(asNum(r.pro_qty), 4) + numCell(asNum(r.good_qty), 4)
-        + numCell(asNum(r.scrap_qty), 4) + numCell(asNum(r.fg_qty), 4)
-        + '<td>' + scCell + '</td></tr>';
+      <th>ใบ MFG Summary Cost</th></tr></thead><tbody>`;
+
+    const batchLabel = g => g.key
+      ? 'batch ' + esc(g.key)
+      : '<span class="warn">ไม่ระบุ batch</span>';   // WOC ที่หา batch ไม่ได้ ต้องไม่หายเงียบ ๆ
+
+    bg.groups.forEach(g => {
+      if (grouped) {
+        // หัวกลุ่ม — บอก batch · จำนวนใบ · ปิดงานหรือยัง · สถานะการผูกใบ summary cost ของ batch นี้
+        const status = !g.closed
+          ? '<span class="warn">ยังไม่ปิดงาน</span>'
+          : (g.flagged
+            ? '<span class="bad">ปิดงานแล้ว ' + esc(String(g.fgWocs)) + ' รอบ แต่ยังไม่มีใบ MFG Summary Cost ผูก '
+              + esc(String(g.unlinkedWocs)) + ' รอบ</span>'
+            : '<span class="ok">ปิดงานแล้ว ' + esc(String(g.fgWocs)) + ' รอบ · ผูกใบ MFG Summary Cost แล้ว '
+              + esc(String(g.scDocs.length)) + ' ใบ</span>');
+        h += '<tr class="sub bhead"><td colspan="9">' + batchLabel(g) + ' · '
+          + esc(String(g.wocs.length)) + ' ใบปิดงานผลิต · ' + status + '</td></tr>';
+      }
+
+      // batch ที่ปล่อยงานแล้วแต่ยังไม่มีใบปิดงานเลย — ต้องเห็นว่ามีอยู่ ไม่ใช่หายไปจากตาราง
+      // ช่อง "แผน" ใช้ปริมาณที่ปล่อยงานไว้บน task (custrecord_mfg_tm_pro_qty) ·
+      // ช่องดี/เสีย/รับเข้าคลังเว้นว่าง เพราะยังไม่มีเอกสารมารองรับ ห้ามเติมเลขศูนย์ให้ดูเหมือนมีข้อมูล
+      if (!g.wocs.length) {
+        h += '<tr><td colspan="4"><span class="warn">ยังไม่ปิดงาน</span> — '
+          + batchLabel(g) + ' ปล่อยงานแล้ว ' + esc(String(g.tasks)) + ' งาน</td>'
+          + stepCell(g.plan)
+          + '<td class="n z"></td><td class="n z"></td><td class="n z"></td><td></td></tr>';
+      }
+
+      g.wocs.forEach(r => {
+        const ia = asStr(r.sc_ia), d = scDoc[ia];
+        // ค่าที่ไม่ว่างแต่ไม่ใช่ใบ summary cost = move adjustment (engine ใช้ field เดียวกัน)
+        const scCell = !ia
+          ? (asNum(r.fg_qty) !== 0 ? '<span class="bad">ยังไม่ผูก</span>' : '')
+          : (d ? tranLink(d.recordtype, ia, asStr(d.doc_no))
+               : '<span class="warn">ผูกเอกสาร id ' + esc(ia) + ' ที่ไม่ใช่ใบ summary cost</span>');
+        h += `<tr><td>${tranLink('workordercompletion', r.woc_id, asStr(r.woc_no))}</td>
+          <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.batch_id))}</td>
+          <td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
+          + numCell(asNum(r.pro_qty), 4) + numCell(asNum(r.good_qty), 4)
+          + numCell(asNum(r.scrap_qty), 4) + numCell(asNum(r.fg_qty), 4)
+          + '<td>' + scCell + '</td></tr>';
+      });
+
+      // แถวรวมของกลุ่ม — ตัดสินที่ **ตัวกลุ่มเอง** ไม่ใช่ที่จำนวนกลุ่มของทั้งใบ
+      // (QA บน SB1: WO-FSC-00000216 มี 1 batch แต่ 3 ขั้นตอน พอไม่มีแถวรวม ผู้ใช้เห็นแค่
+      //  ตัวเลขไล่กันเป็นลูกโซ่ 96,000/104,698/93,424 แล้วต้องสรุปเอง ซึ่งคือการบวกที่เพิ่งกันไป)
+      // กลุ่มที่มีใบเดียวขั้นเดียวยังไม่ต้องมีแถวรวม — แถวนั้นคือคำตอบอยู่แล้ว ใส่ไปก็รกเปล่า
+      if (g.wocs.length > 1 || g.tasks > 1) {
+        // แผน = ขั้นแรก · ดี = ขั้นสุดท้าย (ห้ามบวกข้ามขั้น) · เสีย/รับเข้าคลัง = บวกข้ามขั้นได้
+        h += '<tr class="sub bsum"><td colspan="4">รวม ' + batchLabel(g) + '</td>'
+          + stepCell(g.plan) + stepCell(g.good, g.goodPending)
+          + numCell(g.scrap, 4) + numCell(g.fg, 4)
+          + '<td>' + (g.scDocs.length
+            ? esc(String(g.scDocs.length)) + ' ใบผูกแล้ว'
+            : (g.closed ? '<span class="bad">ยังไม่ผูก</span>' : '')) + '</td></tr>';
+      }
     });
+
+    // แถวรวมท้ายตารางยังอ่านจาก s.produced ตัวเดิม ไม่ใช่รวมยอดกลุ่มใหม่ —
+    // ตัวหารของต้นทุนต่อหน่วยต้องเป็นค่าเดียวกับที่ทุกชั้นใช้ (กติกายอดสองชั้นต้องเท่ากัน)
     h += `<tr class="tot"><td colspan="7">รวมรับเข้าคลัง (ตัวหารของต้นทุนต่อหน่วย)</td>`
-      + numCell(s.produced, 4) + '<td></td></tr></table>';
+      + numCell(s.produced, 4) + '<td></td></tr></tbody></table></div>';
     return h;
   }
 
   /** ตารางวัตถุดิบของ WO หนึ่งใบ — ใช้ทั้ง WO แม่และ WO ต้นทางของ semi */
   function renderMaterials(s, ctx, showLots) {
-    let h = `<table><tr><th>รหัส</th><th>ชื่อ</th><th>หน่วย</th>
+    // ห่อ .scroll + มี thead จริง เพื่อให้หัวตารางติดหนึบตอนเลื่อน (issue #77 ข้อ 2.3)
+    let h = `<div class="scroll"><table><thead><tr><th>รหัส</th><th>ชื่อ</th><th>หน่วย</th>
       <th class="n">ตาม BOM</th><th class="n">เบิกจริง</th><th class="n">ผลต่าง</th>
       <th class="n">ต้นทุน/หน่วย</th><th class="n">มูลค่า</th>
-      ${showLots ? '<th>lot</th>' : ''}<th>ใบเบิก</th></tr>`;
+      ${showLots ? '<th>lot</th>' : ''}<th>ใบเบิก</th></tr></thead><tbody>`;
     s.rows.forEach(r => {
       const diffBad = Math.abs(r.qty_diff) > 0.0001 && r.std_qty !== 0;
       const docs = {};
@@ -2426,7 +3154,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       h += `<tr class="tot"><td colspan="7">÷ ผลิตได้ ${esc(fmt(s.produced, 4))} = ต้นทุนวัตถุดิบ/หน่วย</td>`
         + numCell(s.unitCostRM, 10) + `<td colspan="${showLots ? 2 : 1}"></td></tr>`;
     }
-    return h + '</table>';
+    return h + '</tbody></table></div>';
   }
 
   /**
@@ -2515,9 +3243,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ใช้ bpcEff คุมเงื่อนไข ไม่ใช่ bpc ดิบ — ไม่งั้นสินค้า flag F ที่ไม่ได้ตั้ง basepercarton
     // จะตกไปโชว์ข้อความ "คำนวณต้นทุนต่อลังไม่ได้" ทั้งที่จริงคำนวณได้ (conversion = 1)
     if (bpcEff) {
-      const srcText = cpc.flag === 'F'
-        ? 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)'
-        : `ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpcEff, 4))} (<code>custitem_item_basepercarton</code>)`;
+      let srcText;
+      if (cpc.flag === 'F') {
+        srcText = 'ประเภทย่อยสินค้าตั้งไว้ไม่คิดต่อลัง — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)';
+      } else if (cpc.flag === 'T' && !bpc) {
+        // ห้ามเขียนว่า "÷ 1 (custitem_item_basepercarton)" — ช่องนั้นว่างอยู่ ไม่ได้มีค่า 1
+        srcText = 'ประเภทย่อยสินค้าติ๊ก Report - Cost per Carton ไว้ จึงไม่บังคับ '
+          + '<code>custitem_item_basepercarton</code> — conversion = 1 (ต้นทุน/ลัง = ต้นทุน/หน่วย)';
+      } else {
+        srcText = `ผลิตได้จริง ${esc(fmt(s.produced, 4))} ÷ ${esc(fmt(bpcEff, 4))} (<code>custitem_item_basepercarton</code>)`;
+      }
       h += `<tr><td>จำนวนลังที่ผลิตได้</td>` + numCell(cartons, 6) + '<td class="n z"></td>'
         + `<td>${srcText}</td></tr>`;
       h += `<tr class="grand"><td>ต้นทุนต่อลัง</td>` + numCell(total, 2)
@@ -2879,10 +3614,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + '</code> (นับเพิ่มแล้วได้ ' + esc(fmt(hit.whatif, 8)) + ' ซึ่งตรงพอดี)' : '')
         + ' ดูรายละเอียดที่หัวข้อ "ตรวจสุขภาพชั้นที่ 3" ท้ายรายงาน</div>';
     }
-    h += `<table><tr><th>วันที่</th><th>ประเภท</th><th>เลขที่เอกสาร</th><th>คลัง</th>
+    // ledger ยาวได้หลายร้อยแถวและกว้าง 12 คอลัมน์ — ห่อ .scroll + thead จริง (issue #77 ข้อ 2.3)
+    h += `<div class="scroll"><table><thead><tr><th>วันที่</th><th>ประเภท</th><th>เลขที่เอกสาร</th><th>คลัง</th>
       <th class="n">ปริมาณ</th><th>สกุล</th><th class="n">ยอดสกุลเอกสาร</th><th class="n">อัตราแลกเปลี่ยน</th>
       <th class="n">มูลค่าเข้าคลัง (สกุลฐาน)</th>
-      <th class="n">คงเหลือสะสม</th><th class="n">มูลค่าสะสม</th><th class="n">ค่าเฉลี่ยสะสม</th></tr>`;
+      <th class="n">คงเหลือสะสม</th><th class="n">มูลค่าสะสม</th><th class="n">ค่าเฉลี่ยสะสม</th></tr></thead><tbody>`;
     rows.forEach(r => {
       const cur = asStr(r.currency);
       const foreign = !!cur && cur !== 'THB';
@@ -2897,7 +3633,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + numCell(asNum(r.amount), 2)
         + numCell(asNum(r.run_qty), 6) + numCell(asNum(r.run_val), 2) + numCell(asNum(r.run_avg), 8) + '</tr>';
     });
-    return h + '</table><p class="sub">ค่าเฉลี่ยสะสม = มูลค่าสะสม ÷ คงเหลือสะสม '
+    return h + '</tbody></table></div><p class="sub">ค่าเฉลี่ยสะสม = มูลค่าสะสม ÷ คงเหลือสะสม '
       + '— นับทั้งรับเข้าและเบิกออก ซึ่งเป็นวิธีที่ NetSuite ใช้คิด average cost<br>'
       + '"มูลค่าเข้าคลัง" อ่านจากยอดที่ลงบัญชีสินทรัพย์ของสินค้า ไม่ใช่ยอดบนบรรทัดเอกสาร '
       + 'จึงเป็นสกุลฐานเสมอ และรวม landed cost ให้แล้ว — แถวที่ปริมาณเป็น 0 แต่มีมูลค่า คือ landed cost</p></details>';
@@ -3069,6 +3805,30 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + bad.map(q => esc(q.label) + ': ' + esc(q.error)).join('<br>') + '</div>';
   }
 
+  /**
+   * id ของหัวข้อในหน้าเจาะลึก (issue #77 ข้อ 2.4) — แหล่งเดียวที่ทั้งสารบัญและ `<h2>` อ่าน
+   * แยกเป็นค่าคงที่เพื่อไม่ให้ลิงก์กับหัวข้อหลุดจากกันเวลาใครแก้ข้างใดข้างหนึ่ง
+   * เป็น ASCII ล้วนโดยตั้งใจ — id ภาษาไทยใน URL fragment ต้องถูก encode แล้วอ่านยากตอน debug
+   */
+  const SEC = {
+    totals: 'sec-totals', wip: 'sec-wip', wocs: 'sec-wocs', materials: 'sec-materials',
+    conv: 'sec-conv', level2: 'sec-level2', audit: 'sec-audit', qlog: 'sec-qlog'
+  };
+
+  const SEC_LABELS = [
+    [SEC.totals, 'สรุปต้นทุน'], [SEC.wip, 'กระทบยอด WIP'], [SEC.wocs, 'ใบปิดงานผลิต'],
+    [SEC.materials, 'ชั้นที่ 1 วัตถุดิบ'], [SEC.conv, 'ต้นทุนแปรสภาพ'],
+    [SEC.level2, 'ชั้นที่ 2 และ 3'], [SEC.audit, 'ตรวจสุขภาพชั้นที่ 3'],
+    [SEC.qlog, 'เอกสารอ้างอิงทางเทคนิค']
+  ];
+
+  /** แถบสารบัญของหน้าเจาะลึก — ลิงก์ในหน้าเดียวกัน ไม่ผ่าน selfUrl จึงไม่ต้องพา embed ไปด้วย */
+  function renderToc() {
+    return '<nav class="toc" aria-label="สารบัญหัวข้อในหน้านี้">'
+      + SEC_LABELS.map(x => '<a href="#' + esc(x[0]) + '">' + esc(x[1]) + '</a>').join('')
+      + '</nav>';
+  }
+
   function renderPage(m) {
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
       + '">← ภาพรวมหลายใบสั่งผลิต</a>'
@@ -3085,31 +3845,44 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     if (!m.ok) return page(h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>');
 
     const s = m.root;
-    h += renderErrors() + renderWOHeader(s);
-    h += '<h2>สรุปต้นทุนของใบสั่งผลิตนี้</h2>' + renderTotals(s, m.ctx);
-    h += '<h2>กระทบยอดงานระหว่างทำ — Summary Cost Item ต้องเท่ากับ วัตถุดิบ + ต้นทุนแปรสภาพ</h2>'
+    h += renderErrors();
+    // เลขที่ที่พิมพ์มาตรงกับใบสั่งผลิตมากกว่าหนึ่งใบ (เทียบแบบตัดขีด) — ต้องรู้ว่ากำลังดูใบไหน
+    if (m.ambiguous) {
+      h += '<div class="err">เลขที่ "' + esc(m.woKey) + '" ตรงกับใบสั่งผลิต '
+        + esc(String(m.ambiguous.count)) + ' ใบ (เทียบโดยไม่สนขีดคั่น) — '
+        + 'หน้านี้แสดงของ <b>' + esc(m.ambiguous.picked) + '</b> '
+        + 'ส่วนใบที่เหลือคือ ' + esc(m.ambiguous.others.join(' · '))
+        + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
+    }
+    h += renderWOHeader(s);
+    // สารบัญ (issue #77 ข้อ 2.4) — หน้านี้ยาว 8 หัวข้อ ของเดิมไม่มี anchor เลย จะดู
+    // "ตรวจสุขภาพชั้นที่ 3" หรือ log ท้ายหน้าต้องเลื่อนทั้งหน้า · id ทุกตัวเป็น ASCII
+    // และต้องตรงกับ id ที่ <h2> ข้างล่างประกาศไว้ (ลิงก์ในหน้าเดียวกัน ไม่ผ่าน selfUrl)
+    h += renderToc();
+    h += '<h2 id="' + SEC.totals + '">สรุปต้นทุนของใบสั่งผลิตนี้</h2>' + renderTotals(s, m.ctx);
+    h += '<h2 id="' + SEC.wip + '">กระทบยอดงานระหว่างทำ — Summary Cost Item ต้องเท่ากับ วัตถุดิบ + ต้นทุนแปรสภาพ</h2>'
       + '<div class="sub">กลไกของระบบนี้ให้ WOC เดบิต WIP ด้วย summary cost item แล้วเครดิตออกไปเป็นสินค้าสำเร็จรูป '
       + 'และให้ใบปรับ summary cost เครดิต WIP ย้ายไปบัญชีพัก · WIP จะปิดเป็นศูนย์ได้เมื่อมูลค่า summary cost item '
       + 'เท่ากับต้นทุนที่เกิดจริงเท่านั้น ส่วนต่างเท่าไหร่จะค้างใน WIP เท่านั้น '
       + '· ใบสั่งผลิตที่แตกหลาย batch มีใบ summary cost ได้ใบต่อ batch ที่ปิดงานเสร็จ '
       + 'จำนวนใบจึงไม่ใช่ตัวชี้ผิดถูก ตัวชี้คือแต่ละใบมีใบปิดงานอ้างถึงหรือไม่</div>'
       + renderWipRecon(s, m.ctx);
-    h += '<h2>ใบปิดงานผลิต</h2>' + renderWOCs(s);
-    h += '<h2>ชั้นที่ 1 — วัตถุดิบที่เบิกเข้าใบสั่งผลิตนี้</h2>'
+    h += '<h2 id="' + SEC.wocs + '">ใบปิดงานผลิต</h2>' + renderWOCs(s);
+    h += '<h2 id="' + SEC.materials + '">ชั้นที่ 1 — วัตถุดิบที่เบิกเข้าใบสั่งผลิตนี้</h2>'
       + '<div class="sub">"ตาม BOM" คือปริมาณมาตรฐานที่ติดมากับใบสั่งผลิต · "เบิกจริง" คือยอดบนใบเบิก '
       + '· ต้นทุน/หน่วย คือ average cost ณ เวลาที่เบิก</div>'
       + renderMaterials(s, m.ctx, true);
-    h += '<h2>ต้นทุนแปรสภาพที่ระบบปันส่วน</h2>' + renderCostAlloc(s);
-    h += '<h2>ชั้นที่ 2 และ 3 — เจาะที่มาของแต่ละรายการ</h2>'
+    h += '<h2 id="' + SEC.conv + '">ต้นทุนแปรสภาพที่ระบบปันส่วน</h2>' + renderCostAlloc(s);
+    h += '<h2 id="' + SEC.level2 + '">ชั้นที่ 2 และ 3 — เจาะที่มาของแต่ละรายการ</h2>'
       + '<div class="sub">กึ่งสำเร็จรูปเป็นแบบผลิตเก็บสต็อก จึงไล่ผ่าน lot ที่เบิกจริงกลับไปหาใบสั่งผลิตต้นทาง '
       + 'และเทียบกับ BOM มาตรฐานอีกทางหนึ่ง</div>'
       + renderLevel2(m);
-    h += '<h2>ตรวจสุขภาพชั้นที่ 3 — ค่าเฉลี่ยที่คำนวณตรงกับระบบหรือยัง</h2>'
+    h += '<h2 id="' + SEC.audit + '">ตรวจสุขภาพชั้นที่ 3 — ค่าเฉลี่ยที่คำนวณตรงกับระบบหรือยัง</h2>'
       + '<div class="sub">ชั้นที่ 3 คำนวณค่าเฉลี่ยจาก ledger เอง ถ้าผลไม่ตรงกับ average cost ที่ระบบเก็บ '
       + 'แปลว่ายังนับความเคลื่อนไหวไม่ครบ ส่วนนี้ชี้ว่าขาดกลุ่มไหนและถ้านับเพิ่มแล้วจะตรงหรือไม่ '
       + 'ตัวเลขชั้นที่ 3 ของรายการที่ยังไม่ตรง อย่าใช้อ้างอิงจนกว่าจะแก้</div>'
       + renderAudit(m);
-    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
+    h += '<h2 id="' + SEC.qlog + '">เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
     return page(h);
   }
 
@@ -3126,7 +3899,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   /**
    * สามชั้น หน้าเดียวกันคนละคำถาม
    *   ไม่ส่งพารามิเตอร์ → ชั้นภาพรวม หลายสินค้าหลายใบสั่งผลิต (4 คำสั่งรวมยอด)
-   *   ส่ง wo มา         → ชั้นเจาะลึกใบเดียว ของเดิมทั้งหมดไม่เปลี่ยน (19 คำสั่ง ~15 วินาที)
+   *   ส่ง wo มา         → ชั้นเจาะลึกใบเดียว ของเดิมทั้งหมดไม่เปลี่ยน (20 คำสั่ง ~15 วินาที)
    *   ส่ง ready มา      → ชั้นความพร้อม master ก่อน UAT (ไล่ BOM ทุกระดับ)
    * ลิงก์เดิมที่มี &wo= และ &mode=json ยังทำงานเหมือนเดิม
    */
