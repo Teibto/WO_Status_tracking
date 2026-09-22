@@ -318,6 +318,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const at = QLOG.length;
     const rows = runSQL(COST_PER_CARTON_FLAG_LABEL, `
       SELECT I.id                                            AS item_id,
+             I.cseg_subitemtype                              AS subtype_id,
              S.custrecord_subitemtype_r_costpercarton        AS cost_per_carton_flag
       FROM item I
       LEFT JOIN customrecord_cseg_subitemtype S ON S.id = I.cseg_subitemtype
@@ -325,8 +326,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     `);
     let failed = false;
     for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
-    const byItem = {};
-    rows.forEach(r => { byItem[asStr(r.item_id)] = asStr(r.cost_per_carton_flag); });
+    const byItem = {}, subtypeByItem = {};
+    rows.forEach(r => {
+      byItem[asStr(r.item_id)] = asStr(r.cost_per_carton_flag);
+      subtypeByItem[asStr(r.item_id)] = asStr(r.subtype_id);
+    });
     // log.audit ให้เห็นจาก Script Execution Log โดยไม่ต้องถามแอดมินว่า checkbox ถูกสร้างหรือยัง
     log.audit({
       title: COST_PER_CARTON_FLAG_LABEL,
@@ -335,7 +339,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           + 'อาจยังไม่ถูกสร้างบนบัญชีนี้ · คิดต้นทุนต่อลังตามเดิมทั้งชุด'
         : 'อ่านได้ ' + rows.length + ' จาก ' + itemIds.length + ' รายการ'
     });
-    return { byItem: byItem, failed: failed };
+    return { byItem: byItem, subtypeByItem: subtypeByItem, failed: failed };
   }
 
   /**
@@ -366,9 +370,21 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       // หรือไม่ได้ตั้งประเภทย่อยสินค้า ยังห้ามตกไปทาง conversion 1 เหมือนเดิม (ดูหัวฟังก์ชัน)
       return { bpcEff: bpc || 1, flag: flag, note: null };
     }
+    // flag ว่างเกิดได้สองแบบ และทางแก้ของผู้ใช้คนละทางกัน — บอกผิดแบบจะถูกส่งไปตั้งค่าที่ตั้งอยู่แล้ว
+    //   (ก) สินค้าไม่ได้ตั้ง `cseg_subitemtype` เลย
+    //   (ข) ตั้งประเภทย่อยไว้แล้ว แต่ checkbox บนประเภทย่อยนั้นยังว่าง (ยังไม่มีใครติ๊ก)
+    // บน SB1 (2026-09-22) เคส (ข) คือเคสหลัก: ประเภทย่อย 37 แถว ว่าง 30 แถว ขณะที่สินค้า
+    // ที่ไม่ได้ตั้งประเภทย่อยเลยมีแค่ 15 จาก 6,799 ตัว
+    // ทั้งสองเคสยังคืน bpc ดิบ + เตือนเหมือนเดิม — ห้ามตกไปทาง conversion 1
+    const hasSubtype = asStr((f.subtypeByItem || {})[asStr(itemId)]) !== '';
     return {
       bpcEff: bpc, flag: flag,
-      note: { cls: 'warn', text: 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม' }
+      note: {
+        cls: 'warn',
+        text: hasSubtype
+          ? 'ประเภทย่อยสินค้าของสินค้านี้ยังไม่ได้ติ๊ก Report - Cost per Carton — คิดต้นทุนต่อลังตามเดิม'
+          : 'สินค้านี้ไม่ได้ตั้งประเภทย่อยสินค้า (sub item type) — คิดต้นทุนต่อลังตามเดิม'
+      }
     };
   }
 

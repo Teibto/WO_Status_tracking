@@ -213,7 +213,7 @@ const FX = {
 const { T } = H.load({
   libs: ['WOReportTheme.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js'],
   fixtures: FX,
-  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryLink', 'explainSummaryGap']
+  exports: ['buildSummary', 'readFilters', 'renderSummaryPage', 'renderSummaryGrid', 'summaryLink', 'explainSummaryGap', 'costPerCartonEff']
 });
 
 // ── run ────────────────────────────────────────────────────────────────────
@@ -613,6 +613,49 @@ const g0 = T.explainSummaryGap({
   summaryLink: T.summaryLink([{ tran_id: 1, amount: -50 }, { tran_id: 2, amount: -50 }], [])
 }, {});
 eq('ไม่มียอดวัตถุดิบ = ไม่เข้าลายเซ็น', g0.detected, false);
+
+// ═══ ตัวหารต้นทุนต่อลัง — กิ่งที่ "ห้ามตกไป conversion 1" (#54 · รีวิว #77) ═══
+//
+// รีวิวทำ mutation test แล้วพบว่า invariant หลักของ costPerCartonEff ไม่มีเทสคุม
+// — ทุกซีนที่เดินเส้นทาง non-'T' ใช้สินค้าที่ **มี** bpc อยู่แล้ว กิ่ง `bpc || 1` จึงไม่เคยทำงาน
+// มี 5 mutation ที่รอด: กิ่ง failed ตก conversion 1 · กิ่ง flag ว่างตก conversion 1 (สองแบบ)
+// · เปลี่ยน flag === 'T' เป็น flag !== 'F' · รับ 't'/true เป็น T ด้วย
+// ซีนข้างล่างเรียก costPerCartonEff ตรง ๆ โดยให้ bpc เป็น 0 ทุกเคส เพื่อแยกสองกิ่งนี้ออกจากกัน
+console.log('\n── ตัวหารต้นทุนต่อลัง · ห้ามตกไป conversion 1 ──');
+const cpcOK = (byItem) => ({ byItem: byItem, failed: false });
+const cpcFail = { byItem: {}, failed: true };
+
+// 1. อ่านธงไม่สำเร็จ + สินค้าไม่ตั้ง bpc → ต้องคืน bpc ดิบ (0) ห้ามเป็น 1
+const cE1 = T.costPerCartonEff(0, cpcFail, 777);
+eq('อ่านธงไม่สำเร็จ + ไม่ตั้ง bpc → ตัวหารไม่กลายเป็น 1', cE1.bpcEff, 0);
+eq('→ มีคำเตือนว่าอ่านธงไม่ได้', !!(cE1.note && cE1.note.cls === 'warn'), true);
+
+// 2. สินค้าไม่มีแถวธง (flag ว่าง) + ไม่ตั้ง bpc → ต้องคืน bpc ดิบ (0)
+const cE2 = T.costPerCartonEff(0, cpcOK({}), 778);
+eq('flag ว่าง + ไม่ตั้ง bpc → ตัวหารไม่กลายเป็น 1', cE2.bpcEff, 0);
+eq('→ มีคำเตือน', !!(cE2.note && cE2.note.cls === 'warn'), true);
+
+// 3. ธงที่ไม่ใช่ 'T' ตรงตัว — ตัวเล็ก / true / '1' ห้ามเข้ากิ่งผ่อน
+[['t', 779], [true, 780], ['1', 781], ['Y', 782]].forEach(function (pair) {
+  const got = T.costPerCartonEff(0, cpcOK({ [String(pair[1])]: pair[0] }), pair[1]);
+  eq('flag ' + JSON.stringify(pair[0]) + ' ไม่นับเป็น T → ตัวหารไม่กลายเป็น 1', got.bpcEff, 0);
+});
+
+// 4. กิ่งที่ตั้งใจให้เป็น conversion 1 — ต้องยังทำงาน และต้องไม่กลืน bpc ที่ตั้งไว้
+eq("flag 'T' + ไม่ตั้ง bpc → conversion = 1", T.costPerCartonEff(0, cpcOK({ '783': 'T' }), 783).bpcEff, 1);
+eq("flag 'T' + ตั้ง bpc → ÷ bpc ตามเดิม", T.costPerCartonEff(48, cpcOK({ '784': 'T' }), 784).bpcEff, 48);
+eq("flag 'T' + ไม่ตั้ง bpc → ไม่มีคำเตือน", T.costPerCartonEff(0, cpcOK({ '785': 'T' }), 785).note, null);
+eq("flag 'F' → conversion = 1 ตามเดิม", T.costPerCartonEff(48, cpcOK({ '786': 'F' }), 786).bpcEff, 1);
+
+// 5. flag ว่างเกิดได้สองแบบ ทางแก้ของผู้ใช้คนละทาง — ข้อความต้องบอกคนละอย่าง
+const cE5a = T.costPerCartonEff(0, { byItem: {}, subtypeByItem: { '790': '6' }, failed: false }, 790);
+eq('ตั้งประเภทย่อยแล้วแต่ยังไม่ติ๊ก → บอกว่ายังไม่ได้ติ๊ก',
+  cE5a.note.text.indexOf('ยังไม่ได้ติ๊ก Report - Cost per Carton') >= 0, true);
+eq('→ ยังไม่ตกไป conversion 1', cE5a.bpcEff, 0);
+const cE5b = T.costPerCartonEff(0, { byItem: {}, subtypeByItem: { '791': '' }, failed: false }, 791);
+eq('ไม่ได้ตั้งประเภทย่อยเลย → บอกอีกข้อความ',
+  cE5b.note.text.indexOf('ไม่ได้ตั้งประเภทย่อยสินค้า') >= 0, true);
+eq('→ สองข้อความต้องต่างกันจริง', cE5a.note.text === cE5b.note.text, false);
 
 console.log('\n' + (H.fails() ? H.fails() + ' FAILED' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
