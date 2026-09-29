@@ -220,12 +220,12 @@ eq('self/OthCharge/phantom/summary cost ถูกกรองออก แม้
 
 MODE = Object.assign({
   cp3a: CP3A_MIXED.concat([
-    { woid: '1001', item_id: '14', item_name: 'RM-D', item_source: 'STOCK', is_summary_cost: 'F' },
+    { woid: '1001', item_id: '14', item_code: 'C14', item_name: 'RM-D', item_source: 'STOCK', is_summary_cost: 'F' },
   ]),
   cp3b: CP3B_FED,
 }, CP3_BASE);
 html = run(PARAMS);
-eq('วัตถุดิบจริงที่ยังไม่ป้อน (RM-D) → ขึ้น note', html.indexOf('ยังไม่ได้ป้อนวัตถุดิบ: RM-D') >= 0, true);
+eq('วัตถุดิบจริงที่ยังไม่ป้อน (RM-D) → ขึ้น note', html.indexOf('ยังไม่ได้ป้อนวัตถุดิบ: C14 RM-D') >= 0, true);
 eq('note ไม่พูดถึง self line', html.indexOf('ASSY-X') >= 0, false);
 eq('note ไม่พูดถึง OthCharge', html.indexOf('CHARGE-1') >= 0, false);
 eq('note ไม่พูดถึง phantom', html.indexOf('PHANTOM-ITEM') >= 0, false);
@@ -345,6 +345,70 @@ MODE = ddMode({ tasks: [Object.assign({}, DD_TASKS[0], { task_name: XSS_NAME })]
 const ddXss = run(DRILL);
 eq('f: ไม่มี <img src=x ดิบใน html', ddXss.indexOf('<img src=x') >= 0, false);
 eq('f: ชื่อ task ถูก escape เป็น &lt;img', ddXss.indexOf('&lt;img src=x') >= 0, true);
+
+// ═══════════════════════════════════════════════════════════════════════
+// JOB B — grid: notes ครบทุกเรื่อง, CP3 keyed ด้วย item id, ลิงก์ WO, XSS
+// ═══════════════════════════════════════════════════════════════════════
+console.log('\n── grid: notes มองเห็นทุกเรื่อง / CP3 ด้วย item id / ลิงก์ WO ──');
+
+// (a) WO เดียวมีทั้ง time error (CP6) และวัตถุดิบขาด (CP3) — err ต้องมาก่อน wait
+MODE = Object.assign({
+  cp6: [{ task_id: '1', woid: '1001', batch_id: '1', woc_id: '500', start_dt: '', end_dt: '', total_min: 0 }],
+  cp3a: [{ woid: '1001', item_id: '11', item_code: 'C11', item_name: 'RM-A', item_source: 'STOCK', is_summary_cost: 'F' }],
+  cp3b: [],
+}, CP3_BASE);
+const gErrWait = visible(run(PARAMS));
+eq('a: note มีหัวข้อ เวลา:', gErrWait.indexOf('เวลา:') >= 0, true);
+eq('a: note มีหัวข้อ ป้อนวัตถุดิบ:', gErrWait.indexOf('ป้อนวัตถุดิบ:') >= 0, true);
+eq('a: err (เวลา) มาก่อน wait (ป้อนวัตถุดิบ)',
+  gErrWait.indexOf('เวลา:') < gErrWait.indexOf('ป้อนวัตถุดิบ:'), true);
+
+// (b) displayname ซ้ำกันข้าม id — ต้องเทียบด้วย item id ไม่ใช่ชื่อ
+const GRID_BOM_DUP = [
+  { woid: '1001', item_id: '11', item_code: 'C11', item_name: 'RM-A', item_source: 'STOCK', is_summary_cost: 'F' },
+  { woid: '1001', item_id: '12', item_code: 'C12', item_name: 'RM-B', item_source: 'STOCK', is_summary_cost: 'F' },
+  { woid: '1001', item_id: '13', item_code: 'C13', item_name: 'RM-B', item_source: 'STOCK', is_summary_cost: 'F' },
+];
+MODE = Object.assign({
+  cp3a: GRID_BOM_DUP,
+  cp3b: [{ woid: '1001', item_id: '11', item_code: 'C11', item_name: 'RM-A' },
+         { woid: '1001', item_id: '12', item_code: 'C12', item_name: 'RM-B' }],
+}, CP3_BASE);
+const gMissHtml = run(PARAMS);
+const gMissVisible = visible(gMissHtml);
+eq('b: missing list โชว์ C13 RM-B', gMissVisible.indexOf('ยังไม่ได้ป้อนวัตถุดิบ: C13 RM-B') >= 0, true);
+eq('b: missing list ไม่มี C12 RM-B (คีย์ด้วย item id)', gMissVisible.indexOf('C12 RM-B') >= 0, false);
+
+MODE = Object.assign({
+  cp3a: GRID_BOM_DUP,
+  cp3b: [{ woid: '1001', item_id: '11', item_code: 'C11', item_name: 'RM-A' },
+         { woid: '1001', item_id: '12', item_code: 'C12', item_name: 'RM-B' },
+         { woid: '1001', item_id: '13', item_code: 'C13', item_name: 'RM-B' }],
+}, CP3_BASE);
+eq('b: ป้อนครบทุก id → ไม่มี note วัตถุดิบขาด',
+  visible(run(PARAMS)).indexOf('ยังไม่ได้ป้อนวัตถุดิบ') >= 0, false);
+
+// (c) tooltip บน pill ต้องมีหัวข้อคอลัมน์นำหน้า note
+eq('c: data-tip บน pill มีหัวข้อ + note',
+  gMissHtml.indexOf('data-tip="ป้อนวัตถุดิบ: ยังไม่ได้ป้อนวัตถุดิบ:') >= 0, true);
+
+// (d) ลิงก์ WO บนแถว grid
+html = run(PARAMS);
+eq('d: มีลิงก์ transaction.nl?id=1001', html.indexOf('transaction.nl?id=1001') >= 0, true);
+eq('d: markup ลิงก์ใช้ class="wo-link"', html.indexOf('class="wo-link"') >= 0, true);
+eq("d: คลิกใน note ไม่ตามลิงก์ (closest('a'))", html.indexOf("closest('a')") >= 0, true);
+
+// (e) ไม่ผลิต markup note-icon แบบเดิมอีก
+eq('e: ไม่มี <span class="note-icon', html.indexOf('<span class="note-icon') >= 0, false);
+
+// (f) XSS — ชื่อวัตถุดิบต้องถูก escape
+MODE = Object.assign({
+  cp3a: [{ woid: '1001', item_id: '11', item_code: 'C11', item_name: '<img src=x onerror=alert(1)>', item_source: 'STOCK', is_summary_cost: 'F' }],
+  cp3b: [],
+}, CP3_BASE);
+const gXss = run(PARAMS);
+eq('f: ไม่มี <img src=x ดิบใน html', gXss.indexOf('<img src=x') >= 0, false);
+eq('f: ชื่อวัตถุดิบถูก escape เป็น &lt;img', gXss.indexOf('&lt;img') >= 0, true);
 
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
