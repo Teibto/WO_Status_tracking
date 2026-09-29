@@ -41,6 +41,14 @@ function sqlRows(sql) {
   if (/AS machine_time/.test(sql)) return MODE.cp4 || [];
   if (/customrecord_mfg_mac_down_reason_comp/.test(sql)) return MODE.cp4child || [];
   if (/customrecord_mfg_prewoc_labor/.test(sql)) return [];
+  // ── drilldown (WOStatusTracking_Drilldown.js) ─────────────────────────────
+  // ต้องวางก่อน route ของ grid ที่ regex กว้างกว่า: /AS start_dt/ จะดัก queryWOC ของ
+  // drilldown (ซึ่ง select start_dt ด้วย) และ /AS tm_good/ จะดัก queryTasks (tm_good_qty)
+  // alias ที่ใช้จึงเลือกตัวที่ไม่ซ้ำกับ grid — ลำดับของ route เดิมคงไว้ทั้งหมด
+  if (/AS task_altname/.test(sql)) return MODE.tasks || [];
+  if (/AS woc_tranid/.test(sql)) return MODE.woc || [];
+  if (/AS backorder_qty/.test(sql)) return MODE.woCtx || [];
+  if (/custcol_mfg2_ref_workordercompletion/.test(sql)) return MODE.costAlloc || [];
   if (/AS start_dt/.test(sql)) return MODE.cp6 || [];
   if (/customrecord_mfg_lot_pallet_info/.test(sql)) return MODE.cp7l1 || [];
   if (/AS tm_good/.test(sql)) return MODE.cp7 || [];
@@ -229,6 +237,114 @@ eq('self line (item_source ว่าง) ไม่ใช่วัตถุดิ
 eq('phantom ไม่ใช่วัตถุดิบ', isFeedableBomLine({ item_source: 'PHANTOM', is_summary_cost: 'F' }), false);
 eq('summary cost ไม่ใช่วัตถุดิบ', isFeedableBomLine({ item_source: 'STOCK', is_summary_cost: 'T' }), false);
 eq('STOCK ธรรมดาเป็นวัตถุดิบ', isFeedableBomLine({ item_source: 'STOCK', is_summary_cost: 'F' }), true);
+
+// ═══════════════════════════════════════════════════════════════════════
+// JOB A — drilldown: notes เป็นข้อความที่เห็นได้, batch dedupe, item codes, WOC link
+// (WOStatusTracking_Drilldown.js)
+// ═══════════════════════════════════════════════════════════════════════
+console.log('\n── drilldown: notes มองเห็น / dedupe / item code / WOC link ──');
+
+/** raw html ลบ data-tip/aria-label แล้วแทน tag ด้วยช่องว่าง — เอาเฉพาะข้อความที่ผู้ใช้เห็น */
+function visible(html) {
+  return String(html)
+    .replace(/data-tip="[^"]*"/g, '')
+    .replace(/aria-label="[^"]*"/g, '')
+    .replace(/<[^>]*>/g, ' ');
+}
+
+const DD_MISSING = 'วัตถุดิบขาด 1 รายการ: C13 RM-B';
+
+// BOM ของ WO: 11 C11 RM-A · 12 C12 RM-B · 13 C13 RM-B (12 กับ 13 ชื่อ displayname ซ้ำกัน)
+const DD_BOM = [
+  { item_id: '11', item_code: 'C11', item_name: 'RM-A', item_source: 'STOCK', is_summary_cost: 'F' },
+  { item_id: '12', item_code: 'C12', item_name: 'RM-B', item_source: 'STOCK', is_summary_cost: 'F' },
+  { item_id: '13', item_code: 'C13', item_name: 'RM-B', item_source: 'STOCK', is_summary_cost: 'F' },
+];
+// ป้อนจริงแค่ 11 กับ 12 → ขาด 13 เท่านั้น (ถ้าคีย์ด้วยชื่อจะมองว่า 13 ถูกป้อนไปด้วย)
+const DD_FED = [
+  { item_id: '11', item_code: 'C11', item_name: 'RM-A' },
+  { item_id: '12', item_code: 'C12', item_name: 'RM-B' },
+];
+
+const DD_TASKS = [
+  { task_id: '1', task_name: 'TM-1', task_altname: 'Mixing',  batch_id: '1', op_task_id: '901',
+    tm_good_qty: 10, tm_scrap_qty: 0, tm_rework_qty: 0, tm_move_qty: 0, tm_pro_qty: 10 },
+  { task_id: '2', task_name: 'TM-2', task_altname: 'Filling', batch_id: '1', op_task_id: '902',
+    tm_good_qty: 10, tm_scrap_qty: 0, tm_rework_qty: 0, tm_move_qty: 0, tm_pro_qty: 10 },
+  { task_id: '3', task_name: 'TM-3', task_altname: 'Packing', batch_id: '1', op_task_id: '903',
+    tm_good_qty: 10, tm_scrap_qty: 0, tm_rework_qty: 0, tm_move_qty: 0, tm_pro_qty: 10 },
+];
+
+// WOC ของ TM-1 เท่านั้น — start 08:00 end 08:30 (30 นาที) แต่ total_minute 45 → CP6 (เวลา) err
+const DD_WOC = [{
+  task_id: '1', woc_id: '500', woc_tranid: 'WOC-TEST-1',
+  woc_good_qty: 10, woc_scrap_qty: 0, woc_rework_qty: 0, woc_move_qty: 0,
+  machinetime: 30, labortime: 0, totallbtimecal: 0,
+  start_dt: '2026-09-02T08:00:00', end_dt: '2026-09-02T08:30:00', total_minute: 45,
+}];
+
+function ddMode(over) {
+  return Object.assign({
+    woCtx: [{ approval_status: '2', approval_status_name: 'Approved', backorder_qty: 10, unit_name: 'KG' }],
+    cp2: [{ batch_id: '1', batch_name: 'B1', released_status: '2', released_qty: 10 }],
+    tasks: DD_TASKS,
+    woc: DD_WOC,
+    cp4child: [],
+    cp7l1: [{ woid: '1001', lp_total: 10 }],
+    costAlloc: [{ woc_id: '500' }],
+    cp3a: DD_BOM,
+    cp3b: DD_FED,
+  }, over);
+}
+const DRILL = { action: 'drilldown', woid: '1001', lang: 'th' };
+
+MODE = ddMode({});
+const ddHtml = run(DRILL);
+const ddVisible = visible(ddHtml);
+
+// (a) item code: missing list ต้องเป็น C13 เท่านั้น (12 กับ 13 ชื่อซ้ำกัน)
+eq('a: note มีหัวข้อ ป้อนวัตถุดิบ:', ddVisible.indexOf('ป้อนวัตถุดิบ:') >= 0, true);
+eq('a: missing list โชว์ C13 RM-B', ddVisible.indexOf('C13 RM-B') >= 0, true);
+eq('a: missing list ไม่มี C12 RM-B (คีย์ด้วย item id ไม่ใช่ชื่อ)', ddVisible.indexOf('C12 RM-B') >= 0, false);
+
+// (b) batch row dedupe: ข้อความเดียว รวมชื่อ task ทั้งสาม
+const ddBatchRow = (ddHtml.match(/<tr class="batch">[\s\S]*?<\/tr>/) || [''])[0];
+const ddBatchVisible = visible(ddBatchRow);
+eq('b: batch row มีข้อความวัตถุดิบขาดครั้งเดียว', ddBatchVisible.split(DD_MISSING).length - 1, 1);
+eq('b: batch row รวมชื่อ task ทั้งสาม', ddBatchVisible.indexOf(DD_MISSING + ' (TM-1, TM-2, TM-3)') >= 0, true);
+
+// (c) note แรงงานต้องเห็นเป็นข้อความ ไม่ใช่แค่ tooltip
+eq('c: note แรงงานมองเห็นได้', ddVisible.indexOf('ยังไม่บันทึกข้อมูลแรงงาน (Pre-WOC Labor)') >= 0, true);
+
+// (d) err มาก่อน wait ใน note-cell เดียวกัน (TM-1 มีทั้ง CP6 err และ CP3/CP5 wait)
+const ddTm1Row = (ddHtml.match(/<tr class="task">[\s\S]*?TM-1[\s\S]*?<\/tr>/) || [''])[0];
+const dErrIdx = ddTm1Row.indexOf('note-line err');
+const dWaitIdx = ddTm1Row.indexOf('note-line wait');
+eq('d: TM-1 มีทั้ง note-line err และ wait', dErrIdx >= 0 && dWaitIdx >= 0, true);
+eq('d: note-line err มาก่อน note-line wait', dErrIdx < dWaitIdx, true);
+
+// (e) markup tooltip เดิมต้องไม่ถูกผลิตอีก
+eq('e: ไม่มี <span class="note-icon ใน drilldown', ddHtml.indexOf('<span class="note-icon') >= 0, false);
+
+// (g) WOC link บนแถว task
+eq('g: มีลิงก์ transaction.nl?id=500', ddHtml.indexOf('transaction.nl?id=500') >= 0, true);
+eq('g: ข้อความลิงก์เป็น ใบปิดงาน WOC-TEST-1', ddVisible.indexOf('ใบปิดงาน WOC-TEST-1') >= 0, true);
+
+// (g2) woc id ที่ไม่ใช่ตัวเลข → ไม่มีลิงก์
+MODE = ddMode({ woc: [{
+  task_id: '1', woc_id: 'abc', woc_tranid: 'WOC-TEST-1',
+  woc_good_qty: 10, woc_scrap_qty: 0, woc_rework_qty: 0, woc_move_qty: 0,
+  machinetime: 30, labortime: 0, totallbtimecal: 0,
+  start_dt: '2026-09-02T08:00:00', end_dt: '2026-09-02T08:30:00', total_minute: 30,
+}] });
+eq('g2: woc id ไม่ใช่ตัวเลข → ไม่มีลิงก์', run(DRILL).indexOf('transaction.nl?id=') >= 0, false);
+
+// (f) XSS — ชื่อ task ต้องถูก escape
+const XSS_NAME = '<img src=x onerror=alert(1)>';
+MODE = ddMode({ tasks: [Object.assign({}, DD_TASKS[0], { task_name: XSS_NAME })] });
+const ddXss = run(DRILL);
+eq('f: ไม่มี <img src=x ดิบใน html', ddXss.indexOf('<img src=x') >= 0, false);
+eq('f: ชื่อ task ถูก escape เป็น &lt;img', ddXss.indexOf('&lt;img src=x') >= 0, true);
 
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
