@@ -45,10 +45,12 @@ function sqlRows(sql) {
   if (/customrecord_mfg_lot_pallet_info/.test(sql)) return MODE.cp7l1 || [];
   if (/AS tm_good/.test(sql)) return MODE.cp7 || [];
   if (/AS cost_alloc_count/.test(sql)) return MODE.cp8 || [];
+  if (/AS item_source/.test(sql)) return MODE.cp3a || [];
+  if (/custrecord_adjt_mfgrawmaterial/.test(sql)) return MODE.cp3b || [];
   return [];
 }
 
-const { module: mod } = H.load({
+const { module: mod, libT } = H.load({
   file: 'WOStatusTracking.js',
   libs: [
     'WOReportTheme.js',
@@ -59,6 +61,8 @@ const { module: mod } = H.load({
   requireRunSQL: false,
   sqlRows,
   quietLog: true,
+  // เปิด helper ภายในของ Queries ออกมาให้เทสเรียกตรง ๆ (กลไก libExports ของ harness)
+  libExports: { 'WOStatusTracking_Queries.js': ['isFeedableBomLine'] },
 });
 
 function run(params) {
@@ -172,6 +176,59 @@ MODE = { cp2: [{ woid: '1001', batch_id: '1', batch_name: 'B1', released: 'T' }]
 html = run(PARAMS);
 eq('ผลิตไม่ครบเป้า → wait', kpi(html, 'err'), 0);
 eq('หมายเหตุบอกว่าผลิตได้น้อยกว่าเป้า', html.indexOf('ผลิตได้น้อยกว่าเป้า 1 งาน') >= 0, true);
+
+// ═══ CP3: เทียบ BOM กับวัตถุดิบที่ป้อนจริง — ต้องข้ามบรรทัดที่ไม่ใช่วัตถุดิบ ═══
+console.log('\n── CP3 (Feed Materials) ──');
+
+// แถว CP3a แบบเดียวกับ WO จริง: self line + OthCharge (item_source ว่าง), phantom, summary cost
+// แล้วตามด้วยวัตถุดิบจริง 3 ตัว — mock SQL คืนมาครบทุกบรรทัดเพื่อพิสูจน์ว่ากติกาฝั่ง JS กรองเอง
+const CP3A_MIXED = [
+  { woid: '1001', item_id: '901', item_name: 'ASSY-X',       item_source: null,      is_summary_cost: 'F' },
+  { woid: '1001', item_id: '902', item_name: 'CHARGE-1',     item_source: null,      is_summary_cost: 'F' },
+  { woid: '1001', item_id: '903', item_name: 'PHANTOM-ITEM', item_source: 'PHANTOM', is_summary_cost: 'F' },
+  { woid: '1001', item_id: '904', item_name: 'SUMCOST-ITEM', item_source: 'STOCK',   is_summary_cost: 'T' },
+  { woid: '1001', item_id: '11',  item_name: 'RM-A',         item_source: 'STOCK',   is_summary_cost: 'F' },
+  { woid: '1001', item_id: '12',  item_name: 'RM-B',         item_source: 'STOCK',   is_summary_cost: 'F' },
+  { woid: '1001', item_id: '13',  item_name: 'RM-C',         item_source: 'STOCK',   is_summary_cost: 'F' },
+];
+const CP3B_FED = [
+  { woid: '1001', item_id: '11', item_name: 'RM-A' },
+  { woid: '1001', item_id: '12', item_name: 'RM-B' },
+  { woid: '1001', item_id: '13', item_name: 'RM-C' },
+];
+// ปิด CP2/CPLot ให้ ok ก่อน — CP3 เป็น wait ที่ index 3 ถ้าสองตัวก่อนหน้า wait ด้วย
+// pickWorstNote จะเลือก note ของ CP2/CPLot (rank เท่ากันแต่มาก่อน) กลบ note ของ CP3
+const CP3_BASE = {
+  cp2: [{ woid: '1001', batch_id: '1', batch_name: 'B1', released: 'T' }],
+  cp7l1: [{ woid: '1001', total_lp_qty: 10 }],
+  cp7: CP7_OK,
+  cp8: [{ woid: '1001', cost_alloc_count: 1 }],
+};
+
+MODE = Object.assign({ cp3a: CP3A_MIXED, cp3b: CP3B_FED }, CP3_BASE);
+html = run(PARAMS);
+eq('self/OthCharge/phantom/summary cost ถูกกรองออก แม้ mock คืนมาครบ → CP3 ok ไม่มี note',
+  html.indexOf('ยังไม่ได้ป้อนวัตถุดิบ') >= 0, false);
+
+MODE = Object.assign({
+  cp3a: CP3A_MIXED.concat([
+    { woid: '1001', item_id: '14', item_name: 'RM-D', item_source: 'STOCK', is_summary_cost: 'F' },
+  ]),
+  cp3b: CP3B_FED,
+}, CP3_BASE);
+html = run(PARAMS);
+eq('วัตถุดิบจริงที่ยังไม่ป้อน (RM-D) → ขึ้น note', html.indexOf('ยังไม่ได้ป้อนวัตถุดิบ: RM-D') >= 0, true);
+eq('note ไม่พูดถึง self line', html.indexOf('ASSY-X') >= 0, false);
+eq('note ไม่พูดถึง OthCharge', html.indexOf('CHARGE-1') >= 0, false);
+eq('note ไม่พูดถึง phantom', html.indexOf('PHANTOM-ITEM') >= 0, false);
+eq('note ไม่พูดถึง summary cost', html.indexOf('SUMCOST-ITEM') >= 0, false);
+
+// Case 3: เรียก helper ที่ export ตรง ๆ (harness เปิดให้ผ่าน libExports) — ล็อกกติกาที่ต้นทาง
+const isFeedableBomLine = libT['WOStatusTracking_Queries.js'].isFeedableBomLine;
+eq('self line (item_source ว่าง) ไม่ใช่วัตถุดิบ', isFeedableBomLine({ item_source: null, is_summary_cost: 'F' }), false);
+eq('phantom ไม่ใช่วัตถุดิบ', isFeedableBomLine({ item_source: 'PHANTOM', is_summary_cost: 'F' }), false);
+eq('summary cost ไม่ใช่วัตถุดิบ', isFeedableBomLine({ item_source: 'STOCK', is_summary_cost: 'T' }), false);
+eq('STOCK ธรรมดาเป็นวัตถุดิบ', isFeedableBomLine({ item_source: 'STOCK', is_summary_cost: 'F' }), true);
 
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);

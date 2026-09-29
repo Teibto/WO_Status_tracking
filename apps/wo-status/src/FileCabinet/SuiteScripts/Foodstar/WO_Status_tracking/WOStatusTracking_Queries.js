@@ -402,14 +402,34 @@ ${fromWhere}
   // CP3a — BOM Components
   // ═══════════════════════════════════════════════════════════════════════════════
   /**
+   * ตรวจว่าบรรทัด BOM นี้เป็นวัตถุดิบที่ต้องป้อนจริงหรือไม่
+   * กติกาต้องตรงกับ WHERE ใน getCP3a_BomComponents และ queryBomComponents ของ Drilldown:
+   *  - item_source ต้องมีค่า (ตัด self line / Manufacturing Charge ที่ itemsource IS NULL)
+   *  - item_source ต้องไม่ใช่ 'PHANTOM' (phantom แตกเป็นบรรทัดลูกแยกอยู่แล้ว)
+   *  - is_summary_cost ต้องไม่ใช่ 'T' (summary cost ป้อนด้วย adjustment คนละประเภท)
+   * @param {Object} row — raw row ที่มี alias item_source และ is_summary_cost
+   * @returns {boolean}
+   */
+  function isFeedableBomLine(row) {
+    const itemSource = asStr(row.item_source);
+    const isSummary  = asStr(row.is_summary_cost);
+    return !!itemSource && itemSource !== 'PHANTOM' && isSummary !== 'T';
+  }
+
+  /**
    * CP3a: BOM component items per WO from WO transaction lines.
    * Returns one row per component item per WO (excludes the mainline assembly output).
    * Includes item display name for use in missing-material error notes.
    *
+   * ตัดบรรทัดที่ไม่ใช่วัตถุดิบที่ป้อนด้วย InvAdjst ประเภทวัตถุดิบออก เพราะ CP3 เทียบกับ CP3b:
+   * self line / OthCharge (item_source IS NULL), phantom (item_source = 'PHANTOM') และ
+   * summary cost item (is_summary_cost = 'T') ไม่เคยถูกป้อน จึงทำให้ CP3 เป็น wait ผิด ๆ
+   * กติกาถูกบังคับทั้งใน SQL และใน JS (isFeedableBomLine) เพื่อให้เทสที่ mock SQL ได้ผลเดียวกัน
+   *
    * Use paged runner: large BOMs across many WOs can exceed 5000 rows.
    *
    * @param {string[]} woids
-   * @returns {Array} [{woid, itemId, itemName}]
+   * @returns {Array} [{woid, itemId, itemName, itemSource, isSummaryCost}]
    */
   function getCP3a_BomComponents(woids) {
     if (!woids || woids.length === 0) return [];
@@ -418,13 +438,18 @@ ${fromWhere}
       SELECT
         tl.transaction   AS woid,
         tl.item          AS item_id,
-        item.displayname AS item_name
+        item.displayname AS item_name,
+        tl.itemsource    AS item_source,
+        NVL(item.custitem_mfg_summarycostitem, 'F') AS is_summary_cost
       FROM transactionline tl
       JOIN transaction t ON t.id  = tl.transaction
       JOIN item          ON item.id = tl.item
       WHERE t.type         = 'WorkOrd'
         AND tl.mainline    = 'F'
         AND tl.item        IS NOT NULL
+        AND tl.itemsource  IS NOT NULL
+        AND tl.itemsource  <> 'PHANTOM'
+        AND NVL(item.custitem_mfg_summarycostitem, 'F') <> 'T'
         AND tl.transaction IN ({{IN_LIST}})
       ORDER BY tl.transaction, tl.item
     `;
@@ -432,10 +457,12 @@ ${fromWhere}
     const rows = runForWoids(sqlTemplate, woids, true /* paged */);
     log.debug({ title: 'CP3a BOM rows', details: rows.length });
 
-    return rows.map(r => ({
-      woid:     asStr(r.woid),
-      itemId:   asStr(r.item_id),
-      itemName: asStr(r.item_name),
+    return rows.filter(isFeedableBomLine).map(r => ({
+      woid:          asStr(r.woid),
+      itemId:        asStr(r.item_id),
+      itemName:      asStr(r.item_name),
+      itemSource:    asStr(r.item_source),
+      isSummaryCost: asStr(r.is_summary_cost),
     }));
   }
 
@@ -906,6 +933,7 @@ ${fromWhere}
     getCP1_Approve,
     getCP2_Release,
     getCP3a_BomComponents,
+    isFeedableBomLine,
     getCP3b_FedItems,
     getCP4_Machine,
     getCP5_Labor,
