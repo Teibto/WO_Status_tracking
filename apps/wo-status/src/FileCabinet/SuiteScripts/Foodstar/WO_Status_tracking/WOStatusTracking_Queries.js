@@ -429,7 +429,7 @@ ${fromWhere}
    * Use paged runner: large BOMs across many WOs can exceed 5000 rows.
    *
    * @param {string[]} woids
-   * @returns {Array} [{woid, itemId, itemName, itemSource, isSummaryCost}]
+   * @returns {Array} [{woid, itemId, itemName, itemCode, itemSource, isSummaryCost}]
    */
   function getCP3a_BomComponents(woids) {
     if (!woids || woids.length === 0) return [];
@@ -439,6 +439,7 @@ ${fromWhere}
         tl.transaction   AS woid,
         tl.item          AS item_id,
         item.displayname AS item_name,
+        item.itemid      AS item_code,
         tl.itemsource    AS item_source,
         NVL(item.custitem_mfg_summarycostitem, 'F') AS is_summary_cost
       FROM transactionline tl
@@ -461,6 +462,7 @@ ${fromWhere}
       woid:          asStr(r.woid),
       itemId:        asStr(r.item_id),
       itemName:      asStr(r.item_name),
+      itemCode:      asStr(r.item_code),
       itemSource:    asStr(r.item_source),
       isSummaryCost: asStr(r.is_summary_cost),
     }));

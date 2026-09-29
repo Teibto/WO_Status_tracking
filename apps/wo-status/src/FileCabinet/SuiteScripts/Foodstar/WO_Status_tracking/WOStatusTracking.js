@@ -353,6 +353,21 @@ define(
       + 'cursor:default;line-height:1}'
       + '.note-icon.err{background:var(--pj-error-bg);color:var(--pj-error)}'
       + '.note-icon.wait{background:var(--pj-warning-bg);color:var(--pj-warning)}'
+      // note cell แบบเห็นข้อความ (Job B) — โครงเดียวกับ drilldown: .note-line หนึ่งบรรทัดต่อ
+      // checkpoint ที่มีปัญหา.err/wait และเก็บข้อความทุกบรรทัดรวมกันไว้ใน data-tip
+      + 'td.note-cell{white-space:normal;min-width:220px;max-width:320px;text-align:left;vertical-align:top}'
+      + '.note-line{display:flex;gap:6px;align-items:flex-start;font-size:var(--fs-sm);line-height:1.35;color:var(--pj-text)}'
+      + '.note-line + .note-line{margin-top:4px}'
+      + '.note-line.err svg{color:var(--pj-error)}'
+      + '.note-line.wait svg{color:var(--pj-warning)}'
+      + '.note-line svg{flex:0 0 auto;width:14px;height:14px;margin-top:1px}'
+      + '.note-cp{font-weight:600;white-space:nowrap}'
+      // ลิงก์ในแถว drilldown (Job A) — ต้องไม่ถูกสไตล์ของลิงก์ทั่วไปกลืน และคลิกแล้วไม่ toggle แถว
+      + '.task-links{font-size:11px;margin-top:2px}'
+      + '.task-links a{color:var(--pj-primary)}'
+      // ลิงก์เลขที่ WO — ใช้สีเดียวกับข้อความ (ไม่ให้กลายเป็นลิงก์น้ำเงินกลางตาราง)
+      + 'a.wo-link{color:inherit;text-decoration:none}'
+      + 'a.wo-link:hover{text-decoration:underline}'
       + '.legend{display:flex;gap:var(--sp-5);flex-wrap:wrap;'
       + 'padding:var(--sp-3) var(--sp-5);color:var(--pj-text-muted);font-size:var(--fs-sm);'
       + 'border-top:1px solid var(--pj-border);margin-top:var(--sp-2)}'
@@ -933,9 +948,10 @@ define(
                                cp9Data) {
       // ── Index all data by woid for fast lookup ─────────────────
       const idx2  = indexBy(cp2Data,  'woid', true);   // woid → [{batchId, released, ...}]
-      // CP3: WO-grain item sets — {woid → Set<itemName>}
-      const idx3a = indexByWoidItems(cp3aData);   // woid → Set<itemName> (BOM)
-      const idx3b = indexByWoidItems(cp3bData);   // woid → Set<itemName> (fed)
+      // CP3: WO-grain item sets — {woid → Set<itemId>}
+      const idx3a = indexByWoidItems(cp3aData);   // woid → Set<itemId> (BOM)
+      const idx3b = indexByWoidItems(cp3bData);   // woid → Set<itemId> (fed)
+      const idx3aDisplay = indexByWoidItemDisplay(cp3aData); // woid → {itemId → display}
       const idx4  = indexBy(cp4Data,  'woid', true);
       const idx5  = indexBy(cp5Data,  'woid', true);
       const idx6  = indexBy(cp6Data,  'woid', true);
@@ -969,7 +985,7 @@ define(
 
         // ── CP2–CP9: WO-level ─────────────────────────────────────
         const cp2 = computeCP2(woid, batchRowsForWo);
-        const cp3 = computeCP3(woid, idx3a[woid] || new Set(), idx3b[woid] || new Set());
+        const cp3 = computeCP3(woid, idx3a[woid] || new Set(), idx3b[woid] || new Set(), idx3aDisplay[woid] || {});
         const cp4      = computeCP4(woid, idx4[woid] || []);
         const cp5      = computeCP5(woid, idx5[woid] || []);
         const cp6      = computeCP6(woid, idx6[woid] || []);
@@ -1034,17 +1050,38 @@ define(
     }
 
     /**
-     * Index CP3 item rows by woid → Set<itemName>.
-     * Used for WO-grain CP3 computation: each WO maps to a flat set of item names.
-     * @param {Array} arr — [{woid, itemId, itemName}]
-     * @returns {Object} woid → Set<itemName>
+     * Index CP3 item rows by woid → Set<itemId>.
+     * Used for WO-grain CP3 computation: each WO maps to a flat set of item ids.
+     * Keying by id (not name) so two ids sharing a display name are not conflated.
+     * @param {Array} arr — [{woid, itemId, itemName, itemCode}]
+     * @returns {Object} woid → Set<itemId>
      */
     function indexByWoidItems(arr) {
       const map = {};
       (arr || []).forEach(item => {
         const w = item.woid;
         if (!map[w]) map[w] = new Set();
-        map[w].add(item.itemName);
+        map[w].add(item.itemId);
+      });
+      return map;
+    }
+
+    /**
+     * Index the display string of BOM component rows by woid → itemId → "code name".
+     * Fallback order: code, then id — same rule as itemDisplay() in the drilldown.
+     * @param {Array} arr — [{woid, itemId, itemName, itemCode}]
+     * @returns {Object} woid → { itemId: displayString }
+     */
+    function indexByWoidItemDisplay(arr) {
+      const map = {};
+      (arr || []).forEach(item => {
+        const w = item.woid;
+        if (!map[w]) map[w] = {};
+        const code = String(item.itemCode || '');
+        const name = String(item.itemName || '');
+        map[w][item.itemId] = code
+          ? (name ? (code + ' ' + name).trim() : code)
+          : String(item.itemId || '');
       });
       return map;
     }
@@ -1116,18 +1153,21 @@ define(
 
     /** CP3: BOM feed
      *  All BOM items fed → ok; any missing → wait
-     *  bomItems = Set<itemName>, fedItems = Set<itemName> (WO-grain, from indexByWoidItems) */
-    function computeCP3(woid, bomItems, fedItems) {
+     *  bomItems = Set<itemId>, fedItems = Set<itemId> (WO-grain, from indexByWoidItems)
+     *  itemDisplay = { itemId → display string } for the missing-material message */
+    function computeCP3(woid, bomItems, fedItems, itemDisplay) {
       if (bomItems.size === 0) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
 
-      const missing = [...bomItems].filter(name => !fedItems.has(name));
+      const missing = [...bomItems].filter(id => !fedItems.has(id));
       if (missing.length === 0) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
 
-      const itemList = missing.slice(0, 5).join(', ') + (missing.length > 5 ? ` (+${missing.length - 5})` : '');
+      const display = itemDisplay || {};
+      const itemList = missing.slice(0, 5).map(id => display[id] || String(id)).join(', ')
+        + (missing.length > 5 ? ` (+${missing.length - 5})` : '');
       return {
         status: 'wait',
         note: {
@@ -1449,6 +1489,44 @@ define(
 <div class="kpiscope" data-i18n="kRange">${escapeHtml(t.kRange)}: <b>${rangeTotal}</b></div>`;
     }
 
+    /**
+     * เก็บบรรทัด note ของแถว WO ตามสัญญาเดียวกับ WOStatusTracking_Drilldown.noteCell:
+     * เอาเฉพาะ checkpoint ที่ status เป็น 'err'/'wait' และมีข้อความในภาษาของหน้า
+     * เรียง err ทั้งหมดก่อน แล้วค่อย wait — ในกลุ่มเดียวกันคงลำดับ index ของ checkpoint
+     * @returns {Array} [{ status:'err'|'wait', index:number, message:string }]
+     */
+    function gridNoteLines(cpStatusArr, lang) {
+      const statuses = cpStatusArr || [];
+      const lines = [];
+      ['err', 'wait'].forEach(st => {
+        statuses.forEach((cp, i) => {
+          if (!cp || cp.status !== st) return;
+          const msg = (cp.note && cp.note[lang]) ? String(cp.note[lang]).trim() : '';
+          if (!msg) return;
+          lines.push({ status: st, index: i, message: msg });
+        });
+      });
+      return lines;
+    }
+
+    /**
+     * Render note cell ของแถว WO — โครง markup/คลาสเดียวกับ renderNoteCell ของ drilldown
+     * lines: [{ status, index, message }] ที่เรียงมาแล้ว · t = getI18nLabels(lang)
+     */
+    function renderGridNoteCell(lines, t) {
+      if (!lines || !lines.length) return '<td class="note-cell"></td>';
+      const tip = lines.map(l => l.message).join(' · ');
+      let inner = '';
+      lines.forEach(l => {
+        const sym = l.status === 'err'
+          ? theme.iconImg('warn', escapeAttr(t.legend[2]))
+          : theme.iconImg('clock', escapeAttr(t.legend[1]));
+        const cpLabel = (t.cols[l.index] && t.cols[l.index].h) || '';
+        inner += `<div class="note-line ${l.status}">${sym}<span class="note-cp">${escapeHtml(cpLabel)}:</span> ${escapeHtml(l.message)}</div>`;
+      });
+      return `<td class="note-cell" data-tip="${escapeAttr(tip)}">${inner}</td>`;
+    }
+
     function buildGridHtml(pageRows, lang) {
       const t = getI18nLabels(lang);
       // pill ไม่มีข้อความอื่นบอกความหมายอยู่ข้างๆ (ต่างจาก legend ที่มี t.legend[i] ติดข้างอยู่แล้ว
@@ -1471,7 +1549,7 @@ define(
   <th style="min-width:110px">${escapeHtml(t.cLoc)}</th>
   <th>${escapeHtml(t.cLine)}</th>
   ${cpHeaders}
-  <th style="width:44px;text-align:center" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
+  <th style="min-width:220px;text-align:left" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
 </tr></thead>`;
 
       // Table body — WO rows only (batches loaded lazily via drilldown)
@@ -1497,26 +1575,33 @@ define(
             st = cp.status;
             badgeHtml = '';
           }
-          return `<td class="cp" data-tip="${escapeAttr(t.cols[i].tip)}">
+          // tooltip เฉพาะเจาะจง: มี note ของ checkpoint นี้ในภาษาของหน้าและเป็น err/wait
+          // → ใช้ "หัวคอลัมน์: ข้อความ note" ไม่งั้นคงคำอธิบายคอลัมน์เดิม
+          const cpNote = (cp.note && cp.note[lang]) ? String(cp.note[lang]).trim() : '';
+          const cpTip = ((cp.status === 'err' || cp.status === 'wait') && cpNote)
+            ? t.cols[i].h + ': ' + cpNote
+            : t.cols[i].tip;
+          return `<td class="cp" data-tip="${escapeAttr(cpTip)}">
   <span class="pill ${st}">${S[st]}${badgeHtml}</span>
 </td>`;
         }).join('');
 
-        // Note cell: worst-status note as tooltip icon
-        const noteInfo = pickWorstNote(wo.cpStatus, lang);
-        const noteHtml = noteInfo.note
-          // ไอคอนนี้ไม่มีข้อความอื่นบอกความหมายในเซลล์เลย (ไม่เหมือน legend) — ห่อด้วย iconImg()
-          // ใช้ noteInfo.note (ข้อความเดียวกับที่ขึ้น data-tip) เป็นชื่อ ไม่ hardcode คำใหม่ และ
-          // เป็นข้อความที่ผ่านการเลือกภาษาแล้วจาก pickWorstNote()/Labels.getCheckpointNote (#64 ขั้น 2b)
-          ? `<span class="note-icon ${noteInfo.status}" data-tip="${escapeAttr(noteInfo.note)}">${theme.iconImg(noteInfo.status === 'err' ? 'warn' : 'clock', escapeAttr(noteInfo.note))}</span>`
-          : '';
+        // Note cell: ALL problem notes as visible text (same contract/classes as Job A drilldown)
+        const noteHtml = renderGridNoteCell(gridNoteLines(wo.cpStatus, lang), t);
 
         const qtyDisplay = `${formatNumber(wo.qty)} ${escapeHtml(wo.qtyUnit || '')}`.trim();
+
+        // ลิงก์เลขที่ WO ไปยัง record จริง — ตรวจ parseInt > 0 ก่อนเสมอ กัน id ที่ไม่ใช่ตัวเลขหลุดเป็น href
+        const woNumId = parseInt(wo.woid, 10);
+        const woNumberLabel = `<strong>${escapeHtml(wo.woNumber || '')}</strong>`;
+        const woNumberHtml = woNumId > 0
+          ? `<a class="wo-link" href="/app/accounting/transactions/transaction.nl?id=${woNumId}" target="_blank" rel="noopener">${woNumberLabel}</a>`
+          : woNumberLabel;
 
         tbodyHtml += `<tr class="wo" data-woid="${escapeAttr(String(wo.woid))}" data-lang="${lang}">
   <td>
     <span class="twist">▶</span>
-    <strong>${escapeHtml(wo.woNumber || '')}</strong>
+    ${woNumberHtml}
     <span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px">${escapeHtml(fmtDate(wo.woDate))}</span>
     <div style="padding-left:18px;margin-top:2px" class="ell">
       <span style="font-weight:600">${escapeHtml(wo.itemCode || '')}</span>
@@ -1529,7 +1614,7 @@ define(
   <td>${escapeHtml(wo.locationName || '')}</td>
   <td><span class="ell-inline">${escapeHtml(wo.lineName || '')}</span></td>
   ${pillCells}
-  <td style="text-align:center">${noteHtml}</td>
+  ${noteHtml}
 </tr>
 <tr class="drilldown-placeholder hidden" data-woid="${escapeAttr(String(wo.woid))}"></tr>`;
       });
@@ -2582,7 +2667,9 @@ function bindTips() {
 // ── WO row expand / collapse (lazy drilldown) ─────────────────────
 function bindWoRows() {
   document.querySelectorAll('tr.wo').forEach(row => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (e) => {
+      // คลิกที่ลิงก์ (เช่น เลขที่ WO หรือลิงก์ในแถว drilldown) ต้องไม่ toggle แถว
+      if (e.target && e.target.closest && e.target.closest('a')) return;
       const woid = row.dataset.woid;
       const isOpen = row.classList.contains('open');
 
@@ -2861,22 +2948,6 @@ window.addEventListener('resize', fixStickyHeader);
         map[w][t].add(item.itemName);
       });
       return map;
-    }
-
-    /** Pick worst-status note for the note column on a WO row */
-    function pickWorstNote(cpStatusArr, lang) {
-      let worst = 0;
-      let worstNote = '';
-      let worstStatus = 'ok';
-      cpStatusArr.forEach(cp => {
-        const rank = STATUS_RANK[cp.status] || 0;
-        if (rank > worst) {
-          worst = rank;
-          worstStatus = cp.status;
-          worstNote = (cp.note && cp.note[lang]) ? cp.note[lang] : '';
-        }
-      });
-      return { status: worstStatus, note: worstNote };
     }
 
     /** HTML-escape for content */

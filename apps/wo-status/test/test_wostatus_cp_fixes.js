@@ -191,18 +191,18 @@ console.log('\n── CP3 (Feed Materials) ──');
 // แถว CP3a แบบเดียวกับ WO จริง: self line + OthCharge (item_source ว่าง), phantom, summary cost
 // แล้วตามด้วยวัตถุดิบจริง 3 ตัว — mock SQL คืนมาครบทุกบรรทัดเพื่อพิสูจน์ว่ากติกาฝั่ง JS กรองเอง
 const CP3A_MIXED = [
-  { woid: '1001', item_id: '901', item_name: 'ASSY-X',       item_source: null,      is_summary_cost: 'F' },
-  { woid: '1001', item_id: '902', item_name: 'CHARGE-1',     item_source: null,      is_summary_cost: 'F' },
-  { woid: '1001', item_id: '903', item_name: 'PHANTOM-ITEM', item_source: 'PHANTOM', is_summary_cost: 'F' },
-  { woid: '1001', item_id: '904', item_name: 'SUMCOST-ITEM', item_source: 'STOCK',   is_summary_cost: 'T' },
-  { woid: '1001', item_id: '11',  item_name: 'RM-A',         item_source: 'STOCK',   is_summary_cost: 'F' },
-  { woid: '1001', item_id: '12',  item_name: 'RM-B',         item_source: 'STOCK',   is_summary_cost: 'F' },
-  { woid: '1001', item_id: '13',  item_name: 'RM-C',         item_source: 'STOCK',   is_summary_cost: 'F' },
+  { woid: '1001', item_id: '901', item_code: 'C901', item_name: 'ASSY-X',       item_source: null,      is_summary_cost: 'F' },
+  { woid: '1001', item_id: '902', item_code: 'C902', item_name: 'CHARGE-1',     item_source: null,      is_summary_cost: 'F' },
+  { woid: '1001', item_id: '903', item_code: 'C903', item_name: 'PHANTOM-ITEM', item_source: 'PHANTOM', is_summary_cost: 'F' },
+  { woid: '1001', item_id: '904', item_code: 'C904', item_name: 'SUMCOST-ITEM', item_source: 'STOCK',   is_summary_cost: 'T' },
+  { woid: '1001', item_id: '11',  item_code: 'C11',  item_name: 'RM-A',         item_source: 'STOCK',   is_summary_cost: 'F' },
+  { woid: '1001', item_id: '12',  item_code: 'C12',  item_name: 'RM-B',         item_source: 'STOCK',   is_summary_cost: 'F' },
+  { woid: '1001', item_id: '13',  item_code: 'C13',  item_name: 'RM-C',         item_source: 'STOCK',   is_summary_cost: 'F' },
 ];
 const CP3B_FED = [
-  { woid: '1001', item_id: '11', item_name: 'RM-A' },
-  { woid: '1001', item_id: '12', item_name: 'RM-B' },
-  { woid: '1001', item_id: '13', item_name: 'RM-C' },
+  { woid: '1001', item_id: '11', item_code: 'C11', item_name: 'RM-A' },
+  { woid: '1001', item_id: '12', item_code: 'C12', item_name: 'RM-B' },
+  { woid: '1001', item_id: '13', item_code: 'C13', item_name: 'RM-C' },
 ];
 // ปิด CP2/CPLot ให้ ok ก่อน — CP3 เป็น wait ที่ index 3 ถ้าสองตัวก่อนหน้า wait ด้วย
 // pickWorstNote จะเลือก note ของ CP2/CPLot (rank เท่ากันแต่มาก่อน) กลบ note ของ CP3
