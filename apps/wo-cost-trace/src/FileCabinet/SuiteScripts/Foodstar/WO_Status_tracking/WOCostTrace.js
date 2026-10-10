@@ -1325,18 +1325,21 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    *   เลือกเดือนแล้ว from/to ถูกคิดจากเดือนนั้น · จะกำหนดวันเองก็เลือก "กำหนดเอง" ในช่องเดือน
    */
   function readFilters(p) {
-    const iso = /^\d{4}-\d{2}-\d{2}$/;
     const today = todayIso();
+    // ช่องวันที่ในฟอร์มแสดงตาม DATEFORMAT ของบัญชี — ต้องแปลงกลับเป็น ISO ที่นี่จุดเดียว
+    // (รับ ISO ของลิงก์/บุ๊กมาร์กเดิมด้วย) · อ่านไม่ออก = '' แล้วตกไปใช้ค่าเริ่มต้น ไม่เดาวัน
+    const fromIso = C.parseDateInput(p.from);
+    const toIso = C.parseDateInput(p.to);
     const monthRaw = asStr(p.month).trim();
     const custom = monthRaw === 'custom';
     const month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw
-      : (custom || iso.test(asStr(p.from)) || iso.test(asStr(p.to)) ? '' : today.substring(0, 7));
+      : (custom || fromIso || toIso ? '' : today.substring(0, 7));
 
     let from, to;
     if (month) { from = month + '-01'; to = endOfMonth(month); }
     else {
-      from = iso.test(asStr(p.from)) ? asStr(p.from) : today.substring(0, 7) + '-01';
-      to = iso.test(asStr(p.to)) ? asStr(p.to) : endOfMonth(today.substring(0, 7));
+      from = fromIso || today.substring(0, 7) + '-01';
+      to = toIso || endOfMonth(today.substring(0, 7));
     }
 
     return {
@@ -1608,10 +1611,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <label>เลขที่ใบสั่งผลิต</label>
           <input type="text" name="wo" value="${esc(woKey)}" placeholder="WOFSC00000470">
         </div>
-        <div class="fld" style="flex:0 0 170px">
-          <label>avg cost ณ วันที่</label>
-          <input type="text" name="asof" value="${esc(asOf)}" placeholder="YYYY-MM-DD">
-        </div>
+        ${C.dateField({ id: 'asof', name: 'asof', label: 'avg cost ณ วันที่', value: asOf, px: 170 })}
         <div class="act"><button type="submit" class="btn primary">ตรวจที่มาของต้นทุน</button></div>
       </div>
     </form>`;
@@ -1680,12 +1680,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <label>เดือน</label>
           <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
         </div>
-        <div class="fld" style="flex:0 0 270px">
+        <div class="fld" style="flex:0 0 330px">
           <label>หรือระบุช่วงวันที่</label>
           <div class="range">
-            <input type="text" name="from" value="${esc(f.from)}" placeholder="YYYY-MM-DD">
+            ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
             <span class="sep">ถึง</span>
-            <input type="text" name="to" value="${esc(f.to)}" placeholder="YYYY-MM-DD">
+            ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
           </div>
         </div>
         <div class="fld" style="flex:0 0 215px">
@@ -3198,7 +3198,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     let m = { woKey: woKey, ok: false };
 
     try {
-      m = buildModel(woKey, asStr(p.asof));
+      // asof ในฟอร์มเป็นวันที่ตาม DATEFORMAT ของบัญชี (หรือ ISO) — แปลงเป็น ISO ก่อนใช้
+      m = buildModel(woKey, C.parseDateInput(p.asof));
       m.woKey = woKey;
     } catch (e) {
       log.error({ title: 'buildModel', details: e.message + '\n' + (e.stack || '') });

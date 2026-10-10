@@ -52,7 +52,7 @@ WO_Status_tracking/
 │   │   │   ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
 │   │   │   ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
 │   │   │   └── WOCostTrace.js                  entry · ภาพรวม + เจาะลึก + ความพร้อม
-│   │   ├── test/                               11 ไฟล์ — `npm run test:trace`
+│   │   ├── test/                               12 ไฟล์ — `npm run test:trace`
 │   │   ├── scripts/check-prod-staging.js       ตรวจ payload production 8 ข้อ
 │   │   ├── WO_COST_TRACE.md                    ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
 │   │   └── prototype/                          ไฟล์เจาะมือของผู้ใช้ (ต้นเรื่องของรายงานนี้)
@@ -344,6 +344,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |
 | `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) |
+| `test_datefield.js` | ช่องวันที่ของ WO Cost Trace — parse ไม่เป็น DATEFORMAT/ISO · มี `<input type=date>` · ใช้ `showPicker` |
 | `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |
 | `test_wostatus_cp_fixes.js` | CP4/CP6/CP7/CP8 ของ WO Status — ข้อมูลขาดขึ้นเขียว · CP8 ตายเป็น na · `lang` หลุดลง HTML |
 | `test_summary_math.js` · `test_summary_export.js` · `test_ready_master.js` | สูตรและข้อความของแต่ละชั้น |
@@ -360,7 +361,6 @@ fixture ที่ไม่ได้ประกาศ label = **เทสตก*
 | ฟอนต์ Sarabun | ไม่ได้ฝังมากับหน้า · ได้จริงเฉพาะเครื่องที่มีฟอนต์ ดู `shared/REPORT_STYLE.md` |
 | แยก Summary/Trace ออกจาก entry | **ไม่ทำ** โดยตั้งใจ · โค้ดล็อก parity ไว้ แยกแล้วต้องดูแลสำเนา SQL สองชุดที่ต้องเท่ากันตลอด |
 | re-test SuiteQL ด้วย volume จริง | `apps/wo-status/prototype/test_cp03_feedmat.sql` และ `test_cp07_woc_l3.sql` ผ่านบน UAT (2026-06-14) ซึ่ง volume น้อยกว่า production |
-| ช่องวันที่ของ WO Cost Trace | ยังเป็นช่องข้อความ ISO ไม่มีปฏิทินของแอป — ต่างจาก WO Status ที่ทำไว้ที่ #45/#64 ขั้น 4 |
 
 ข้อจำกัดของตัวรายงานที่ยังจริง: WO Status ไม่มี expand-all (drilldown เป็น lazy-load
 ทีละใบ) · ไม่มีการ flag WO ที่ค้างโดยไม่มี activity · ไม่มี filter "เฉพาะที่มีปัญหา"

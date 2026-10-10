@@ -627,7 +627,8 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       qtyOverride: asStr(p.rqty).trim(),
       locAll: locAll,
       locIds: locAll ? [] : uniq(parts.filter(s => /^\d+$/.test(s))),
-      asOf: asStr(p.rdate).trim()
+      // ช่องวันที่แสดงตาม DATEFORMAT ของบัญชี (หรือ ISO) — แปลงเป็น ISO ที่จุดเดียว
+      asOf: C.parseDateInput(p.rdate)
     };
   }
 
@@ -1155,10 +1156,8 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
           <input type="text" name="ready" value="${esc(rd.woKey)}"
             placeholder="WO-FSC-00000392 หรือ 10010900101">
         </div>
-        <div class="fld" style="flex:0 0 170px">
-          <label>วันที่ที่ใช้ตรวจ master</label>
-          <input type="text" name="rdate" value="${esc(p.asOf || '')}" placeholder="${esc(asStr(rd.date_iso))}">
-        </div>
+        ${C.dateField({ id: 'rdate', name: 'rdate', label: 'วันที่ที่ใช้ตรวจ master',
+          value: p.asOf || asStr(rd.date_iso), px: 170 })}
         <div class="fld" style="flex:0 0 150px">
           <label>จำนวนที่จะผลิต</label>
           <input type="text" name="rqty" value="${esc(p.qtyOverride || '')}" placeholder="${esc(fmt(rd.qty_from_wo, 4))}">

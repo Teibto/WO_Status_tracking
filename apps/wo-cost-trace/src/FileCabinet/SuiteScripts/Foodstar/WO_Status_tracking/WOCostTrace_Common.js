@@ -255,6 +255,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ลอย ๆ — ลูกของ flex ที่เป็น text node กำหนดระยะ/สีไม่ได้ และเป็นที่มาของความเบียดเดิม
     + '.filterbar .range{display:flex;align-items:center;gap:var(--sp-2)}'
     + '.filterbar .range input{flex:1 1 0;min-width:0}'
+    // ช่วงวันที่สองช่องใช้ .datewrap เป็นลูกของ .range จึงต้องให้กรอบแบ่งความกว้างกันเอง
+    + '.filterbar .range .datewrap{flex:1 1 0;min-width:0}'
     + '.filterbar .range .sep{font-size:var(--fs-sm);color:var(--pj-text-muted);white-space:nowrap}'
     + '.filterbar .act{display:flex;align-items:center;gap:var(--sp-2)}'
     // combobox ที่ client สร้างครอบ <select name=sub/loc> ตอน enhance ต้องกว้างเท่า .fld แม่
@@ -262,6 +264,59 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // จึงตั้ง flex:0 0 200px ไม่ให้หด ถ้าหดต่ำกว่า 170px ตัว input จะล้นกรอบของ .fld ออกมา
     + '.filterbar .rw-combobox{display:block;width:100%}'
     + '.filterbar .rw-combobox .rw-combobox-input{width:100%}'
+    // ── ช่องวันที่ (references/date-field.md) ─────────────────────────────────
+    // กรอบทั้งก้อนอยู่ที่ .datewrap ใบเดียว (border + focus-ring) · input กับปุ่มข้างในไม่มี
+    // กรอบของตัวเอง ปุ่มมีแค่เส้นคั่น border-left · ค่าที่มองเห็น = DATEFORMAT ของบัญชี
+    // ค่าที่ส่ง/เก็บจริงยังเป็น ISO ใน URL และ SuiteQL
+    + '.filterbar .datewrap{width:100%}'
+    + '.datewrap{position:relative;display:flex;align-items:stretch;min-width:0;'
+    + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
+    + 'background:var(--pj-surface);overflow:hidden;transition:box-shadow .1s ease}'
+    + '.datewrap:focus-within{box-shadow:0 0 0 2px var(--pj-primary)}'
+    + '.datewrap input[type=text]{flex:1 1 auto;min-width:0;border:0;border-radius:0;'
+    + 'background:transparent;box-shadow:none}'
+    + '.datewrap input[type=text]:focus{outline:none;border-color:transparent;box-shadow:none}'
+    + '.datebtn{position:relative;flex:0 0 28px;width:28px;padding:0;'
+    + 'display:flex;align-items:center;justify-content:center;'
+    + 'background:none;border:0;border-left:1px solid var(--pj-border-strong);border-radius:0;'
+    + 'cursor:pointer;color:var(--pj-text-muted);transition:background-color .1s ease,color .1s ease}'
+    + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+    + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
+    + '.cal{position:fixed;z-index:40;width:238px;background:var(--pj-surface);'
+    + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
+    + 'box-shadow:var(--shadow-lg);padding:var(--sp-2);font-size:var(--fs-sm)}'
+    + '.cal[hidden]{display:none}'
+    + '.cal-head{display:flex;align-items:center;gap:var(--sp-1);margin-bottom:var(--sp-1)}'
+    + '.cal-nav{background:none;border:1px solid var(--pj-border);color:var(--pj-text-dim);'
+    + 'width:24px;height:24px;flex:0 0 24px;padding:0;display:inline-flex;'
+    + 'align-items:center;justify-content:center;border-radius:var(--radius-sm);cursor:pointer;'
+    + 'transition:background-color .1s ease,color .1s ease}'
+    + '.cal-nav:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+    + '.cal-nav:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
+    + '.cal-month,.cal-year{font-family:inherit;font-size:var(--fs-sm);font-weight:700;'
+    + 'color:var(--pj-text);background:var(--pj-surface);border:1px solid var(--pj-border);'
+    + 'border-radius:var(--radius-sm);padding:2px;cursor:pointer;min-width:0}'
+    + '.cal-month{flex:1 1 auto}'
+    + '.cal-year{flex:0 0 60px;width:60px}'
+    + '.cal-grid{display:grid;grid-template-columns:repeat(7,1fr);gap:1px}'
+    + '.cal-dow{text-align:center;font-size:10px;font-weight:700;padding:2px 0;'
+    + 'color:var(--pj-text-label)}'
+    + '.cal-day{border:0;background:none;font-family:inherit;font-size:var(--fs-sm);'
+    + 'color:var(--pj-text);padding:5px 0;border-radius:var(--radius-sm);cursor:pointer;'
+    + 'font-variant-numeric:tabular-nums;transition:background-color .1s ease}'
+    + '.cal-day:hover{background:var(--pj-surface-alt)}'
+    + '.cal-day.muted{color:var(--pj-text-muted)}'
+    + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
+    + '.cal-day.sel{background:var(--pj-primary);color:#fff;font-weight:700}'
+    + '.cal-day:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
+    + '.cal-foot{display:flex;justify-content:flex-end;margin-top:var(--sp-1);'
+    + 'border-top:1px solid var(--pj-border);padding-top:var(--sp-1)}'
+    + '.cal-today{background:none;border:0;color:var(--pj-primary);cursor:pointer;'
+    + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;padding:2px var(--sp-2)}'
+    + '.cal-today:hover{text-decoration:underline}'
+    + '.cal-today:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
+    + '@media (prefers-reduced-motion: reduce){'
+    + '.datewrap,.datebtn,.cal-nav,.cal-day,.cal-today{transition:none}}'
     // ตัวเลขชิดขวาและไม่ตัดบรรทัด · การเทียบหลักมาจาก font-variant-numeric ของ template
     // (เดิมสลับไปฟอนต์ Consolas ทั้งคอลัมน์ ซึ่ง template เลิกทำแล้ว)
     + 'td.n,th.n{text-align:right;white-space:nowrap}'
@@ -333,9 +388,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     });
   }
 
-  /** โครงหน้ามาตรฐาน — style + แถบหัวเรื่อง + เนื้อหาใน .content ของ template */
+  /** โครงหน้ามาตรฐาน — style + แถบหัวเรื่อง + เนื้อหาใน .content ของ template
+   *  ต่อท้ายด้วยสคริปต์ปฏิทินของ date field เสมอ (ทุกชั้นมีช่องวันที่) */
   function shell(title, body, extraCss) {
-    return CSS + (extraCss || '') + pageTop(title) + '<div class="content">' + body + '</div>';
+    return CSS + (extraCss || '') + pageTop(title) + '<div class="content">' + body + '</div>'
+      + renderDateFieldScript();
   }
 
 
@@ -365,6 +422,320 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     };
   }
 
+  // ── date field (references/date-field.md) ─────────────────────────────────
+  const CAL_ICON = theme.ICONS.calendar;
+
+  /** placeholder ของช่องวันที่ตามรูปแบบบัญชี (เช่น dd/mm/yyyy) */
+  function dateFormatHint() {
+    return dateFormat().toLowerCase();
+  }
+
+  /**
+   * ช่องวันที่มาตรฐาน — กรอบเดียว + ปุ่มเปิดปฏิทินของแอป
+   * ค่าที่มองเห็น = DATEFORMAT ของบัญชี · ค่าที่ส่ง/ใช้จริงยังเป็น ISO
+   * (ผู้เรียกอ่านกลับด้วย parseDateInput ก่อนใช้ — ดู readFilters/readReadyParams)
+   * @param {{id:string,name:string,label:string,value?:string,px?:number}} opts
+   */
+  /** กรอบวันที่เดี่ยว (ไม่รวม .fld) — ใช้ใน .range ที่มีสองช่องในป้ายเดียว */
+  function dateInput(opts) {
+    const id = asStr(opts.id);
+    const val = opts.value ? fmtDateDisp(opts.value) : '';
+    return '<div class="datewrap">'
+      + '<input type="text" name="' + esc(opts.name) + '" id="' + esc(id) + '" class="dateinput"'
+      + ' value="' + esc(val) + '" placeholder="' + esc(dateFormatHint()) + '"'
+      + ' inputmode="numeric" maxlength="10" autocomplete="off" spellcheck="false">'
+      + '<button type="button" class="datebtn" data-for="' + esc(id) + '"'
+      + ' title="เปิดปฏิทิน" aria-label="เปิดปฏิทิน" aria-haspopup="dialog" aria-expanded="false">'
+      + CAL_ICON + '</button></div>';
+  }
+
+  /** ช่องวันที่เต็ม (ป้าย + กรอบ) */
+  function dateField(opts) {
+    return '<div class="fld" style="flex:0 0 ' + (opts.px || 170) + 'px">'
+      + '<label>' + esc(opts.label) + '</label>' + dateInput(opts) + '</div>';
+  }
+
+  /**
+   * สคริปต์ปฏิทินของแอป — ผูกกับทุก `.datebtn` บนหน้า (ไม่ใช่ showPicker ของเบราว์เซอร์)
+   * ตรรกะเดียวกับ WOStatusTracking.js แต่ตัด i18n ออก (แอปนี้ไม่มีปุ่มสลับภาษา)
+   * วันที่คำนวณด้วย `new Date(y, m, d)` ท้องถิ่นเสมอ ไม่ parse ผ่าน UTC
+   */
+  function renderDateFieldScript() {
+    const fmt = JSON.stringify(dateFormat());
+    const prev = JSON.stringify(theme.ICONS.chevronLeft);
+    const next = JSON.stringify(theme.ICONS.chevronRight);
+    return `<script>
+(function() {
+  var FMT = ${fmt};
+  var CAL_PREV = ${prev}, CAL_NEXT = ${next};
+  var MONTHS = ['มกราคม','กุมภาพันธ์','มีนาคม','เมษายน','พฤษภาคม','มิถุนายน','กรกฎาคม','สิงหาคม','กันยายน','ตุลาคม','พฤศจิกายน','ธันวาคม'];
+  var DOWS = ['อา','จ','อ','พ','พฤ','ศ','ส'];
+  var SEP = (FMT.match(/[^A-Za-z0-9]+/) || ['/'])[0] || '/';
+  function p2(n) { return ('0' + n).slice(-2); }
+  function valid(y, m, d) { var dt = new Date(y, m - 1, d); return dt.getFullYear() === y && dt.getMonth() === m - 1 && dt.getDate() === d; }
+  function isoOf(s) {
+    s = (s || '').trim();
+    if (!s) return '';
+    var m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(s);
+    if (m) return valid(+m[1], +m[2], +m[3]) ? s : '';
+    var nums = s.split(/[^0-9]+/).map(Number);
+    var toks = FMT.toUpperCase().match(/YYYY|YY|MM|M|DD|D/g) || [];
+    if (nums.length !== toks.length) return '';
+    var g = { Y: 0, M: 0, D: 0 };
+    toks.forEach(function(t, i) {
+      if (t === 'YYYY') g.Y = nums[i];
+      else if (t === 'YY') g.Y = 2000 + nums[i];
+      else if (t === 'MM' || t === 'M') g.M = nums[i];
+      else if (t === 'DD' || t === 'D') g.D = nums[i];
+    });
+    return valid(g.Y, g.M, g.D) ? g.Y + '-' + p2(g.M) + '-' + p2(g.D) : '';
+  }
+  function disp(iso) {
+    var m = /^(\\d{4})-(\\d{2})-(\\d{2})$/.exec(iso || '');
+    if (!m) return iso || '';
+    var toks = FMT.toUpperCase().match(/YYYY|YY|MM|M|DD|D/g) || ['D', 'M', 'YYYY'];
+    var y = +m[1], mo = +m[2], d = +m[3];
+    return toks.map(function(t) {
+      return t === 'YYYY' ? String(y) : t === 'YY' ? String(y).slice(-2) : t === 'MM' ? p2(mo)
+        : t === 'M' ? String(mo) : t === 'DD' ? p2(d) : String(d);
+    }).join(SEP);
+  }
+  function isoFromYmd(y, m, d) { return y + '-' + p2(m + 1) + '-' + p2(d); }
+
+  var openCal = null;
+  function _position() {
+    if (!openCal) return;
+    var box = openCal.box, anchor = openCal.anchor;
+    if (!box || !anchor) return;
+    var pad = 4;
+    var vw = (document.documentElement && document.documentElement.clientWidth) || window.innerWidth || 0;
+    var vh = window.innerHeight || 0;
+    var rect = (anchor.getBoundingClientRect && anchor.getBoundingClientRect()) || { top: 0, bottom: 0, left: 0, right: 0 };
+    var br = (box.getBoundingClientRect && box.getBoundingClientRect()) || {};
+    var width = br.width || 238, height = br.height || 280;
+    var left = rect.left;
+    if (vw && left + width > vw - pad) left = vw - pad - width;
+    if (left < pad) left = pad;
+    var below = vh ? (vh - rect.bottom) : (height + pad);
+    var flip = !!(vh && below < (height + pad) && rect.top > (height + pad));
+    box.style.position = 'fixed';
+    box.style.left = left + 'px';
+    box.style.top = (flip ? rect.top - pad - height : rect.bottom + pad) + 'px';
+  }
+  function _reposition() { _position(); }
+  function _close(refocus) {
+    if (!openCal) return;
+    var cur = openCal;
+    openCal = null;
+    window.removeEventListener('scroll', _reposition, true);
+    window.removeEventListener('resize', _reposition);
+    if (cur.box && cur.box.parentNode) cur.box.parentNode.removeChild(cur.box);
+    if (cur.btn) cur.btn.setAttribute('aria-expanded', 'false');
+    if (refocus && cur.input) cur.input.focus();
+  }
+  function _pick(y, m, d) {
+    var input = openCal && openCal.input;
+    if (!input) return;
+    input.value = disp(isoFromYmd(y, m, d));
+    _close(true);
+    try { input.dispatchEvent(new Event('input', { bubbles: true })); } catch (e) {}
+  }
+  function _shift(days) {
+    if (!openCal) return;
+    var f = openCal.focus, dt = new Date(f.y, f.m, f.d + days);
+    openCal.y = dt.getFullYear(); openCal.m = dt.getMonth();
+    openCal.focus = { y: dt.getFullYear(), m: dt.getMonth(), d: dt.getDate() };
+    _draw(true);
+  }
+  function _shiftMonth(delta) {
+    if (!openCal) return;
+    var dt = new Date(openCal.y, openCal.m + delta, 1);
+    openCal.y = dt.getFullYear(); openCal.m = dt.getMonth();
+    var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+    openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+    _draw(true);
+  }
+  function _shiftYear(delta) {
+    if (!openCal) return;
+    openCal.y = openCal.y + delta;
+    var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+    openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+    _draw(true);
+  }
+  function _shiftToWeekEdge(target) {
+    if (!openCal) return;
+    var f = openCal.focus, dow = new Date(f.y, f.m, f.d).getDay();
+    _shift(target - dow);
+  }
+  function _btn(cls, text, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.textContent = text;
+    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function _iconBtn(cls, svg, title, onClick) {
+    var b = document.createElement('button');
+    b.type = 'button'; b.className = cls; b.innerHTML = svg;
+    if (title) { b.title = title; b.setAttribute('aria-label', title); }
+    b.addEventListener('click', onClick);
+    return b;
+  }
+  function _select(cls, label) {
+    var s = document.createElement('select');
+    s.className = cls; s.setAttribute('aria-label', label);
+    return s;
+  }
+  function _draw(moveFocus) {
+    if (!openCal) return;
+    var box = openCal.box;
+    var iso = isoOf(openCal.input ? openCal.input.value : '');
+    var sel = iso ? { y: +iso.slice(0, 4), m: +iso.slice(5, 7) - 1, d: +iso.slice(8, 10) } : null;
+    var now = new Date();
+    var today = { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+    while (box.firstChild) box.removeChild(box.firstChild);
+
+    var head = document.createElement('div');
+    head.className = 'cal-head';
+    head.appendChild(_iconBtn('cal-nav', CAL_PREV, 'เดือนก่อนหน้า', function() { _shiftMonth(-1); }));
+    var monthSel = _select('cal-month', 'เดือน');
+    for (var mi = 0; mi < 12; mi++) {
+      var mo = document.createElement('option');
+      mo.value = String(mi); mo.textContent = MONTHS[mi];
+      if (mi === openCal.m) mo.selected = true;
+      monthSel.appendChild(mo);
+    }
+    monthSel.addEventListener('change', function() {
+      openCal.m = +monthSel.value;
+      var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+      openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+      _draw(true);
+    });
+    head.appendChild(monthSel);
+    var yearSel = _select('cal-year', 'ปี');
+    var ys = Math.min(today.y - 10, openCal.y - 1), ye = Math.max(today.y + 10, openCal.y + 1);
+    for (var yy = ys; yy <= ye; yy++) {
+      var yo = document.createElement('option');
+      yo.value = String(yy); yo.textContent = String(yy);
+      if (yy === openCal.y) yo.selected = true;
+      yearSel.appendChild(yo);
+    }
+    yearSel.addEventListener('change', function() {
+      openCal.y = +yearSel.value;
+      var last = new Date(openCal.y, openCal.m + 1, 0).getDate();
+      openCal.focus = { y: openCal.y, m: openCal.m, d: Math.min(openCal.focus.d, last) };
+      _draw(true);
+    });
+    head.appendChild(yearSel);
+    head.appendChild(_iconBtn('cal-nav', CAL_NEXT, 'เดือนถัดไป', function() { _shiftMonth(1); }));
+    box.appendChild(head);
+
+    var grid = document.createElement('div');
+    grid.className = 'cal-grid';
+    grid.setAttribute('role', 'grid');
+    grid.setAttribute('aria-label', MONTHS[openCal.m] + ' ' + openCal.y);
+    for (var i = 0; i < 7; i++) {
+      var dw = document.createElement('div');
+      dw.className = 'cal-dow'; dw.setAttribute('role', 'columnheader'); dw.textContent = DOWS[i];
+      grid.appendChild(dw);
+    }
+    var first = new Date(openCal.y, openCal.m, 1);
+    var start = new Date(openCal.y, openCal.m, 1 - first.getDay());
+    var focusBtn = null;
+    for (var c = 0; c < 42; c++) {
+      var dt = new Date(start.getFullYear(), start.getMonth(), start.getDate() + c);
+      var y = dt.getFullYear(), m = dt.getMonth(), d = dt.getDate();
+      var cls = 'cal-day';
+      var isToday = (y === today.y && m === today.m && d === today.d);
+      if (m !== openCal.m) cls += ' muted';
+      if (isToday) cls += ' today';
+      var isSel = !!(sel && sel.y === y && sel.m === m && sel.d === d);
+      if (isSel) cls += ' sel';
+      var b = _btn(cls, String(d), '', (function(yy2, mm2, dd2) {
+        return function() { _pick(yy2, mm2, dd2); };
+      })(y, m, d));
+      b.setAttribute('role', 'gridcell');
+      b.setAttribute('aria-label', disp(isoFromYmd(y, m, d)));
+      if (isToday) b.setAttribute('aria-current', 'date');
+      b.setAttribute('aria-selected', isSel ? 'true' : 'false');
+      var isFocus = (y === openCal.focus.y && m === openCal.focus.m && d === openCal.focus.d);
+      b.tabIndex = isFocus ? 0 : -1;
+      if (isFocus) focusBtn = b;
+      grid.appendChild(b);
+    }
+    box.appendChild(grid);
+
+    var foot = document.createElement('div');
+    foot.className = 'cal-foot';
+    foot.appendChild(_btn('cal-today', 'วันนี้', '', function() { _pick(today.y, today.m, today.d); }));
+    box.appendChild(foot);
+    if (moveFocus !== false && focusBtn) focusBtn.focus();
+  }
+  function _onKey(e) {
+    if (!openCal) return;
+    var k = e.key;
+    if (k === 'Escape') { e.preventDefault(); _close(true); }
+    else if (k === 'ArrowLeft') { e.preventDefault(); _shift(-1); }
+    else if (k === 'ArrowRight') { e.preventDefault(); _shift(1); }
+    else if (k === 'ArrowUp') { e.preventDefault(); _shift(-7); }
+    else if (k === 'ArrowDown') { e.preventDefault(); _shift(7); }
+    else if (k === 'Home') { e.preventDefault(); _shiftToWeekEdge(0); }
+    else if (k === 'End') { e.preventDefault(); _shiftToWeekEdge(6); }
+    else if (k === 'PageUp') { e.preventDefault(); if (e.shiftKey) _shiftYear(-1); else _shiftMonth(-1); }
+    else if (k === 'PageDown') { e.preventDefault(); if (e.shiftKey) _shiftYear(1); else _shiftMonth(1); }
+  }
+  function _open(input, btn) {
+    if (openCal && openCal.input === input) { _close(true); return; }
+    _close(false);
+    var box = document.createElement('div');
+    box.className = 'cal';
+    box.setAttribute('role', 'dialog');
+    box.setAttribute('aria-label', 'เลือกวันที่');
+    box.addEventListener('keydown', _onKey);
+    (document.body || document).appendChild(box);
+    var anchor = input.parentNode || input;
+    var iso = isoOf(input.value);
+    var now = new Date();
+    var view = iso ? { y: +iso.slice(0, 4), m: +iso.slice(5, 7) - 1, d: +iso.slice(8, 10) }
+      : { y: now.getFullYear(), m: now.getMonth(), d: now.getDate() };
+    openCal = { input: input, btn: btn, box: box, anchor: anchor, y: view.y, m: view.m, focus: view };
+    btn.setAttribute('aria-expanded', 'true');
+    _position(); _draw(true); _position();
+    window.addEventListener('scroll', _reposition, true);
+    window.addEventListener('resize', _reposition);
+  }
+
+  document.addEventListener('mousedown', function(e) {
+    if (!openCal) return;
+    if (openCal.box.contains(e.target) || (openCal.btn && openCal.btn.contains(e.target))) return;
+    _close(false);
+  });
+  var btns = document.querySelectorAll('.datebtn');
+  for (var bi = 0; bi < btns.length; bi++) {
+    (function(btn) {
+      btn.addEventListener('click', function() {
+        var input = document.getElementById(btn.getAttribute('data-for'));
+        if (input) _open(input, btn);
+      });
+    })(btns[bi]);
+  }
+  // พิมพ์เอง: อ่านไม่ออก = คืนค่าเดิม (ไม่ล้าง ไม่เดา) · ว่าง = ล้าง
+  var inputs = document.querySelectorAll('.dateinput');
+  for (var ii = 0; ii < inputs.length; ii++) {
+    (function(input) {
+      input.addEventListener('focus', function() { input._prev = input.value; });
+      input.addEventListener('blur', function() {
+        var v = input.value.trim();
+        if (v && !isoOf(v)) input.value = input._prev || '';
+      });
+    })(inputs[ii]);
+  }
+  window.__closeDateCal = function() { _close(false); };
+})();
+<\/script>`;
+  }
+
+
   /**
    * คลาสสถานะของรายงาน → accent ของ template
    * รายงานนี้ใช้คำว่า bad/warn/ok/info มาตลอด ส่วน template ใช้ error/warning/success/info
@@ -383,6 +754,77 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     const d = new Date();
     const m = d.getMonth() + 1, dd = d.getDate();
     return d.getFullYear() + '-' + (m < 10 ? '0' : '') + m + '-' + (dd < 10 ? '0' : '') + dd;
+  }
+
+  // ── วันที่: รูปแบบของบัญชี ↔ ISO ───────────────────────────────────────────
+  // แหล่งความจริงภายในคือ ISO (SuiteQL · URL · ลิงก์) · สิ่งที่ผู้ใช้เห็นคือ DATEFORMAT ของบัญชี
+  // ตาม references/date-field.md ของ teibto-ui-redwood · ห้ามเดารูปแบบ: อ่านไม่ออก = '' แล้วให้
+  // ผู้เรียกคืนค่าเดิม ไม่ใช่ตีความเป็นวันอื่นเงียบ ๆ
+
+  /** DATEFORMAT ของบัญชี (เช่น DD/MM/YYYY) · อ่านไม่ได้/รูปแบบไม่รองรับ → ถอยเป็น DD/MM/YYYY
+   *  รองรับเฉพาะรูปแบบตัวเลข (Y/M/D + ตัวคั่น) — รูปแบบที่ใช้ชื่อเดือน (DD-Mon-YYYY) ยังไม่รองรับ
+   *  จึงถอยเป็นค่ามาตรฐานแทนการเดา (Foodstar ใช้ DD/MM/YYYY — ยืนยันจาก #28) */
+  function dateFormat() {
+    try {
+      const p = String(runtime.getCurrentUser().getPreference({ name: 'DATEFORMAT' }) || '').toUpperCase();
+      if (/^[YMD\/.\- ]+$/.test(p) && /Y/.test(p) && /M/.test(p) && /D/.test(p)) return p;
+    } catch (e) { /* อ่าน preference ไม่ได้ = ใช้ค่าถอย ไม่ throw กลางหน้า */ }
+    return 'DD/MM/YYYY';
+  }
+
+  /** ตรวจว่าเป็นวันจริง แล้วคืน ISO 'YYYY-MM-DD' (ไม่จริง = '') */
+  function validIso(y, m, d) {
+    if (!(y > 0 && m > 0 && d > 0)) return '';
+    const dt = new Date(y, m - 1, d);
+    if (dt.getFullYear() !== y || dt.getMonth() !== m - 1 || dt.getDate() !== d) return '';
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    return y + '-' + p2(m) + '-' + p2(d);
+  }
+
+  /**
+   * อ่านข้อความวันที่ที่ผู้ใช้พิมพ์ → ISO · รับ ISO เสมอ + รูปแบบบัญชี (DATEFORMAT)
+   * อ่านไม้ออกหรือวันไม่มีจริง → '' (ผู้เรียกต้องคืนค่าเดิม ไม่เดา)
+   */
+  function parseDateInput(text, fmt) {
+    const s = asStr(text).trim();
+    if (!s) return '';
+    const iso = /^(\d{4})-(\d{2})-(\d{2})$/.exec(s);
+    if (iso) return validIso(+iso[1], +iso[2], +iso[3]);
+
+    const order = [];
+    const src = asStr(fmt || dateFormat()).trim();
+    const rx = src.replace(/YYYY|YY|MM|M|DD|D|[^A-Za-z]+|[A-Za-z]/g, (tok) => {
+      const t = tok.toUpperCase();
+      if (t === 'YYYY') { order.push('Y');  return '(\\d{4})'; }
+      if (t === 'YY')   { order.push('Y2'); return '(\\d{2})'; }
+      if (t === 'MM' || t === 'M') { order.push('M'); return '(\\d{1,2})'; }
+      if (t === 'DD' || t === 'D') { order.push('D'); return '(\\d{1,2})'; }
+      return tok.replace(/[.*+?^${}()|[\]\\\/-]/g, '\\$&').replace(/\s+/g, '\\s+');
+    });
+    const m = new RegExp('^' + rx + '$').exec(s);
+    if (!m) return '';
+    const g = { Y: 0, Y2: 0, M: 0, D: 0 };
+    let i = 1;
+    order.forEach((k) => { g[k] = +m[i++]; });
+    return validIso(g.Y2 ? 2000 + g.Y2 : g.Y, g.M, g.D);
+  }
+
+  /** ISO → ข้อความตามรูปแบบบัญชีสำหรับแสดงผล (ค่าที่ไม่ใช่ ISO คืนเดิม) */
+  function fmtDateDisp(iso, fmt) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(asStr(iso));
+    if (!m) return asStr(iso);
+    const y = +m[1], mo = +m[2], d = +m[3];
+    const p = asStr(fmt || dateFormat()).toUpperCase();
+    const sep = (p.match(/[^A-Z0-9]+/) || ['/'])[0] || '/';
+    const p2 = (n) => (n < 10 ? '0' : '') + n;
+    const toks = p.match(/YYYY|YY|MM|M|DD|D/g) || ['D', 'M', 'YYYY'];
+    return toks.map((t) => (
+      t === 'YYYY' ? String(y)
+        : t === 'YY' ? String(y).slice(-2)
+          : t === 'MM' ? p2(mo)
+            : t === 'M' ? String(mo)
+              : t === 'DD' ? p2(d) : String(d)
+    )).join(sep);
   }
 
   function uomFactor(ctx, fromId, toId) {
@@ -593,11 +1035,21 @@ ${costCols}
     setEmbed: setEmbed,
     selfUrl: selfUrl,
     filterParams: filterParams,
+    // date field (date-field.md)
+    dateField: dateField,
+    dateInput: dateInput,
+    renderDateFieldScript: renderDateFieldScript,
+    dateFormatHint: dateFormatHint,
     renderQLog: renderQLog,
     kpi: kpi,
     KPI_ACCENT: KPI_ACCENT,
     // ตัวช่วยคำนวณที่ใช้ร่วมกัน
     todayIso: todayIso,
+    // วันที่: รูปแบบบัญชี ↔ ISO (date-field.md)
+    dateFormat: dateFormat,
+    validIso: validIso,
+    parseDateInput: parseDateInput,
+    fmtDateDisp: fmtDateDisp,
     uomFactor: uomFactor,
     // query + Cost ref ที่ใช้ร่วมกันสองชั้น
     qWO: qWO,
