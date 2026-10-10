@@ -69,7 +69,7 @@ apps.forEach((app) => {
     const bad = (s.split('\n')
       .filter((ln) => !/^\s*(\/\/|\*|\/\*)/.test(ln))
       .join('\n')
-      .match(/#[0-9a-fA-F]{3,6}\b/g) || [])
+      .match(/#[0-9a-fA-F]{3,8}\b/g) || [])
       .filter((h) => h.toLowerCase() !== '#fff' && h.toLowerCase() !== '#ffffff');
     if (bad.length) console.log('     ' + f + ' เหลือ: ' + bad.join(' '));
     eq('ไม่มี hex ใน ' + f, bad.join(' '), '');

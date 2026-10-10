@@ -202,11 +202,19 @@ check(7, 'project.json — staging ชี้ production และ repo ยัง
   };
   const s = read(path.join(STAGING, 'project.json'));
   const r = read(path.join(REPO, 'apps/wo-cost-trace/project.json'));
+  // ⚠ ต้องตรวจ project.json ของ wo-status ด้วย — สิ่งที่ README เตือนคือการสลับไฟล์นี้ไปบัญชีจริง
+  // จะทำให้ deploy ทับ WOStatusTracking*.js ที่ไม่ผ่านการเทียบเนื้อหา · ของเดิมตรวจแค่ฝั่ง trace
+  // จึงไม่เห็นความเสี่ยงที่มันเขียนไว้เองในคอมเมนต์ข้อนี้
+  const rStatus = read(path.join(REPO, 'apps/wo-status/project.json'));
   if (s !== PROD_ACCOUNT) out.push('staging defaultAuthId = ' + s + ' คาดว่า ' + PROD_ACCOUNT);
   if (/_SB\d*$/i.test(String(s))) out.push('staging ชี้บัญชี sandbox (' + s + ') — payload นี้ต้องชี้ production');
   if (r !== REPO_ACCOUNT) {
     out.push('repo defaultAuthId = ' + r + ' ต้องเป็น ' + REPO_ACCOUNT
       + ' — สลับ project.json ของ repo ไปบัญชีจริงคือทางที่ทำให้ทับ WOStatusTracking*.js');
+  }
+  if (rStatus !== REPO_ACCOUNT) {
+    out.push('repo wo-status defaultAuthId = ' + rStatus + ' ต้องเป็น ' + REPO_ACCOUNT
+      + ' — สลับไฟล์นี้ไปบัญชีจริงแล้ว deploy จะทับ WOStatusTracking*.js บน production');
   }
   return out;
 });

@@ -674,6 +674,7 @@ define(['N/query', 'N/log'], (query, log) => {
       SELECT
         tm.custrecord_mfg_tm_wo           AS woid,
         tm.id                             AS task_id,
+        tm.custrecord_mfg_tm_releasedbatch AS batch_id,
         tm.custrecord_mfg_tm_good_qty     AS tm_good,
         tm.custrecord_mfg_tm_scrap_qty    AS tm_scrap,
         tm.custrecord_mfg_tm_rework_qty   AS tm_rework,
@@ -690,6 +691,7 @@ define(['N/query', 'N/log'], (query, log) => {
       GROUP BY
         tm.custrecord_mfg_tm_wo,
         tm.id,
+        tm.custrecord_mfg_tm_releasedbatch,
         tm.custrecord_mfg_tm_good_qty,
         tm.custrecord_mfg_tm_scrap_qty,
         tm.custrecord_mfg_tm_rework_qty,
@@ -712,6 +714,7 @@ define(['N/query', 'N/log'], (query, log) => {
       l2l3: l2l3Rows.map(r => ({
         woid:      asStr(r.woid),
         taskId:    asStr(r.task_id),
+        batchId:   asStr(r.batch_id),
         tmGood:    asNum(r.tm_good),
         tmScrap:   asNum(r.tm_scrap),
         tmRework:  asNum(r.tm_rework),
