@@ -96,20 +96,6 @@ font stack คือ `-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Sarabun', 
 `WOStatusTracking.js` มีพารามิเตอร์นี้มาก่อนแล้ว · `WOCostTrace.js` เพิ่มเข้ามาที่ issue #18
 ให้เท่ากัน · ลิงก์เจาะลึกและลิงก์แบ่งหน้าพา `embed` ติดไปด้วย จึงไม่หลุดโหมดกลางทาง
 
-### WO Cost Trace ใน Costing Custom Report Center (#96)
-
-CCRC (repo `ns-foodstar-9751184`) ฝัง WO Cost Trace ด้วย `&embed=1` · ตั้งแต่ #96 รายงานนี้
-ยึดหน้าตาของ CCRC ไม่ใช่ของ report-builder
-
-- token ที่ไม่ใช่สีของ CCRC (`--f-sans` `--btn-h` `--bw-control` `--focus-ring` ฯลฯ) และกฎที่ปรับ
-  ปุ่ม/ช่อง/ตาราง/การ์ดตัวเลขให้ตรง `ui-src/styles/` ของที่นั่น อยู่ที่ `CCRC_CSS` ใน
-  `apps/wo-cost-trace/.../WOCostTrace_Common.js` **เฉพาะแอปนี้** — WO Status ใช้ theme ไฟล์เดียวกัน
-  บน File Cabinet จึงไม่แตะ `shared/WOReportTheme.js` นอกจากเพิ่มไอคอน `info`
-- สีทุกตัวยังมาจาก `--c-*` ของ theme กลาง (ค่าเท่ากับ `00-tokens.css` ของ CCRC อยู่แล้ว) ·
-  `apps/wo-cost-trace/test/test_help_page.js` ตก ถ้า CSS เฉพาะรายงานมี hex / `rgb()` / `hsl()`
-- ชั้นภาพรวมในโหมด embed ไม่วาด h1 (CCRC แสดงชื่อรายงานเอง) · "อ่านตารางนี้อย่างไร" และ
-  "เอกสารอ้างอิงทางเทคนิค" อยู่หน้าคู่มือ `&view=help` ที่เปิดจากปุ่มไอคอน i มุมขวาบน
-
 ## วันที่จะเอาไปเป็นเมนูของ report-builder จริง
 
 **ยังไม่ทำในตอนนี้** และงานที่เหลือส่วนใหญ่**อยู่ใน repo อีกใบ**

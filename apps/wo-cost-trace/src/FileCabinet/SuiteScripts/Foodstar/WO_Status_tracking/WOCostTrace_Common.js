@@ -533,6 +533,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   // ไปหน้าแยกของ Suitelet เดิม · หน้ารายงานเหลือปุ่มไอคอน i ปุ่มเดียว
   // `view` เป็นชื่อพารามิเตอร์ใหม่ (ไม่ใช้ `mode` เพราะ `mode=json` มีความหมายอยู่แล้ว)
   const HELP_VIEW = 'help';
+
+  // ไอคอนที่ WO Cost Trace ใช้คนเดียว (ปุ่ม i · ปุ่ม Export) อยู่ที่นี่ ไม่ใส่ใน WOReportTheme.js
+  // เพราะไฟล์ theme บน File Cabinet ใช้ path เดียวกับ WO Status Tracking — งานของ cost trace
+  // ต้องไม่แตะรายงานนั้น (คำสั่งผู้ใช้ 2026-10-10) · รูปแบบเดียวกับ theme.ICONS: svg 16px currentColor
+  const LOCAL_ICONS = {
+    info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/>'
+      + '<path d="M8 7.2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+      + '<path d="M8 4.8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
+    download: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M8 2.5v7.6M4.8 7l3.2 3.2L11.2 7M3 13h10" stroke="currentColor" '
+      + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
   const HELP_LABEL = 'คู่มือและเอกสารอ้างอิงทางเทคนิคของรายงานนี้';
 
   /**
@@ -543,7 +556,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   function helpButton(params) {
     const href = selfUrl(Object.assign({}, params || {}, { view: HELP_VIEW }));
     return '<a class="iconbtn" href="' + esc(href) + '" title="' + esc(HELP_LABEL) + '"'
-      + ' aria-label="' + esc(HELP_LABEL) + '">' + theme.ICONS.info + '</a>';
+      + ' aria-label="' + esc(HELP_LABEL) + '">' + LOCAL_ICONS.info + '</a>';
   }
 
   /**
@@ -1162,7 +1175,7 @@ ${costCols}
     itemLink: itemLink,
     // ไอคอนสถานะ (#64 ขั้น 2) — ให้ lib ที่ไม่ได้ require WOReportTheme เอง (เช่น _Ready.js
     // ที่ require ไฟล์นี้อยู่แล้ว) เข้าถึง path เดียวกับที่ entry ใช้ ไม่ต้องเพิ่ม dependency ใหม่
-    ICONS: theme.ICONS,
+    ICONS: Object.assign({}, theme.ICONS, LOCAL_ICONS),
     iconImg: theme.iconImg,
     // SQL runner + query log
     runSQL: runSQL,

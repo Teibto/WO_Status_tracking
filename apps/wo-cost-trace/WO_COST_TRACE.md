@@ -769,3 +769,18 @@ payload มี **1 ไฟล์ + 1 object เท่านั้น** (`WOCostTr
 - หน้าภาพรวมเรนเดอร์ปกติ แถบ export ขึ้นสถานะ "ไม่มีรายการให้ export ตามเงื่อนไขนี้" ตามที่ควรเป็น
 - **โหลด `xlsx-js-style@1.2.0` จาก jsdelivr บนหน้า prod ได้จริง** (`typeof XLSX === "object"`)
   → ข้อกังวลเรื่อง CDN ปิดกั้นบนบัญชีจริงตกไป (ยังเหลือกรณีเครื่องผู้ใช้ที่ปิดทางออกเน็ตเอง)
+
+### WO Cost Trace ใน Costing Custom Report Center (#96)
+
+CCRC (repo `ns-foodstar-9751184`) ฝัง WO Cost Trace ด้วย `&embed=1` · ตั้งแต่ #96 รายงานนี้
+ยึดหน้าตาของ CCRC ไม่ใช่ของ report-builder
+
+- token ที่ไม่ใช่สีของ CCRC (`--f-sans` `--btn-h` `--bw-control` `--focus-ring` ฯลฯ) และกฎที่ปรับ
+  ปุ่ม/ช่อง/ตาราง/การ์ดตัวเลขให้ตรง `ui-src/styles/` ของที่นั่น อยู่ที่ `CCRC_CSS` ใน
+  `apps/wo-cost-trace/.../WOCostTrace_Common.js` **เฉพาะแอปนี้** — WO Status ใช้ theme ไฟล์เดียวกัน
+  บน File Cabinet จึงไม่แตะ `shared/WOReportTheme.js` เลย · ไอคอน `info` (ปุ่ม i) และ `download` (ปุ่ม Export)
+  อยู่ที่ `LOCAL_ICONS` ใน `WOCostTrace_Common.js`
+- สีทุกตัวยังมาจาก `--c-*` ของ theme กลาง (ค่าเท่ากับ `00-tokens.css` ของ CCRC อยู่แล้ว) ·
+  `apps/wo-cost-trace/test/test_help_page.js` ตก ถ้า CSS เฉพาะรายงานมี hex / `rgb()` / `hsl()`
+- ชั้นภาพรวมในโหมด embed ไม่วาด h1 (CCRC แสดงชื่อรายงานเอง) · "อ่านตารางนี้อย่างไร" และ
+  "เอกสารอ้างอิงทางเทคนิค" อยู่หน้าคู่มือ `&view=help` ที่เปิดจากปุ่มไอคอน i มุมขวาบน
