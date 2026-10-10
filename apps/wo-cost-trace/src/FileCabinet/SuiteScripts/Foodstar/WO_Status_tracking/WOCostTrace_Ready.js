@@ -648,11 +648,20 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     const blank = { ok: false, woKey: rp.woKey, params: rp, locations: [], stock_locs: [],
       qty_from_wo: 0, date_iso: '' };
     const woRows = qWO(rp.woKey);
-    let wo = null, woId = '', lines = [], fg = null, basis = 'wo';
+    let wo = null, woId = '', lines = [], fg = null, basis = 'wo', ambiguous = null;
 
     if (woRows.length) {
       wo = woRows[0];
       woId = asStr(wo.wo_id);
+      // เลขที่เอกสารเทียบแบบตัดขีด (#77 ข้อ B5) จึงชนกันได้ — `qWO` เรียงให้ใบที่ตรงตัวมาก่อนแล้ว
+      // แต่ห้ามเลือกใบให้เงียบ ๆ เหมือนกับชั้นเจาะลึก (`buildModel` → `m.ambiguous`)
+      if (woRows.length > 1) {
+        ambiguous = {
+          count: woRows.length,
+          picked: asStr(wo.wo_no),
+          others: woRows.slice(1).map(r => asStr(r.wo_no))
+        };
+      }
       lines = qWOLines([woId]);
       fg = lines.filter(r => asStr(r.mainline) === 'T')[0] || null;
       if (!fg) {
@@ -843,6 +852,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       woKey: rp.woKey,
       params: rp,
       basis: basis,
+      ambiguous: ambiguous,
       wo: wo,
       wo_id: woId,
       fg: fg,
@@ -1461,6 +1471,13 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     h += renderErrors();
     if (!rd.ok) {
       return page(h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>');
+    }
+    if (rd.ambiguous) {
+      h += '<div class="err">เลขที่ "' + esc(asStr(rd.woKey)) + '" ตรงกับใบสั่งผลิต '
+        + esc(String(rd.ambiguous.count)) + ' ใบ (เทียบโดยไม่สนขีดคั่น) — หน้านี้ตรวจของ <b>'
+        + esc(rd.ambiguous.picked) + '</b> ส่วนใบที่เหลือคือ '
+        + esc(rd.ambiguous.others.join(' · '))
+        + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
     }
     h += renderReadyHeader(rd) + renderReadyKpis(rd) + renderReadyTodo(rd);
     if (rd.struct_failed) {

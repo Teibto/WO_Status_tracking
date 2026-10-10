@@ -57,6 +57,16 @@ const ALIASES = {
     required: ['wo_id', 'sc_value', 'sc_docs', 'sc_docs_valued', 'sc_docs_orphan'],
     numeric: ['sc_value', 'sc_docs', 'sc_docs_valued', 'sc_docs_orphan']
   },
+  // แถวย่อยราย batch ของชั้นภาพรวม — woc_id/tran_id คือคีย์จับคู่ batch ขาดแล้วยอดไปกองที่ "ไม่ระบุ batch" เงียบ ๆ
+  'ภาพรวม — วัตถุดิบราย batch': {
+    required: ['wo_id', 'woc_id', 'rm_cost'], numeric: ['woc_id', 'rm_cost']
+  },
+  'ภาพรวม — แปรสภาพราย batch': {
+    required: ['wo_id', 'woc_id', 'dl_oh_std'], numeric: ['woc_id', 'dl_oh_std']
+  },
+  'ภาพรวม — Summary Cost ราย batch': {
+    required: ['wo_id', 'tran_id', 'amount'], numeric: ['tran_id', 'amount']
+  },
   // ธง 'T'/'F' — ข้อความ ไม่ใช่ตัวเลข (issue #54) จึงไม่มี `numeric`
   'ต้นทุนต่อลังตามประเภทย่อยสินค้า': {
     required: ['item_id', 'cost_per_carton_flag']
@@ -97,13 +107,25 @@ console.log('\n── clause ที่แบกน้ำหนักต้อง
 [
   'ใบเบิกวัตถุดิบเข้า WO',
   'ภาพรวม — วัตถุดิบและบรรจุภัณฑ์',
-  'ภาพรวม — Summary Cost Item'
+  'ภาพรวม — Summary Cost Item',
+  // แถวย่อยราย batch ต้องรวมได้เท่าแถว WO — ใช้ช่องมูลค่าเดียวกันกับระดับ WO
+  'ภาพรวม — วัตถุดิบราย batch',
+  'ภาพรวม — Summary Cost ราย batch'
 ].forEach((label) => {
   const sql = H.sqlOf(label);
   eq('"' + label + '" ยิงจริง', sql != null, true);
   eq('"' + label + '" ใช้ foreignamount', (sql || '').indexOf('foreignamount') >= 0, true);
   eq('"' + label + '" ไม่ได้เปลี่ยนไปใช้ TAL.amount',
     /TAL\.amount/.test(sql || ''), false);
+});
+
+// แปรสภาพราย batch ต้องตัด class 1 (WIP = ยอดรวม) เหมือนระดับ WO ไม่งั้นแถวย่อยบวกซ้ำทั้งก้อน
+eq('"ภาพรวม — แปรสภาพราย batch" ตัดบัญชี WIP',
+  /custrecord_mfg_acc_dl_oh, 0\) <> 1/.test(H.sqlOf('ภาพรวม — แปรสภาพราย batch') || ''), true);
+// คีย์ที่ใช้จับคู่ batch — วัตถุดิบอ้างใบปิดงานของ task สุดท้ายผ่านช่องนี้
+['ภาพรวม — วัตถุดิบราย batch', 'ภาพรวม — แปรสภาพราย batch'].forEach((label) => {
+  eq('"' + label + '" GROUP BY ใบปิดงานที่บรรทัดอ้าง',
+    /GROUP BY[\s\S]*custcol_mfg2_ref_workordercompletion/.test(H.sqlOf(label) || ''), true);
 });
 
 // เส้นบัญชี (average cost / กระทบยอด) เป็นอีกคำถามหนึ่ง ต้องกรอง posting + สมุดบัญชีเสมอ

@@ -5,8 +5,9 @@
  *   Subsidiary · Date from–to · RM Location · Production location · Production Line
  * เทสนี้กันห้าเรื่อง
  *
- *   1. **ลำดับช่องในฟอร์ม** ตามที่ผู้ใช้สั่ง และช่องเดิม (เดือน · จับจาก · รหัสสินค้า · เลขที่ใบสั่งผลิต)
- *      ยังอยู่ครบ ไม่ถูกตัดทิ้ง
+ *   1. **ลำดับช่องในฟอร์ม** ตามที่ผู้ใช้สั่ง และช่องเดิม (เดือน · จับจาก · รหัสสินค้า · เลขที่ใบสั่งผลิต ·
+ *      เรียงตาม · ไม่เกิน) ยังอยู่ครบ ไม่ถูกตัดทิ้ง — หลังรวม #77/#86 ช่องเดิมอยู่ในที่พับ
+ *      `<details class="morefld">` "ตัวกรองเพิ่มเติม" ห้าช่องของ #94 คือแถวหลักที่อยู่ก่อนที่พับ
  *   2. **เงื่อนไขต้องลงไปถึง SQL จริง** — อ่านจาก `H.calls` ว่า clause กับ param ไปถึง query
  *      รายการใบสั่งผลิต และหายไปเมื่อไม่ได้เลือก · RM Location ต้อง "คัดใบ" ด้วย EXISTS เท่านั้น
  *      ห้ามไปตัดยอดวัตถุดิบ (ยอดสองชั้นต้องเท่ากัน)
@@ -64,12 +65,16 @@ const lpos = LABELS.map((l) => form.indexOf('<label>' + l + '</label>'));
 eq('ป้ายห้าช่องมีครบ', lpos.every((p) => p > 0), true);
 eq('ป้ายเรียงตามลำดับเดียวกัน', lpos.every((p, i) => i === 0 || p > lpos[i - 1]), true);
 
-// ห้าช่องต้องอยู่แถวแรก ก่อน .brk ตัวแรก — ช่องอื่นอยู่หลังจากนั้นทั้งหมด
-const firstBrk = form.indexOf('<div class="brk"></div>');
-eq('ห้าช่องอยู่แถวแรก (ก่อนตัวแบ่งแถวตัวแรก)', firstBrk > pos[pos.length - 1], true);
+// ห้าช่องต้องอยู่แถวหลัก ก่อนที่พับ "ตัวกรองเพิ่มเติม" — ช่องอื่นอยู่ในที่พับทั้งหมด
+// (เดิมเทสนี้ใช้ .brk ตัวแรกเป็นเส้นแบ่ง · หลังรวม #86 ฟอร์มภาพรวมไม่มี .brk แล้ว เส้นแบ่งจึงเป็นที่พับ)
+const moreAt = form.indexOf('<details class="morefld"');
+const moreEnd = form.indexOf('</details>', moreAt);
+eq('มีที่พับ "ตัวกรองเพิ่มเติม"', moreAt > 0 && moreEnd > moreAt, true);
+eq('ห้าช่องอยู่แถวหลัก (ก่อนที่พับ)', moreAt > pos[pos.length - 1], true);
+eq('ฟอร์มภาพรวมไม่มี .brk (แถวหลักไม่ถูกบังคับขึ้นบรรทัด)', form.indexOf('class="brk"') >= 0, false);
 ['name="month"', 'name="basis"', 'name="item"', 'name="wono"', 'name="sort"', 'name="max"'].forEach((n) => {
   const p = form.indexOf(n);
-  eq('ช่องเดิม ' + n + ' ยังอยู่ และอยู่หลังห้าช่องแรก', p > firstBrk, true);
+  eq('ช่องเดิม ' + n + ' ยังอยู่ และอยู่ในที่พับ', p > moreAt && p < moreEnd, true);
 });
 eq('ช่องเดือนยังมีตัวเลือก "กำหนดวันที่เอง"', form.indexOf('value="custom"') > 0, true);
 eq('ตัวเลือกเดือนพกขอบเดือนไว้เติมช่องวันที่ (data-from/data-to)',
@@ -125,10 +130,22 @@ c = lastCall(LIST_WO);
 eq('ค้นด้วยเลขที่ใบสั่งผลิต — ตัวกรองใหม่ยังทำงาน (แบบเดียวกับ sub/loc)',
   /RML\.location = \?/.test(c.sql) && /custbody_mfg_production_line = \?/.test(c.sql), true);
 
-console.log('\n── readFilters: ค่าแปลกปลอมถูกตัดเหลือตัวเลข ──');
+// หลังรวม #77: rmloc/line ผ่าน idParam เหมือน sub/loc — ค่าที่มีอักขระอื่นปนถูก **ทิ้งทั้งค่า**
+// พร้อมคำเตือน ไม่ขัดให้เหลือแต่ตัวเลข (เดิม `35' OR 1=1` กลายเป็น 3511 = กรองด้วย id ที่ไม่มีใครเลือก)
+console.log('\n── readFilters: ค่าแปลกปลอมถูกทิ้ง ไม่ถูกขัดเป็นตัวเลข ──');
 const fx = T.readFilters({ rmloc: "35' OR 1=1", line: '3abc' });
-eq('rmloc เหลือตัวเลขล้วน', fx.rmloc, '3511');
-eq('line เหลือตัวเลขล้วน', fx.line, '3');
+eq('rmloc ที่มีอักขระอื่นปน → ไม่กรอง (ค่าว่าง)', fx.rmloc, '');
+eq('line ที่มีอักขระอื่นปน → ไม่กรอง (ค่าว่าง)', fx.line, '');
+eqJ('ทั้งสองค่าถูกรายงานใน badParams พร้อมค่าดิบ',
+  fx.badParams.map((b) => [b.name, b.raw]), [['rmloc', "35' OR 1=1"], ['line', '3abc']]);
+const fxOk = T.readFilters({ rmloc: ' 35 ', line: '3' });
+eqJ('ตัวเลขล้วน (มีช่องว่างหัวท้าย) → ใช้กรอง ไม่ขึ้นคำเตือน',
+  [fxOk.rmloc, fxOk.line, fxOk.badParams.length], ['35', '3', 0]);
+H.calls.length = 0;
+run(Object.assign({ rmloc: "35' OR 1=1", line: '3abc' }, BASE));
+c = lastCall(LIST_WO);
+eq('ค่าที่ถูกทิ้งไม่ลงไปถึง SQL (ไม่มีเงื่อนไข RM Location/ไลน์ผลิต)',
+  /RML\.location = \?/.test(c.sql) || /custbody_mfg_production_line = \?/.test(c.sql), false);
 
 // ── 3. ค่าไม่หลุดกลางทาง ─────────────────────────────────────────────────
 console.log('\n── 3. ค่าติดไปกับลิงก์ / json / embed ──');
