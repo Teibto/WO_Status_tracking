@@ -371,7 +371,13 @@ define([], function () {
     // เป็น path เดียวกัน (M4 6l4 4 4-4) — คงรูปทรงเดียวกันทั้งสองที่ทาง
     chevronDown: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
       + 'focusable="false"><path d="M4 6l4 4 4-4" stroke="currentColor" stroke-width="1.6" '
-      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // เพิ่มที่ #96 — ปุ่ม i เปิดหน้าคู่มือของ WO Cost Trace (`&view=help`) · ของใหม่ล้วน
+    // WO Status ไม่ได้เรียกใช้ จึงไม่เปลี่ยนหน้าตาของที่นั่น (ไฟล์เปลี่ยน แต่ HTML ที่ render ไม่เปลี่ยน)
+    info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/>'
+      + '<path d="M8 7.2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
+      + '<path d="M8 4.8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>'
   };
 
   /**

@@ -70,12 +70,13 @@ const iconBlock = iconMatch ? iconMatch[0] : '';
 // ต่อ DOM) ส่วนลูกศรของ native .rw-select เป็น background-image คนละก้อน (ดูคอมเมนต์ที่
 // COMPONENTS ของ shared/WOReportTheme.js — ทำไมไม่ใช้ theme.ICONS ตรงนั้นได้)
 // calendar เพิ่มพร้อม date field ของ WO Cost Trace (#75) — ปุ่มเปิดปฏิทินต้องเป็น svg 16px
-['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight', 'chevronDown', 'calendar']
+// info เพิ่มพร้อมหน้าคู่มือของ WO Cost Trace (#96) — ปุ่ม i ที่หัวหน้ารายงาน
+['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight', 'chevronDown', 'calendar', 'info']
   .forEach((name) => {
     eq('ICONS มี ' + name, new RegExp('\\b' + name + ':').test(iconBlock), true);
   });
 const svgTags = iconBlock.match(/<svg[^>]*>/g) || [];
-eq('มี <svg> ครบ 10 ตัว', svgTags.length, 10);
+eq('มี <svg> ครบ 11 ตัว', svgTags.length, 11);
 eq('ทุก <svg> เป็น viewBox 0 0 16 16', svgTags.every((s) => s.indexOf('viewBox="0 0 16 16"') >= 0), true);
 eq('ทุก <svg> มี width/height=16', svgTags.every((s) => /width="16"/.test(s) && /height="16"/.test(s)), true);
 eq('ทุก <svg> aria-hidden + focusable=false', svgTags.every((s) => /aria-hidden="true"/.test(s) && /focusable="false"/.test(s)), true);

@@ -39,6 +39,9 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
   const selfUrl = C.selfUrl;
   const filterParams = C.filterParams;
   const renderQLog = C.renderQLog;
+  // หน้าคู่มือ + ปุ่ม i (#96)
+  const pageHead = C.pageHead;
+  const renderErrors = C.renderErrors;
   const kpi = C.kpi;
   const todayIso = C.todayIso;
   const uomFactor = C.uomFactor;
@@ -927,7 +930,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
   function bomVerdictText(n) {
     const b = n.bom;
     if (!b) return readyVerdict('info', 'ไม่ต้องมี BOM (ไม่ใช่สินค้าที่ผลิตเอง)');
-    if (b.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูท้ายหน้า');
+    if (b.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     if (b.verdict === 'none') return readyVerdict('bad', 'ยังไม่ผูก BOM กับสินค้านี้');
     if (b.verdict === 'inactive') return readyVerdict('bad', 'มี BOM แต่ถูกปิดใช้งานทั้งหมด');
     if (b.verdict === 'expired') {
@@ -956,7 +959,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     if (!n.bom || !n.bom.bom) return readyVerdict('info', '—');
     const r = n.rev;
     if (!r) return readyVerdict('unk', 'ยังไม่ได้ตรวจ');
-    if (r.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูท้ายหน้า');
+    if (r.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     if (r.verdict === 'none') return readyVerdict('bad', 'BOM นี้ยังไม่มี revision');
     if (r.verdict === 'inactive') return readyVerdict('bad', 'มี revision แต่ถูกปิดใช้งานทั้งหมด');
     if (r.verdict === 'expired') {
@@ -983,7 +986,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     if (!n.made || !n.bom || !n.bom.bom) return readyVerdict('info', '—');
     const rt = n.routing;
     if (!rt) return readyVerdict('unk', 'ยังไม่ได้ตรวจ');
-    if (rt.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูท้ายหน้า');
+    if (rt.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     if (rt.verdict === 'none') return readyVerdict('bad', 'ยังไม่ตั้ง routing ให้ BOM นี้');
     if (rt.verdict === 'inactive') return readyVerdict('bad', 'มี routing แต่ถูกปิดใช้งาน');
     if (rt.verdict === 'otherloc') {
@@ -1030,7 +1033,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     if (!n.made || !n.bom || !n.bom.bom) return readyVerdict('info', '—');
     const cr = n.cost_ref;
     if (!cr) return readyVerdict('unk', 'ยังไม่ได้ตรวจ');
-    if (cr.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูท้ายหน้า');
+    if (cr.verdict === 'unknown') return readyVerdict('unk', 'อ่านไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     if (cr.verdict === 'nowc') {
       return readyVerdict('unk', 'ตรวจไม่ได้ — ยังไม่รู้ work center (ต้องมี routing ก่อน)');
     }
@@ -1052,7 +1055,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     if (!n.leaf) return readyVerdict('info', '—');
     const row = rd.need_rows.filter(r => r.item_id === n.item_id)[0];
     if (!row) return readyVerdict('unk', '—');
-    if (rd.stock_failed) return readyVerdict('unk', 'อ่านยอดคงเหลือไม่สำเร็จ — ดูท้ายหน้า');
+    if (rd.stock_failed) return readyVerdict('unk', 'อ่านยอดคงเหลือไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     if (row.short > 0) {
       return readyVerdict('bad', 'ขาด ' + fmt(row.short, 4) + ' ' + asStr(row.unit_name)
         + ' (มี ' + fmt(row.on_hand, 4) + ' ต้องใช้ ' + fmt(row.need, 4) + ')');
@@ -1079,10 +1082,10 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       return readyVerdict('info', 'ใบสั่งผลิตนี้ยังไม่ปิดงาน — ยังไม่มีวันปิดงานให้เทียบ');
     }
     if (rd.stock_date_completion_failed) {
-      return readyVerdict('unk', 'อ่านวันปิดงาน (WOC) ไม่สำเร็จ — ดูท้ายหน้า');
+      return readyVerdict('unk', 'อ่านวันปิดงาน (WOC) ไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     }
     if (rd.stock_date_failed) {
-      return readyVerdict('unk', 'อ่านวันรับเข้าไม่สำเร็จ — ดูท้ายหน้า');
+      return readyVerdict('unk', 'อ่านวันรับเข้าไม่สำเร็จ — ดูหน้าคู่มือ (ปุ่ม i)');
     }
     const row = rd.stock_date_by_item[asStr(itemId)];
     if (!row) {
@@ -1356,12 +1359,12 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     }
     if (rd.stock_date_completion_failed) {
       h += '<div class="err">อ่านวันปิดงาน (WOC.trandate) ไม่สำเร็จ — ตรวจความพร้อม stock ไม่ได้ '
-        + 'ห้ามถือว่าผ่าน ดูรายละเอียดท้ายหน้า</div>';
+        + 'ห้ามถือว่าผ่าน ดูรายละเอียดในหน้าคู่มือ (ปุ่ม i)</div>';
       return h;
     }
     if (rd.stock_date_failed) {
       h += '<div class="err">อ่านวันรับเข้า (Item Receipt) ไม่สำเร็จ — ทุกแถวด้านล่างถือว่าตรวจไม่ได้ '
-        + 'ไม่ใช่ผ่าน ดูรายละเอียดท้ายหน้า</div>';
+        + 'ไม่ใช่ผ่าน ดูรายละเอียดในหน้าคู่มือ (ปุ่ม i)</div>';
     }
     h += '<table><tr><th>รหัส</th><th>ชื่อ</th><th class="n">ต้องใช้</th>'
       + '<th>วันรับเข้าเร็วที่สุด</th><th>เลขที่ใบรับ</th><th>ผล</th></tr>';
@@ -1440,8 +1443,11 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     </table></div>`;
   }
 
+  const READY_TITLE = 'ความพร้อม master ก่อนเริ่มทดสอบ';
+
   function renderReadyPage(rd) {
-    let h = '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
+    // ปุ่ม i พาพารามิเตอร์ของหน้านี้ไปครบ (entry ตั้ง rd.helpParams) — หน้าคู่มือรันชุดเดียวกันซ้ำ
+    let h = pageHead(READY_TITLE, rd.helpParams || { ready: rd.woKey }, false)
       + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
       + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
     h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
@@ -1450,14 +1456,16 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         ? ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
       + '</div>';
     h += renderReadyForm(rd);
-    const page = (body) => shell('ความพร้อม master ก่อนเริ่มทดสอบ', body, READY_CSS);
+    const page = (body) => shell(READY_TITLE, body, READY_CSS);
+    // query ที่พังขึ้นบนหน้าทันที — query log เต็มอยู่หน้าคู่มือ (#96)
+    h += renderErrors();
     if (!rd.ok) {
-      return page(h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>' + renderQLog());
+      return page(h + '<div class="err">' + esc(asStr(rd.error) || 'ตรวจไม่สำเร็จ') + '</div>');
     }
     h += renderReadyHeader(rd) + renderReadyKpis(rd) + renderReadyTodo(rd);
     if (rd.struct_failed) {
       h += '<div class="err">คำสั่งอ่านโครง BOM พังบางส่วน — ช่องที่ขึ้น "?" คืออ่านไม่สำเร็จ '
-        + 'ไม่ได้แปลว่ายังไม่ตั้งค่า ดูรายละเอียดท้ายหน้า</div>';
+        + 'ไม่ได้แปลว่ายังไม่ตั้งค่า ดูรายละเอียดในหน้าคู่มือ (ปุ่ม i)</div>';
     }
     h += '<h2>สายการผลิตตามชั้น BOM</h2>' + renderReadyTree(rd);
     h += '<h2>ของที่ต้องมีในคลัง</h2>' + renderReadyStock(rd);
@@ -1471,7 +1479,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         + esc(asStr(rd.fg.unit_name)) + '</b> (' + esc(QTY_BASIS_LABEL[rd.qty_basis] || '') + ') '
         + 'เปิดรายงานนี้ซ้ำด้วยเลขที่ใบสั่งผลิตหลังเปิดใบแล้ว จะได้ตารางยันยอดรายบรรทัด</p>';
     }
-    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
+    // "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (ปุ่ม i ที่หัวหน้า) — #96
     return page(h);
   }
 
@@ -1494,11 +1502,12 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     + '.card.ok{border-color:var(--pj-success);color:var(--pj-success)}'
     + '</style>';
 
-  // entry เรียกแค่ 4 ตัวนี้ · เพิ่ม export ใหม่เมื่อ entry ต้องใช้จริงเท่านั้น
+  // entry เรียกแค่ 5 ตัวนี้ (READY_TITLE เพิ่มที่ #96 ให้หน้าคู่มือใช้ชื่อเดียวกัน) · เพิ่ม export ใหม่เมื่อ entry ต้องใช้จริงเท่านั้น
   return {
     readReadyParams: readReadyParams,
     buildReady: buildReady,
     renderReadyPage: renderReadyPage,
-    READY_CSS: READY_CSS
+    READY_CSS: READY_CSS,
+    READY_TITLE: READY_TITLE
   };
 });

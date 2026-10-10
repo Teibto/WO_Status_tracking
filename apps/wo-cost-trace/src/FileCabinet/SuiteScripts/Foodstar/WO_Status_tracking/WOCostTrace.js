@@ -86,6 +86,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const selfUrl = C.selfUrl;
   const filterParams = C.filterParams;
   const renderQLog = C.renderQLog;
+  // หน้าคู่มือ + ปุ่ม i (#96)
+  const pageHead = C.pageHead;
+  const renderErrors = C.renderErrors;
+  const HELP_VIEW = C.HELP_VIEW;
   const kpi = C.kpi;
   const KPI_ACCENT = C.KPI_ACCENT;
   const todayIso = C.todayIso;
@@ -825,7 +829,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ — จับคู่ Cost ref ไม่ได้เลย '
         + '(ไม่มีแถวที่ตรงทั้งสินค้า บริษัท และช่วงวันที่)' };
     }
-    return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ (อ่าน Cost ref ไม่สำเร็จ — ดูท้ายหน้า)' };
+    return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ (อ่าน Cost ref ไม่สำเร็จ — ดูหน้าคู่มือ ปุ่ม i)' };
   }
 
   // ═══ model ═════════════════════════════════════════════════════════════════
@@ -2477,11 +2481,36 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + '})();<\/script>';
   }
 
+  const SUMMARY_TITLE = 'ภาพรวมต้นทุนใบสั่งผลิต';
+
+  /** เนื้อหา "อ่านตารางนี้อย่างไร" ของชั้นภาพรวม — ย้ายจากท้ายหน้ารายงานมาหน้าคู่มือ (#96) ไม่แก้ถ้อยคำ */
+  function renderSummaryGuide() {
+    return '<div class="card"><table class="kv">'
+      + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
+      + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
+      + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
+      + 'เพื่อให้ตัวเลขเท่ากับหน้าเจาะลึกเสมอ · ใบที่ปิดงานคร่อมช่วงจะขึ้นหมายเหตุไว้</td></tr>'
+      + '<tr><td>วัตถุดิบ</td><td>ผลรวมมูลค่าบนบรรทัดใบเบิก (Inventory Adjustment ประเภทเบิกวัตถุดิบ/บรรจุ) '
+      + 'ที่ผูกใบสั่งผลิตนี้ · ตัดบรรทัด summary cost item ออกแล้ว</td></tr>'
+      + '<tr><td>แปรสภาพ (DL+OH)</td><td>ผลรวม <code>standardcost</code> จากเอกสารปันส่วนต้นทุน '
+      + 'ตัด classification 1 (WIP) ออกเพราะเป็นยอดรวมไม่ใช่องค์ประกอบ</td></tr>'
+      + '<tr><td>ต้นทุน/หน่วย</td><td>(วัตถุดิบ + แปรสภาพ) ÷ ปริมาณที่ผลิตได้จริงจาก WOC '
+      + '<b>ไม่ใช่</b>จำนวนที่สั่งผลิต · ใบที่ยังไม่มี WOC จึงยังคิดไม่ได้</td></tr>'
+      + '<tr><td>ต้นทุน/ลัง</td><td>ตัวหารตัดสินโดยธง <b>คิดต้นทุนต่อลัง</b> ที่ประเภทย่อยสินค้า '
+      + '(<code>customrecord_cseg_subitemtype</code>) — ตั้งไว้จึงหารด้วย '
+      + '<code>custitem_item_basepercarton</code> ตามเดิม · ไม่ตั้งจึง conversion = 1 '
+      + '(ต้นทุน/ลัง = ต้นทุน/หน่วย) · อ่านธงนี้ไม่ได้หรือสินค้าไม่ได้ตั้งประเภทย่อยไว้ '
+      + 'คิดตามเดิมและขึ้นหมายเหตุในหน้าเจาะลึก</td></tr>'
+      + '<tr><td>ผลต่าง</td><td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ) · ต้องเป็นศูนย์ '
+      + 'ส่วนต่างเท่าไหร่ค้างอยู่ในบัญชีงานระหว่างทำเท่านั้น กดเจาะลึกเพื่อดูว่าเกิดที่เอกสารใบไหน</td></tr>'
+      + '</table></div>';
+  }
+
   function renderSummaryPage(sm) {
     const f = sm.filters;
-    let h = '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
-      + '<div class="sub">ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน แล้วกดเลขที่ใบสั่งผลิตเพื่อเจาะที่มาของทุกตัวเลข '
-      + 'จนถึงเอกสารต้นทาง · ยอดในหน้านี้ใช้แหล่งข้อมูลเดียวกับหน้าเจาะลึกทุกช่อง</div>'
+    // #96 — ย่อหน้าคำอธิบายใต้หัวเรื่องถูกลบตามคำสั่งผู้ใช้ · โหมด embed ไม่วาด h1 (CCRC แสดงชื่อเอง)
+    // "อ่านตารางนี้อย่างไร" + "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (ปุ่ม i)
+    let h = pageHead(SUMMARY_TITLE, filterParams(f), true)
       + renderSummaryForm(f);
 
     h += renderErrors();
@@ -2502,28 +2531,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     h += renderSummaryExport(sm);
     h += renderSummaryGrid(sm);
 
-    h += '<h2>อ่านตารางนี้อย่างไร</h2><div class="card"><table class="kv">'
-      + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
-      + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
-      + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
-      + 'เพื่อให้ตัวเลขเท่ากับหน้าเจาะลึกเสมอ · ใบที่ปิดงานคร่อมช่วงจะขึ้นหมายเหตุไว้</td></tr>'
-      + '<tr><td>วัตถุดิบ</td><td>ผลรวมมูลค่าบนบรรทัดใบเบิก (Inventory Adjustment ประเภทเบิกวัตถุดิบ/บรรจุ) '
-      + 'ที่ผูกใบสั่งผลิตนี้ · ตัดบรรทัด summary cost item ออกแล้ว</td></tr>'
-      + '<tr><td>แปรสภาพ (DL+OH)</td><td>ผลรวม <code>standardcost</code> จากเอกสารปันส่วนต้นทุน '
-      + 'ตัด classification 1 (WIP) ออกเพราะเป็นยอดรวมไม่ใช่องค์ประกอบ</td></tr>'
-      + '<tr><td>ต้นทุน/หน่วย</td><td>(วัตถุดิบ + แปรสภาพ) ÷ ปริมาณที่ผลิตได้จริงจาก WOC '
-      + '<b>ไม่ใช่</b>จำนวนที่สั่งผลิต · ใบที่ยังไม่มี WOC จึงยังคิดไม่ได้</td></tr>'
-      + '<tr><td>ต้นทุน/ลัง</td><td>ตัวหารตัดสินโดยธง <b>คิดต้นทุนต่อลัง</b> ที่ประเภทย่อยสินค้า '
-      + '(<code>customrecord_cseg_subitemtype</code>) — ตั้งไว้จึงหารด้วย '
-      + '<code>custitem_item_basepercarton</code> ตามเดิม · ไม่ตั้งจึง conversion = 1 '
-      + '(ต้นทุน/ลัง = ต้นทุน/หน่วย) · อ่านธงนี้ไม่ได้หรือสินค้าไม่ได้ตั้งประเภทย่อยไว้ '
-      + 'คิดตามเดิมและขึ้นหมายเหตุในหน้าเจาะลึก</td></tr>'
-      + '<tr><td>ผลต่าง</td><td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ) · ต้องเป็นศูนย์ '
-      + 'ส่วนต่างเท่าไหร่ค้างอยู่ในบัญชีงานระหว่างทำเท่านั้น กดเจาะลึกเพื่อดูว่าเกิดที่เอกสารใบไหน</td></tr>'
-      + '</table></div>';
-
-    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
-    return shell('ภาพรวมต้นทุนใบสั่งผลิต', h);
+    return shell(SUMMARY_TITLE, h);
   }
 
   function renderWOHeader(s) {
@@ -2615,7 +2623,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + esc(asStr(r.cr_id)) + '</a>';
     const links = (cr.rows || []).map(link).join(' · ');
     if (cr.verdict === 'unknown') {
-      return '<p class="warn">อ่าน Cost ref ไม่สำเร็จ — ดูสาเหตุที่ท้ายหน้า</p>';
+      return '<p class="warn">อ่าน Cost ref ไม่สำเร็จ — ดูสาเหตุในหน้าคู่มือ (ปุ่ม i)</p>';
     }
     if (cr.verdict === 'nomatch') {
       return '<p class="warn">จับคู่ Cost ref ของสินค้านี้ไม่ได้เลย '
@@ -3237,12 +3245,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return h;
   }
 
-  function renderErrors() {
-    const bad = QLOG.filter(q => !!q.error);
-    if (!bad.length) return '';
-    return '<div class="err"><b>ดึงข้อมูลไม่สำเร็จ ' + bad.length + ' ชุด — ตัวเลขบางส่วนอาจไม่ครบ</b><br>'
-      + bad.map(q => esc(q.label) + ': ' + esc(q.error)).join('<br>') + '</div>';
-  }
+  const DRILL_TITLE = 'ที่มาของต้นทุนใบสั่งผลิต';
 
   function renderPage(m) {
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
@@ -3250,13 +3253,13 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + (m.woKey ? ' · <a href="' + selfUrl({ ready: m.woKey })
         + '">ตรวจความพร้อม master ของใบนี้</a>' : '')
       + '</div>'
-      + '<h1>ที่มาของต้นทุนใบสั่งผลิต</h1>'
+      + pageHead(DRILL_TITLE, Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam }), false)
       + '<div class="sub">ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง — วัตถุดิบที่เบิก '
       + '→ ใบสั่งผลิตที่ทำกึ่งสำเร็จรูป → เอกสารรับเข้าที่ทำให้ average cost เป็นค่านั้น</div>'
       + renderForm(m.woKey, (m.ctx && m.ctx.asOf) || '', m.filters);
 
-    const page = (body) => shell('ที่มาของต้นทุนใบสั่งผลิต', body);
-    if (m.notFound) return page(h + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>' + renderQLog());
+    const page = (body) => shell(DRILL_TITLE, body);
+    if (m.notFound) return page(h + renderErrors() + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>');
     if (!m.ok) return page(h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>');
 
     const s = m.root;
@@ -3284,17 +3287,58 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + 'แปลว่ายังนับความเคลื่อนไหวไม่ครบ ส่วนนี้ชี้ว่าขาดกลุ่มไหนและถ้านับเพิ่มแล้วจะตรงหรือไม่ '
       + 'ตัวเลขชั้นที่ 3 ของรายการที่ยังไม่ตรง อย่าใช้อ้างอิงจนกว่าจะแก้</div>'
       + renderAudit(m);
-    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
+    // "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (ปุ่ม i ที่หัวหน้า) — #96
     return page(h);
   }
 
   // ═══ ชั้นความพร้อม master ย้ายไป WOCostTrace_Ready.js แล้ว (issue #14) ═════
   //
-  // entry เรียกผ่าน interface 4 ตัวนี้เท่านั้น — ผูกชื่อไว้ให้ onRequest เรียกเหมือนเดิม
+  // entry เรียกผ่าน interface 5 ตัวนี้เท่านั้น — ผูกชื่อไว้ให้ onRequest เรียกเหมือนเดิม
   const readReadyParams = R.readReadyParams;
   const buildReady = R.buildReady;
   const renderReadyPage = R.renderReadyPage;
   const READY_CSS = R.READY_CSS;
+  const READY_TITLE = R.READY_TITLE;
+
+  // ═══ หน้าคู่มือ (`&view=help`) — issue #96 ══════════════════════════════════
+  //
+  // "อ่านตารางนี้อย่างไร" และ "เอกสารอ้างอิงทางเทคนิค" ย้ายออกจากหน้ารายงานมาไว้ที่นี่ ·
+  // query log เป็นของ request ไม่ใช่ข้อความคงที่ — หน้านี้จึง**รันชั้นเดียวกันซ้ำด้วยพารามิเตอร์ชุดเดียวกัน**
+  // (ปุ่ม i พามาครบ) แล้วแสดง log ของรอบนั้น · ราคาคือ query ชุดเดียวกับหน้ารายงานอีกรอบ
+  // (เจาะลึก 19 ชุด ~15 วินาที) เฉพาะตอนที่ผู้ใช้กดเปิดคู่มือ
+
+  /**
+   * @param {Object} o
+   * @param {string} o.layerTitle ชื่อชั้นที่คู่มือนี้อธิบาย
+   * @param {Object} o.back       พารามิเตอร์ของหน้ารายงาน (ลิงก์กลับ)
+   * @param {string} [o.guide]    HTML ของ "อ่านตารางนี้อย่างไร" (ชั้นที่มี)
+   * @param {Error}  [o.error]    error ตอนรันชั้นนั้นซ้ำ (แสดงพร้อม log ที่ได้ถึงจุดนั้น)
+   * @param {string} [o.extraCss]
+   */
+  function renderHelpPage(o) {
+    let h = '<div class="crumb"><a href="' + esc(selfUrl(o.back)) + '">← กลับไปหน้ารายงาน</a></div>'
+      + '<h1>คู่มือรายงาน — ' + esc(o.layerTitle) + '</h1>';
+    if (o.guide) h += '<h2>อ่านตารางนี้อย่างไร</h2>' + o.guide;
+    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>'
+      + '<div class="sub">คำสั่งดึงข้อมูลชุดเดียวกับหน้ารายงาน รันใหม่ด้วยตัวกรองเดียวกันตอนเปิดหน้านี้ '
+      + '· ช่อง <code>error</code> ต้องว่างทุกคำสั่ง ตัวเลขบนหน้ารายงานถึงจะครบ</div>'
+      + renderErrors()
+      + (o.error ? '<div class="err">' + esc(o.error.message) + '</div>' : '')
+      + renderQLog();
+    return shell('คู่มือ — ' + o.layerTitle, h, o.extraCss);
+  }
+
+  /** ชั้นภาพรวม: รายการใน dropdown + ยอดรวม — หน้ารายงานและหน้าคู่มือเรียกตัวเดียวกัน log จึงเท่ากัน */
+  function loadSummary(filters) {
+    // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
+    // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
+    filters.subRows = qFilterSubsidiaries();
+    filters.locRows = qFilterProductionPlants();
+    // issue #94 — RM Location / Production Line (พังแล้วคืน [] ผ่าน runSQL หน้าไม่ล่ม)
+    filters.rmLocRows = qFilterRmLocations();
+    filters.lineRows = qFilterProductionLines();
+    return buildSummary(filters);
+  }
 
   // ═══ entry ═════════════════════════════════════════════════════════════════
 
@@ -3303,6 +3347,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    *   ไม่ส่งพารามิเตอร์ → ชั้นภาพรวม หลายสินค้าหลายใบสั่งผลิต (4 คำสั่งรวมยอด)
    *   ส่ง wo มา         → ชั้นเจาะลึกใบเดียว ของเดิมทั้งหมดไม่เปลี่ยน (19 คำสั่ง ~15 วินาที)
    *   ส่ง ready มา      → ชั้นความพร้อม master ก่อน UAT (ไล่ BOM ทุกระดับ)
+   * บวก `&view=help` = หน้าคู่มือของชั้นนั้น (#96) · `mode=json` ชนะ view เสมอ (json ไม่เปลี่ยน)
    * ลิงก์เดิมที่มี &wo= และ &mode=json ยังทำงานเหมือนเดิม
    */
   function onRequest(ctx) {
@@ -3314,29 +3359,45 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const woKey = asStr(p.wo).trim();
     const filters = readFilters(p);
     const wantJson = asStr(p.mode) === 'json';
+    const wantHelp = !wantJson && asStr(p.view) === HELP_VIEW;
 
     // ─── ชั้นความพร้อม master ────────────────────────────────────────────
     // มาก่อนสองชั้นเดิมเพราะเป็นคำถามคนละข้อ และไม่ต้องคิดต้นทุนเลย
     if (asStr(p.ready).trim()) {
       const rp = readReadyParams(p);
+      // พารามิเตอร์ของหน้านี้ตามที่มา (ไม่ใช่ค่าที่ parse แล้ว) — ปุ่ม i และลิงก์กลับใช้ชุดนี้
+      const readyParams = Object.assign(filterParams(filters), {
+        ready: asStr(p.ready).trim(), rqty: asStr(p.rqty).trim(),
+        rloc: asStr(p.rloc).trim(), rdate: asStr(p.rdate).trim()
+      });
       let rd;
       try {
         rd = buildReady(rp);
         rd.woKey = rp.woKey;
         rd.params = rp;
+        rd.helpParams = readyParams;
         // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม (เหมือนชั้นเจาะลึก)
         rd.filters = filters;
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(shell('ความพร้อม master ก่อนเริ่มทดสอบ',
-          '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
+        if (wantHelp) {
+          ctx.response.write(renderHelpPage({ layerTitle: READY_TITLE, back: readyParams, error: e,
+            extraCss: READY_CSS }));
+          return;
+        }
+        ctx.response.write(shell(READY_TITLE,
+          pageHead(READY_TITLE, readyParams, false)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog(), READY_CSS));
+          + renderErrors(), READY_CSS));
         return;
       }
       if (wantJson) {
         ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
         ctx.response.write(JSON.stringify({ ready: rd, qlog: QLOG }));
+        return;
+      }
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: READY_TITLE, back: readyParams, extraCss: READY_CSS }));
         return;
       }
       ctx.response.write(renderReadyPage(rd));
@@ -3345,27 +3406,30 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นภาพรวม ───────────────────────────────────────────────────────
     if (!woKey) {
-      // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
-      // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
-      filters.subRows = qFilterSubsidiaries();
-      filters.locRows = qFilterProductionPlants();
-      // issue #94 — RM Location / Production Line (พังแล้วคืน [] ผ่าน runSQL หน้าไม่ล่ม)
-      filters.rmLocRows = qFilterRmLocations();
-      filters.lineRows = qFilterProductionLines();
       let sm;
       try {
-        sm = buildSummary(filters);
+        sm = loadSummary(filters);
       } catch (e) {
         log.error({ title: 'buildSummary', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(shell('ภาพรวมต้นทุนใบสั่งผลิต',
-          '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>' + renderSummaryForm(filters)
+        if (wantHelp) {
+          ctx.response.write(renderHelpPage({ layerTitle: SUMMARY_TITLE, back: filterParams(filters),
+            guide: renderSummaryGuide(), error: e }));
+          return;
+        }
+        ctx.response.write(shell(SUMMARY_TITLE,
+          pageHead(SUMMARY_TITLE, filterParams(filters), true) + renderSummaryForm(filters)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog()));
+          + renderErrors()));
         return;
       }
       if (wantJson) {
         ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
         ctx.response.write(JSON.stringify({ summary: sm, qlog: QLOG }));
+        return;
+      }
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: SUMMARY_TITLE, back: filterParams(filters),
+          guide: renderSummaryGuide() }));
         return;
       }
       ctx.response.write(renderSummaryPage(sm));
@@ -3374,6 +3438,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นเจาะลึก ──────────────────────────────────────────────────────
     let m = { woKey: woKey, ok: false };
+    const drillParams = Object.assign(filterParams(filters), { wo: woKey, asof: asStr(p.asof).trim() });
 
     try {
       // asof ในฟอร์มเป็นวันที่ตาม DATEFORMAT ของบัญชี (หรือ ISO) — แปลงเป็น ISO ก่อนใช้
@@ -3381,18 +3446,28 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       m.woKey = woKey;
     } catch (e) {
       log.error({ title: 'buildModel', details: e.message + '\n' + (e.stack || '') });
-      ctx.response.write(shell('ที่มาของต้นทุนใบสั่งผลิต',
-        renderForm(woKey, '', filters)
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: DRILL_TITLE, back: drillParams, error: e }));
+        return;
+      }
+      ctx.response.write(shell(DRILL_TITLE,
+        pageHead(DRILL_TITLE, drillParams, false)
+        + renderForm(woKey, '', filters)
         + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-        + renderQLog()));
+        + renderErrors()));
       return;
     }
     // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม
     m.filters = filters;
+    m.asofParam = drillParams.asof;
 
     if (wantJson) {
       ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
       ctx.response.write(JSON.stringify({ model: m, qlog: QLOG }));
+      return;
+    }
+    if (wantHelp) {
+      ctx.response.write(renderHelpPage({ layerTitle: DRILL_TITLE, back: drillParams }));
       return;
     }
 

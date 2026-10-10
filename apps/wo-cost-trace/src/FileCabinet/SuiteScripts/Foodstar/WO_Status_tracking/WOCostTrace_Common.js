@@ -221,12 +221,97 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
    * CSS เฉพาะรายงานนี้ — token และคลาสคอมโพเนนต์กลางอยู่ที่ WOReportTheme.js
    * กฎที่นี่ต้องอ้าง token เท่านั้น ห้ามใส่ค่าสีตรง ๆ อีก (เดิมเป็นโทน GitHub คนละชุดกับ template)
    */
-  const REPORT_CSS = 'body{padding:0}'
-    + '.content{padding:var(--sp-4) var(--sp-5) var(--sp-8)}'
-    + '.sub{color:var(--pj-text-muted);font-size:var(--fs-sm);margin-bottom:var(--sp-3)}'
-    + '.crumb{font-size:var(--fs-sm);margin-bottom:var(--sp-3)}'
+  //
+  // ─── style เดียวกับ Costing Custom Report Center (CCRC) — issue #96 ───────────────────
+  // CCRC ฝังรายงานนี้ด้วย `&embed=1` (ns-foodstar-9751184 ui-src/modules/50-appframes.js)
+  // ต้นแบบคือ token/เมตริกของ ns-foodstar-9751184 `ui-src/styles/` (Teibto Redwood):
+  //   00-tokens.css (token) · 90-forms.css (.btn/.field 32px) · 80-tables.css (.rw-table)
+  //   60-view.css (.kpi/.sec) · 10-shell.css (.viewtitle/.iconbtn) · 40-app.css (:focus-visible)
+  // สีทุกตัว (`--c-*`) มีอยู่ใน theme กลางแล้วค่าเดียวกับ 00-tokens.css — ที่นี่ประกาศเพิ่มเฉพาะ
+  // token ที่ไม่ใช่สีซึ่ง theme กลางยังไม่มี และ**ไม่มีค่าสี literal เลย** (--focus-ring ต้นทาง
+  // เขียน #161513 = ค่าของ --c-text จึงอ้าง var(--c-text) แทน)
+  // อยู่ที่ REPORT_CSS ของแอปนี้ ไม่ใช่ shared/WOReportTheme.js โดยตั้งใจ — WO Status ใช้ theme
+  // ไฟล์เดียวกันบน File Cabinet และต้องหน้าตาเหมือนเดิม (ผู้ใช้สั่งเฉพาะ WO Cost Trace)
+  // `--sp-N` ของ theme กลางมีค่าเท่า `--s-N` ของ CCRC ทุกตัวที่ใช้ (4/8/12/16/20/24/32) จึงใช้ต่อ
+  const CCRC_CSS = ':root{'
+    // [src: ns-foodstar-9751184/ui-src/styles/00-tokens.css:79-80]
+    + '--f-sans:"Oracle Sans","Helvetica Neue","IBM Plex Sans Thai","Noto Sans Thai",Sarabun,'
+    + '-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;'
+    + '--f-mono:ui-monospace,SFMono-Regular,Menlo,Consolas,monospace;'
+    // [src: 00-tokens.css:90-96] · [src: 00-tokens.css:53] · [src: 00-tokens.css:119-126]
+    + '--w-regular:400;--w-semibold:600;--w-bold:700;--lh-tight:1.25;--lh-normal:1.5;'
+    + '--bw-control:0.8px;--btn-h:32px;--btn-px:14px;--tap-min:40px;'
+    + '--focus-ring:0 0 0 2px var(--c-text);'
+    // [src: 00-tokens.css:136]
+    + '--layout-topbar:56px}'
+    // ── หน้า (10-shell.css body · 40-app.css .viewbody) ──
+    + 'body{font-family:var(--f-sans);background:var(--c-bg);color:var(--c-text);'
+    + 'font-size:var(--t-base);line-height:var(--lh-normal)}'
+    + 'a{color:var(--c-link)}'
+    // h1 = .viewtitle · h2 = .sec (เส้นใต้ + ตัวหนา t-md) · h3 รองลงมา
+    + 'h1{font-size:var(--t-xl);font-weight:var(--w-bold);line-height:var(--lh-tight);letter-spacing:normal}'
+    + 'h2{font-size:var(--t-md);font-weight:var(--w-bold);margin:var(--sp-6) 0 var(--sp-3);'
+    + 'padding-bottom:var(--sp-2);border-bottom:1px solid var(--c-border)}'
+    + 'h3{font-size:var(--t-base);font-weight:var(--w-semibold);color:var(--c-text-subtle)}'
+    + '.topbar{min-height:var(--layout-topbar);padding:0 var(--sp-6)}'
+    // ── ตัวควบคุม (90-forms.css .field / .btn) ──
+    + 'label{font-size:var(--t-sm);font-weight:var(--w-regular);color:var(--c-text-muted);letter-spacing:normal}'
+    + 'input[type=text],input[type=date],select,textarea{height:var(--btn-h);padding:0 var(--sp-2);'
+    + 'border:var(--bw-control) solid var(--c-border-control);border-radius:var(--r-md);'
+    + 'font-size:var(--t-base);background-color:var(--c-surface);color:var(--c-text)}'
+    + 'textarea{height:auto}'
+    + 'input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;'
+    + 'border-color:var(--c-border-control);box-shadow:var(--focus-ring)}'
+    + '.rw-select,.rw-combobox .rw-combobox-input{height:var(--btn-h);padding-top:0;padding-bottom:0;'
+    + 'border-width:var(--bw-control);border-color:var(--c-border-control);font-size:var(--t-base)}'
+    + '.btn{height:var(--btn-h);padding:0 var(--btn-px);gap:var(--sp-2);justify-content:center;'
+    + 'border:var(--bw-control) solid var(--c-border-control);border-radius:var(--r-md);'
+    + 'background-color:var(--c-surface);color:var(--c-text);'
+    + 'font-size:var(--t-base);font-weight:var(--w-semibold)}'
+    + '.btn:hover:enabled{background-color:var(--c-surface-3);border-color:var(--c-border-control);color:var(--c-text)}'
+    + '.btn.primary{background-color:var(--c-brand);border-color:var(--c-brand);color:var(--c-brand-on)}'
+    + '.btn.primary:hover:enabled{background-color:var(--c-brand-strong);border-color:var(--c-brand-strong);'
+    + 'color:var(--c-brand-on)}'
+    // ── ตาราง (80-tables.css .rw-table) — หัวโทนกลาง ไม่ใช่แถบแบรนด์ · เส้นแนวนอนอย่างเดียว ──
+    + 'table{border:1px solid var(--c-border);font-size:var(--t-base);color:var(--c-text)}'
+    + 'th,td{padding:var(--sp-2) var(--sp-3);border:0;border-bottom:1px solid var(--c-border);'
+    + 'vertical-align:middle}'
+    + 'th{font-size:var(--t-sm);font-weight:600;color:var(--c-text-muted);'
+    + 'background-color:var(--c-surface-3);letter-spacing:normal;text-transform:none}'
+    + 'tbody tr:hover td{background-color:var(--c-surface-2)}'
+    // ── การ์ดตัวเลข (60-view.css .kpi) — ความหมายอยู่ที่สีของค่า ไม่ใช่แถบซ้าย ──
+    + '.kpi-grid{gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(190px,1fr));'
+    + 'margin-bottom:var(--sp-4)}'
+    + '.kpi-card{border:1px solid var(--c-border);border-radius:var(--r-lg);'
+    + 'padding:var(--sp-3) var(--sp-4);gap:var(--sp-1)}'
+    + '.kpi-card:hover{box-shadow:none}'
+    // ถอดแถบสีซ้ายของ theme กลาง (.kpi-card.accent-* เป็น 2 คลาส ชนะ shorthand ข้างบน) — CCRC ไม่มีแถบนี้
+    + '.kpi-card.accent-primary,.kpi-card.accent-success,.kpi-card.accent-info,'
+    + '.kpi-card.accent-warning,.kpi-card.accent-error{border-left-color:var(--c-border)}'
+    + '.kpi-label{font-size:var(--t-sm);font-weight:var(--w-regular);letter-spacing:normal;'
+    + 'color:var(--c-text-muted);line-height:var(--lh-tight)}'
+    + '.kpi-value{font-family:var(--f-mono);font-size:var(--t-xl);font-weight:var(--w-bold);'
+    + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums}'
+    + '.kpi-card.accent-success .kpi-value{color:var(--c-success)}'
+    + '.kpi-card.accent-warning .kpi-value{color:var(--c-warning)}'
+    + '.kpi-card.accent-error .kpi-value{color:var(--c-danger)}'
+    + '.kpi-card.accent-info .kpi-value{color:var(--c-info)}'
+    // ── หัวหน้า + ปุ่มไอคอน i (10-shell.css .iconbtn · ขนาด --btn-h ตาม hit target ของ Redwood) ──
+    + '.pagehead{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3);min-height:var(--btn-h)}'
+    + '.pagehead h1{margin:0}'
+    + '.iconbtn{width:var(--btn-h);height:var(--btn-h);flex:none;margin-left:auto;'
+    + 'display:inline-flex;align-items:center;justify-content:center;'
+    + 'border-radius:var(--r-md);color:var(--c-text-muted);text-decoration:none}'
+    + '.iconbtn:hover{background-color:var(--c-surface-3);color:var(--c-text)}'
+    + '.iconbtn svg{display:block}';
+
+  const REPORT_CSS = CCRC_CSS
+    + 'body{padding:0}'
+    + '.content{padding:var(--sp-6)}'
+    + '.sub{color:var(--c-text-muted);font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
+    + '.crumb{font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
     + 'form{background:var(--pj-surface);border:1px solid var(--pj-border);'
-    + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-4)}'
+    + 'border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-4)}'
     // ── แถบตัวกรอง ────────────────────────────────────────────────────────────
     // ใช้คำศัพท์ .filterbar/.fld ชุดเดียวกับ wo-status (WOStatusTracking.js) โดยตั้งใจ —
     // ป้ายอยู่ "เหนือ" ตัวควบคุมเสมอ ไม่ใช่ข้อความไหลต่อกันคั่นด้วย &nbsp; แบบเดิม ซึ่งทำให้
@@ -269,11 +354,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // กรอบของตัวเอง ปุ่มมีแค่เส้นคั่น border-left · ค่าที่มองเห็น = DATEFORMAT ของบัญชี
     // ค่าที่ส่ง/เก็บจริงยังเป็น ISO ใน URL และ SuiteQL
     + '.filterbar .datewrap{width:100%}'
-    + '.datewrap{position:relative;display:flex;align-items:stretch;min-width:0;'
-    + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
+    + '.datewrap{position:relative;display:flex;align-items:stretch;min-width:0;height:var(--btn-h);'
+    + 'border:var(--bw-control) solid var(--c-border-control);border-radius:var(--r-md);'
     + 'background:var(--pj-surface);overflow:hidden;transition:box-shadow .1s ease}'
-    + '.datewrap:focus-within{box-shadow:0 0 0 2px var(--pj-primary)}'
-    + '.datewrap input[type=text]{flex:1 1 auto;min-width:0;border:0;border-radius:0;'
+    + '.datewrap:focus-within{box-shadow:var(--focus-ring)}'
+    + '.datewrap input[type=text]{flex:1 1 auto;min-width:0;height:auto;border:0;border-radius:0;'
     + 'background:transparent;box-shadow:none}'
     + '.datewrap input[type=text]:focus{outline:none;border-color:transparent;box-shadow:none}'
     + '.datebtn{position:relative;flex:0 0 28px;width:28px;padding:0;'
@@ -307,7 +392,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.cal-day:hover{background:var(--pj-surface-alt)}'
     + '.cal-day.muted{color:var(--pj-text-muted)}'
     + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
-    + '.cal-day.sel{background:var(--pj-primary);color:#fff;font-weight:700}'
+    + '.cal-day.sel{background:var(--pj-primary);color:var(--c-brand-on);font-weight:700}'
     + '.cal-day:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
     + '.cal-foot{display:flex;justify-content:flex-end;margin-top:var(--sp-1);'
     + 'border-top:1px solid var(--pj-border);padding-top:var(--sp-1)}'
@@ -325,7 +410,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'tr.grand td{font-weight:700;background:var(--pj-success-bg)}'
     + 'tr.sub td{background:var(--pj-surface-alt);font-weight:600}'
     + '.card{background:var(--pj-surface);border:1px solid var(--pj-border);'
-    + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-3)}'
+    + 'border-radius:var(--r-lg);padding:var(--sp-3);margin-bottom:var(--sp-3)}'
     + '.kv td:first-child{background:var(--pj-surface-alt);font-weight:600;width:150px}'
     + 'details{margin:var(--sp-2) 0}'
     + 'summary{cursor:pointer;padding:6px var(--sp-2);background:var(--pj-surface-alt);'
@@ -343,17 +428,20 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // info = ข้อเท็จจริงที่ต้องรู้แต่ไม่ใช่ปัญหา เช่น สินค้าที่ตั้งค่าไว้ว่าไม่มีต้นทุนแปรสภาพ
     + '.info{color:var(--pj-text-muted)}'
     // .tag คือ .badge.info ของ template — คงชื่อคลาสเดิมไว้เพราะ markup ใช้อยู่ 19 จุด
-    + '.tag{display:inline-block;padding:1px 8px;border-radius:12px;font-size:10px;'
+    + '.tag{display:inline-block;padding:1px 8px;border-radius:var(--r-pill);font-size:var(--t-xs);'
     + 'font-weight:600;background:var(--pj-info-bg);color:var(--pj-info);margin-left:var(--sp-1)}'
     + '.err{background:var(--pj-error-bg);border:1px solid var(--pj-error);color:var(--pj-error);'
-    + 'padding:7px var(--sp-2);border-radius:var(--radius-sm);margin:7px 0;font-size:var(--fs-sm)}'
+    + 'padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);margin:var(--sp-2) 0;font-size:var(--t-sm)}'
     + '.miss{color:var(--pj-warning)}'
     + '.note{font-size:var(--fs-xs);line-height:1.35}'
     // ตารางภาพรวมกว้าง 15 คอลัมน์ และยาวได้ถึงหลักร้อยแถว — ให้เลื่อนในกรอบของตัวเองพร้อมหัวตารางติดบน
     // (layout-and-controls.md "ตารางกว้าง" ข้อ 2 — thead sticky ในกล่องที่ overflow:auto)
     + '.scroll{overflow:auto;max-height:76vh;border:1px solid var(--pj-border);'
-    + 'border-radius:var(--radius-md);background:var(--pj-surface)}'
+    + 'border-radius:var(--r-lg);background:var(--pj-surface)}'
     + '.scroll table{margin:0;border:0}'
+    // ตารางภาพรวม 15 คอลัมน์ใช้เมตริกของ .rw-table--compact (80-tables.css) — คลาสเดียวกับที่
+    // CCRC มีไว้สำหรับตารางแน่น ไม่ใช่เมตริกที่ตั้งเอง
+    + '.scroll th,.scroll td{padding:var(--sp-1) var(--sp-2);font-size:var(--t-sm)}'
     // ไม่ประกาศ background ซ้ำที่นี่โดยตั้งใจ — กฎ th{background:var(--pj-muted-bg)} ของ BASE
     // (WOReportTheme.js) สปีซิฟิซิตี้ต่ำกว่าแต่ยัง "ชนะ" เพราะ .scroll thead th ไม่ได้แตะ
     // property นี้เลย (cascade ทำงานเป็นรายพร็อพเพอร์ตี้ ไม่ใช่รายบล็อก) หัวตารางที่ลอย
@@ -374,7 +462,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.nsrec a:hover{color:var(--pj-primary);text-decoration:underline}'
     // ไอคอนลิงก์นอก (#64 ขั้น 2) — markup ยังเป็น svg 16px ตามมาตรฐาน แต่ตัวอักษรข้างเคียงแค่
     // 10px จึงย่อการ์แสดงผลด้วย CSS ให้สัดส่วนเข้ากัน (ไม่ใช่แก้ viewBox/attribute ของไอคอน)
-    + '.nsrec svg{width:11px;height:11px;vertical-align:-1px;margin-left:2px}';
+    + '.nsrec svg{width:11px;height:11px;vertical-align:-1px;margin-left:2px}'
+    // ── focus ring แบบ CCRC (40-app.css) — วงหมึกเข้ม 2px แทน outline สีแบรนด์ ──
+    // ต้องวางท้ายสุดและใช้ selector เดียวกับกฎเดิม (theme กลาง + ข้างบน) เพราะทุกกฎเป็น !important
+    // (NetSuite ship `:focus{outline:0}` มา) — !important ที่ specificity เท่ากัน ตัวหลังชนะ
+    + ':focus-visible,.btn:focus-visible,summary:focus-visible,.datebtn:focus-visible,'
+    + '.cal-nav:focus-visible,.cal-day:focus-visible,.cal-today:focus-visible,.iconbtn:focus-visible{'
+    + 'outline:none !important;box-shadow:var(--focus-ring) !important}'
+    + '.rw-select:focus,.rw-select:focus-visible,'
+    + '.rw-combobox .rw-combobox-input:focus,.rw-combobox .rw-combobox-input:focus-visible{'
+    + 'box-shadow:var(--focus-ring) !important}';
 
   const CSS = theme.css(REPORT_CSS);
 
@@ -422,6 +519,41 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
       rmloc: k.rmloc, line: k.line,
       sort: k.sort, max: k.max ? String(k.max) : ''
     };
+  }
+
+  // ── หน้าคู่มือ (`&view=help`) — issue #96 ────────────────────────────────────────
+  // "อ่านตารางนี้อย่างไร" และ "เอกสารอ้างอิงทางเทคนิค" (query log) ย้ายออกจากหน้ารายงาน
+  // ไปหน้าแยกของ Suitelet เดิม · หน้ารายงานเหลือปุ่มไอคอน i ปุ่มเดียว
+  // `view` เป็นชื่อพารามิเตอร์ใหม่ (ไม่ใช้ `mode` เพราะ `mode=json` มีความหมายอยู่แล้ว)
+  const HELP_VIEW = 'help';
+  const HELP_LABEL = 'คู่มือและเอกสารอ้างอิงทางเทคนิคของรายงานนี้';
+
+  /**
+   * ปุ่ม i ไปหน้าคู่มือ — พาพารามิเตอร์ของหน้าปัจจุบันไปครบ (ตัวกรอง/wo/ready) เพราะหน้าคู่มือ
+   * ต้องรันชุดเดียวกันซ้ำถึงจะได้ query log ของจริง · embed=1 ติดไปเองผ่าน selfUrl
+   * @param {Object} params พารามิเตอร์ของหน้าที่เปิดอยู่ (ไม่รวม script/deploy/embed)
+   */
+  function helpButton(params) {
+    const href = selfUrl(Object.assign({}, params || {}, { view: HELP_VIEW }));
+    return '<a class="iconbtn" href="' + esc(href) + '" title="' + esc(HELP_LABEL) + '"'
+      + ' aria-label="' + esc(HELP_LABEL) + '">' + theme.ICONS.info + '</a>';
+  }
+
+  /**
+   * แถวหัวหน้า — ชื่อชั้น (h1) + ปุ่ม i ชิดขวา
+   * โหมด embed ไม่วาด h1 ได้เมื่อ `hideTitleInEmbed` (ชั้นภาพรวม: CCRC แสดงชื่อรายงานที่ viewbody เอง)
+   */
+  function pageHead(title, helpParams, hideTitleInEmbed) {
+    const h1 = (EMBED && hideTitleInEmbed) ? '' : '<h1>' + esc(title) + '</h1>';
+    return '<div class="pagehead">' + h1 + helpButton(helpParams) + '</div>';
+  }
+
+  /** สรุป query ที่พัง — ขึ้นบนหน้ารายงานทันที ไม่ต้องเปิดหน้าคู่มือก่อน (ย้ายจาก entry ที่ #96) */
+  function renderErrors() {
+    const bad = QLOG.filter(q => !!q.error);
+    if (!bad.length) return '';
+    return '<div class="err"><b>ดึงข้อมูลไม่สำเร็จ ' + bad.length + ' ชุด — ตัวเลขบางส่วนอาจไม่ครบ</b><br>'
+      + bad.map(q => esc(q.label) + ': ' + esc(q.error)).join('<br>') + '</div>';
   }
 
   // ── date field (references/date-field.md) ─────────────────────────────────
@@ -1043,6 +1175,11 @@ ${costCols}
     isEmbed: isEmbed,
     selfUrl: selfUrl,
     filterParams: filterParams,
+    // หน้าคู่มือ (#96)
+    HELP_VIEW: HELP_VIEW,
+    helpButton: helpButton,
+    pageHead: pageHead,
+    renderErrors: renderErrors,
     // date field (date-field.md)
     dateField: dateField,
     dateInput: dateInput,
