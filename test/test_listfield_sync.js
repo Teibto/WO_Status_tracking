@@ -12,7 +12,8 @@
  *   1. ข้อความ "ไม่พบตัวเลือกที่ตรงกัน" — wo-status มีสองภาษา (หน้านี้มีปุ่มสลับ ไทย/ENG จริง)
  *      wo-cost-trace เป็นภาษาไทยล้วนทั้งหน้า (ไม่มีกลไกสลับภาษาเลยสักจุด) — ตั้งใจให้ต่าง ไม่ใช่ลืม
  *   2. รายการชื่อ select ที่ enhance ตอนโหลดหน้า — subsidiaryId/locationId/lineId
- *      (wo-status) vs sub/loc (wo-cost-trace) เพราะคนละหน้า คนละชื่อ field จริง
+ *      (wo-status) vs sub/rmloc/loc/line (wo-cost-trace · #94 เพิ่ม rmloc/line) เพราะคนละหน้า
+ *      คนละชื่อ field จริง
  */
 const fs = require('fs');
 const H = require('./lib/_harness');
@@ -76,7 +77,7 @@ const statusNorm = statusBody && normalize(
 const traceNorm = traceBody && normalize(
   traceBody,
   "'ไม่พบตัวเลือกที่ตรงกัน'",
-  "['sub', 'loc']"
+  "['sub', 'rmloc', 'loc', 'line']"
 );
 
 // ── พิสูจน์ว่า "ส่วนที่ต่าง" ตรงกับที่ตั้งใจจริง ไม่ใช่ normalize ทับปัญหาอื่นไปเงียบ ๆ ──
@@ -88,7 +89,8 @@ eq('wo-cost-trace ใช้ข้อความไทยล้วน (ไม่
   && (traceBody || '').indexOf('No matching option') < 0, true);
 eq('wo-status enhance ช่อง subsidiaryId/locationId/lineId',
   (statusBody || '').indexOf("['subsidiaryId', 'locationId', 'lineId']") >= 0, true);
-eq('wo-cost-trace enhance ช่อง sub/loc', (traceBody || '').indexOf("['sub', 'loc']") >= 0, true);
+eq('wo-cost-trace enhance ช่อง sub/rmloc/loc/line (#94)',
+  (traceBody || '').indexOf("['sub', 'rmloc', 'loc', 'line']") >= 0, true);
 
 // ── หลัง normalize สองจุดที่ตั้งใจต่างแล้ว ต้องเหมือนกัน byte ต่อ byte ──────
 console.log('\n── หลัง normalize ส่วนที่ตั้งใจต่าง — engine เหมือนกันทุกตัวอักษร ──');
