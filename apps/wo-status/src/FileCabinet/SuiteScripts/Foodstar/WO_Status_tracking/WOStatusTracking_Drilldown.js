@@ -171,6 +171,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
       SELECT
         woc.custbody_mfg_task_mgn_ref        AS task_id,
         woc.id                                AS woc_id,
+        woc.tranid                            AS woc_tranid,
         woc.custbody_mfg_woc_good_qty         AS woc_good_qty,
         woc.custbody_mfg_woc_scrap_qty        AS woc_scrap_qty,
         woc.custbody_mfg_rework_qty           AS woc_rework_qty,
@@ -278,9 +279,18 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
     return !!itemSource && itemSource !== 'PHANTOM' && isSummary !== 'T';
   }
 
+  /** Display string for an item row: item_code + name, falling back to code/id. */
+  function itemDisplay(r) {
+    const code = asStr(r.item_code);
+    const name = asStr(r.item_name);
+    if (!code) return String(asNum(r.item_id));
+    return name ? (code + ' ' + name).trim() : code;
+  }
+
   /**
    * Q8: BOM components for the WO (CP3 at task level)
-   * Returns {taskId → Set<itemName>} for BOM items and fed items.
+   * Returns { byTask: {taskId → Set<itemId>}, display: {itemId → display string} }.
+   * Keyed by item id (not display name) so two ids sharing a name are not conflated.
    * Used to compute which items are missing per task.
    *
    * ตัดบรรทัดที่ไม่ใช่วัตถุดิบจริงออก (self line / OthCharge, phantom, summary cost)
@@ -292,6 +302,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
       SELECT
         tl.custcol_mfg_line_tmref AS task_id,
         tl.item                    AS item_id,
+        item.itemid                AS item_code,
         item.displayname           AS item_name,
         tl.itemsource              AS item_source,
         NVL(item.custitem_mfg_summarycostitem, 'F') AS is_summary_cost
@@ -305,13 +316,16 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
         AND NVL(item.custitem_mfg_summarycostitem, 'F') <> 'T'
     `;
     const rows = runSQL(sql, [woid]);
-    const byTask = {};
+    const byTask  = {};
+    const display = {};
     rows.filter(isFeedableBomLine).forEach(r => {
       const tid = String(asNum(r.task_id));
+      const iid = String(asNum(r.item_id));
       if (!byTask[tid]) byTask[tid] = new Set();
-      byTask[tid].add(asStr(r.item_name) || String(asNum(r.item_id)));
+      byTask[tid].add(iid);
+      display[iid] = itemDisplay(r);
     });
-    return byTask;
+    return { byTask, display };
   }
 
   function queryFedItems(woid) {
@@ -320,6 +334,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
       SELECT
         ial.custcol_mfg_line_tmref AS task_id,
         ial.item                    AS item_id,
+        item.itemid                 AS item_code,
         item.displayname            AS item_name
       FROM transactionline ial
       JOIN transaction ia ON ia.id = ial.transaction
@@ -332,13 +347,16 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
         AND ial.item IS NOT NULL
     `;
     const rows = runSQL(sql, [woid]);
-    const byTask = {};
+    const byTask  = {};
+    const display = {};
     rows.forEach(r => {
       const tid = String(asNum(r.task_id));
+      const iid = String(asNum(r.item_id));
       if (!byTask[tid]) byTask[tid] = new Set();
-      byTask[tid].add(asStr(r.item_name) || String(asNum(r.item_id)));
+      byTask[tid].add(iid);
+      display[iid] = itemDisplay(r);
     });
-    return byTask;
+    return { byTask, display };
   }
 
   // ─────────────────────────────────────────────────────────────
@@ -358,8 +376,9 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
    * @param {Object}  ctx         {
    *   approvalStatus: string,   // '2' = approved
    *   batchStatus: string,      // '2' = Released to Production
-   *   bomItems: Set<string>,    // BOM items for this task
-   *   fedItems: Set<string>,    // fed items for this task
+   *   bomItems: Set<string>,    // BOM item ids for this task
+   *   fedItems: Set<string>,    // fed item ids for this task
+   *   itemDisplayById: Object,  // item id → display string (for CP3 missing-item text)
    *   lpTotal: number,          // WO-grain lot&pallet total
    *   backorderQty: number      // WO.custbody_mfg_qty_produce_back_order
    * }
@@ -415,7 +434,8 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
           cp.push('ok'); cd.push({});
         } else {
           cp.push('wait');
-          cd.push({ missingCount: missing.length, missingItems: missing });
+          const display = ctx.itemDisplayById || {};
+          cd.push({ missingCount: missing.length, missingItems: missing.map(id => display[id] || id) });
         }
       }
     }
@@ -537,8 +557,11 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
     const batchRows   = queryBatches(woid);
     const taskRows    = queryTasks(woid);
     const lpTotal     = queryLotPalletTotal(woid);
-    const bomByTask   = queryBomComponents(woid);
-    const fedByTask   = queryFedItems(woid);
+    const bomResult   = queryBomComponents(woid);
+    const fedResult   = queryFedItems(woid);
+    const bomByTask   = bomResult.byTask;
+    const fedByTask   = fedResult.byTask;
+    const itemDisplayById = Object.assign({}, bomResult.display, fedResult.display);
 
     // WO-level aggregates — fallback when task-level tmref is not set on lines
     const bomAll = new Set();
@@ -596,6 +619,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
         batchStatus,
         bomItems:    (bomByTask[tid] && bomByTask[tid].size > 0) ? bomByTask[tid] : bomAll,
         fedItems:    (fedByTask[tid] && fedByTask[tid].size > 0) ? fedByTask[tid] : fedAll,
+        itemDisplayById,
         lpTotal,
         backorderQty: woCtx.backorderQty
       };
@@ -611,6 +635,8 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
           taskAltName: asStr(taskRow.task_altname),
           opTaskId:    asStr(taskRow.op_task_id),
           proQty:      asNum(taskRow.tm_pro_qty),
+          wocId,
+          wocTranid:   woc ? asStr(woc.woc_tranid) : '',
           cpStatuses,
           cpData
         });
@@ -646,18 +672,48 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
   }
 
   /**
-   * Render the note cell for a row.
-   * Joins non-empty notes with ' · ', applies worst-status CSS class.
+   * Render a note cell from already-ordered note lines.
+   * lines: [{ status:'err'|'wait', index:number, message:string }]
+   * Keeps the plain joined text in data-tip so hover still works (no aria-label on the td).
    */
-  function noteCell(notes, cpStatuses) {
-    const text = (notes || []).filter(n => n && n.trim()).join(' · ');
-    if (!text) return `<td></td>`;
-    const worst = worstStatus(cpStatuses || []);
-    const cls   = (worst === 'err' || worst === 'wait') ? worst : '';
-    // ไม่มีข้อความอื่นบอกความหมายไอคอนนี้ในเซลล์ — ห่อด้วย iconImg() ใช้ text เดียวกับที่ขึ้น
-    // data-tip เป็นชื่อ (ผ่าน Labels.getCheckpointNote(lang) มาแล้ว ไม่ hardcode คำใหม่)
-    const sym   = theme.iconImg(worst === 'err' ? 'warn' : 'clock', esc(text));
-    return `<td style="text-align:center"><span class="note-icon ${cls}" data-tip="${esc(text)}">${sym}</span></td>`;
+  function renderNoteCell(lines, lang) {
+    if (!lines || !lines.length) return `<td class="note-cell"></td>`;
+    const L   = Labels.getLabels(lang);
+    const tip = lines.map(l => l.message).join(' · ');
+    let inner = '';
+    lines.forEach(l => {
+      // ไม่มีข้อความอื่นบอกความหมายไอคอนนี้ในเซลล์ — ห่อด้วย iconImg() ให้มี accessible name
+      const statusLabel = L.legend[LEGEND_IDX[l.status]];
+      const sym = l.status === 'err'
+        ? theme.iconImg('warn', esc(statusLabel))
+        : theme.iconImg('clock', esc(statusLabel));
+      const cpLabel = (L.cols[l.index] && L.cols[l.index].h) || '';
+      inner += `<div class="note-line ${l.status}">${sym}<span class="note-cp">${esc(cpLabel)}:</span> ${esc(l.message)}</div>`;
+    });
+    return `<td class="note-cell" data-tip="${esc(tip)}">${inner}</td>`;
+  }
+
+  /**
+   * Render the note cell for a row.
+   * @param {string[]} cpStatuses  status per checkpoint (index-aligned with notes)
+   * @param {string[]} notes       Labels.getCheckpointNote() output per checkpoint
+   * @param {string}   lang        'th'|'en'
+   * Only 'err'/'wait' checkpoints with non-empty text produce a note-line; all err lines
+   * come first, then wait lines, each group in checkpoint-index order.
+   */
+  function noteCell(cpStatuses, notes, lang) {
+    const statuses = cpStatuses || [];
+    const list     = notes || [];
+    const lines    = [];
+    ['err', 'wait'].forEach(st => {
+      statuses.forEach((s, i) => {
+        if (s !== st) return;
+        const note = list[i];
+        if (!note || !String(note).trim()) return;
+        lines.push({ status: st, index: i, message: String(note).trim() });
+      });
+    });
+    return renderNoteCell(lines, lang);
   }
 
   /**
@@ -677,23 +733,38 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
     const unitName = data.unitName || '';
 
     (data.batches || []).forEach(batch => {
-      // Derive per-language batch notes from task notes
-      const batchNotes = [];
+      // Derive per-language batch notes, deduped by (checkpoint index + message).
+      // เก็บข้อความดิบ + ชื่อ task ไว้ก่อน — esc ครั้งเดียวตอน render
+      const batchNoteMap = {};
       batch.tasks.forEach(task => {
-        const taskNotes = task.cpStatuses
-          .map((st, i) => Labels.getCheckpointNote(i, st, task.cpData[i], lang))
-          .filter(n => n && n.trim());
-        if (taskNotes.length) {
-          // เก็บข้อความดิบไว้ก่อน — escape ครั้งเดียวตอนฝังลง attribute/markup ข้างล่าง
-          // (esc ที่นี่แล้ว esc ซ้ำที่ batchNoteText ทำให้ชื่อที่มี & ขึ้นเป็น &amp; ให้ผู้ใช้เห็น)
-          batchNotes.push(`${task.taskName}: ${taskNotes.join(' · ')}`);
+        task.cpStatuses.forEach((st, i) => {
+          if (st !== 'err' && st !== 'wait') return;
+          const note = Labels.getCheckpointNote(i, st, task.cpData[i], lang);
+          if (!note || !note.trim()) return;
+          const key = `${i}|${note}`;
+          if (!batchNoteMap[key]) {
+            batchNoteMap[key] = { status: st, index: i, message: note.trim(), taskNames: [] };
+          }
+          const entry = batchNoteMap[key];
+          if (st === 'err') entry.status = 'err';
+          entry.taskNames.push(task.taskName);
+        });
+      });
+      // same ordering as task rows: err lines first, then wait, each in checkpoint order
+      const batchLines = [];
+      ['err', 'wait'].forEach(st => {
+        for (let i = 0; i < 11; i++) {
+          Object.keys(batchNoteMap).forEach(k => {
+            const e = batchNoteMap[k];
+            if (e.index === i && e.status === st) {
+              batchLines.push({ status: e.status, index: e.index,
+                message: `${e.message} (${e.taskNames.join(', ')})` });
+            }
+          });
         }
       });
 
       const batchCpStatuses = batch.cpStatuses || Array(11).fill('na');
-      const batchNoteText   = batchNotes.join(' | ');
-      const batchWorst      = worstStatus(batchCpStatuses);
-      const batchNoteCls    = (batchWorst === 'err' || batchWorst === 'wait') ? batchWorst : '';
 
       // ── Batch row ──────────────────────────────────────────
       const batchQtyLabel = lang === 'en' ? 'Qty' : 'จำนวน';
@@ -701,10 +772,7 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
       html += `<tr class="batch">`;
       html += `<td>${esc(batch.batchName)}<div style="font-size:11px;color:var(--muted);margin-top:2px">${batchQtyLabel}: ${batchQtyStr}</div></td><td></td><td></td>`;
       batchCpStatuses.forEach(st => { html += cpCell(st, lang); });
-      // ไม่มีข้อความอื่นบอกความหมายไอคอนนี้ในเซลล์ — ห่อด้วย iconImg() ใช้ batchNoteText เอง
-      // เป็นชื่อ (ข้อความเดียวกับที่ขึ้น data-tip อยู่แล้ว ผ่านการเลือกภาษามาแล้ว ไม่ hardcode ใหม่)
-      const batchNoteSym = batchWorst === 'err' ? theme.iconImg('warn', esc(batchNoteText)) : theme.iconImg('clock', esc(batchNoteText));
-      html += `<td style="text-align:center">${batchNoteText ? `<span class="note-icon ${batchNoteCls}" data-tip="${esc(batchNoteText)}">${batchNoteSym}</span>` : ''}</td>`;
+      html += renderNoteCell(batchLines, lang);
       html += `</tr>\n`;
 
       // ── Task rows ──────────────────────────────────────────
@@ -712,10 +780,17 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
         const localNotes = task.cpStatuses.map((st, i) =>
           Labels.getCheckpointNote(i, st, task.cpData[i], lang)
         );
+        // WOC doc link — ตรวจ parseInt > 0 ก่อนเสมอ กัน id ที่ไม่ใช่ตัวเลขหลุดเป็น href
+        const wocNum = parseInt(task.wocId, 10);
+        let taskLinks = '';
+        if (wocNum > 0) {
+          const wocLabel = lang === 'en' ? 'Completion' : 'ใบปิดงาน';
+          taskLinks = `<div class="task-links"><a href="/app/accounting/transactions/transaction.nl?id=${wocNum}" target="_blank" rel="noopener">${wocLabel} ${esc(task.wocTranid)}</a></div>`;
+        }
         html += `<tr class="task">`;
-        html += `<td>${esc(task.taskName)}${task.taskAltName ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(task.taskAltName)}</div>` : ''}</td><td></td><td></td>`;
+        html += `<td>${esc(task.taskName)}${task.taskAltName ? `<div style="font-size:11px;color:var(--muted);margin-top:1px">${esc(task.taskAltName)}</div>` : ''}${taskLinks}</td><td></td><td></td>`;
         task.cpStatuses.forEach(st => { html += cpCell(st, lang); });
-        html += noteCell(localNotes, task.cpStatuses);
+        html += noteCell(task.cpStatuses, localNotes, lang);
         html += `</tr>\n`;
       });
     });
