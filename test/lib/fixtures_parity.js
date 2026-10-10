@@ -79,16 +79,32 @@ const ISSUE_LINES = [
 ];
 
 // ใบปิดงานผลิต — 2 ใบมีปริมาณ (2 batch) + 1 ใบขั้นตอนกลางที่ปริมาณ 0 ไม่ตีราคา
+// `op_seq` / `last_task` มาจาก task ที่ WOC ผูกอยู่ (issue #77) — ใบขั้นกลางของ batch 3001
+// เป็น op 1 (fg_qty = 0 · sc_ia ว่าง ตามปกติของระบบ) ส่วนใบที่ตีราคาเป็นขั้นสุดท้าย
 const WOC_ROWS = [
   { wo_id: WO_ID, woc_id: 7001, woc_no: 'WOCFSC00000900', woc_date: '26/07/2026',
     good_qty: 100276, scrap_qty: 0, sc_ia: 6001, fg_qty: 100276,
-    task_no: 'OP-30', task_name: 'Packing', batch_id: 3001, pro_qty: 100276 },
+    task_no: 'OP-30', task_name: 'Packing', batch_id: 3001, pro_qty: 100276,
+    op_seq: 2, last_task: 'T' },
   { wo_id: WO_ID, woc_id: 7002, woc_no: 'WOCFSC00000901', woc_date: '27/07/2026',
     good_qty: 60000, scrap_qty: 0, sc_ia: 6002, fg_qty: 60000,
-    task_no: 'OP-30', task_name: 'Packing', batch_id: 3002, pro_qty: 60000 },
+    task_no: 'OP-30', task_name: 'Packing', batch_id: 3002, pro_qty: 60000,
+    op_seq: 1, last_task: 'T' },
   { wo_id: WO_ID, woc_id: 7003, woc_no: 'WOCFSC00000902', woc_date: '26/07/2026',
     good_qty: 0, scrap_qty: 0, sc_ia: null, fg_qty: 0,
-    task_no: 'OP-10', task_name: 'Mixing', batch_id: 3001, pro_qty: 0 }
+    task_no: 'OP-10', task_name: 'Mixing', batch_id: 3001, pro_qty: 100276,
+    op_seq: 1, last_task: 'F' }
+];
+
+// task ของ WO — batch ที่ปล่อยงานแล้ว (issue #77) · ใบนี้ปล่อย 2 batch และปิดงานครบทั้งสอง
+// ใช้แสดงผลอย่างเดียว ไม่มีช่องไหนในสูตรต้นทุนอ่านค่าจากตารางนี้
+const TASK_ROWS = [
+  { wo_id: WO_ID, batch_id: 3001, pro_qty: 100276, good_qty: 100276,
+    op_seq: 1, last_task: 'F', prev_task: null },
+  { wo_id: WO_ID, batch_id: 3001, pro_qty: 100276, good_qty: 100276,
+    op_seq: 2, last_task: 'T', prev_task: 4001 },
+  { wo_id: WO_ID, batch_id: 3002, pro_qty: 60000, good_qty: 60000,
+    op_seq: 1, last_task: 'T', prev_task: null }
 ];
 
 // เอกสารปันส่วนต้นทุน — บรรทัด WIP เป็นยอดรวม ไม่ใช่องค์ประกอบ ต้องถูกตัดทั้งสองชั้น
@@ -134,6 +150,23 @@ const EXPECT = {
   base_per_carton: 48
 };
 
+/** GROUP BY wo_id + คีย์เดียว แล้ว SUM ช่องเดียว — รูปเดียวกับ query ราย batch ของชั้นภาพรวม */
+function groupSum(rows, key, from, as, abs) {
+  const m = {};
+  const order = [];
+  rows.forEach((r) => {
+    const k = r[key] == null ? 'null' : String(r[key]);
+    if (!(k in m)) { m[k] = 0; order.push(k); }
+    m[k] += abs ? Math.abs(num(r[from])) : num(r[from]);
+  });
+  return order.map((k) => {
+    const o = { wo_id: WO_ID };
+    o[key] = k === 'null' ? null : Number(k);
+    o[as] = m[k];
+    return o;
+  });
+}
+
 /** fixture ของชั้นเจาะลึก — label ครบทุกตัวที่ buildModel ยิง (ไม่มีตัวไหนพึ่ง default เงียบ ๆ) */
 function drilldown() {
   return {
@@ -141,6 +174,7 @@ function drilldown() {
     'WO lines (BOM standard)': WO_LINES,
     'ใบเบิกวัตถุดิบเข้า WO': ISSUE_LINES,
     'ใบปิดงานผลิต (WOC)': WOC_ROWS,
+    'งานที่ปล่อยราย batch (task)': TASK_ROWS,
     'เอกสารปันส่วนต้นทุน': CA_ROWS,
     // ชั้นที่ 2 (ไล่ lot หา WO ต้นทาง) ไม่ใช้ในเทสนี้ — ประกาศว่าไม่มีแถว ไม่ใช่ปล่อยว่าง
     'lot ที่เบิก': [],
@@ -190,6 +224,17 @@ function summary() {
       wo_id: WO_ID, dl_oh_std: EXPECT.dl_oh_std, dl_oh_act: EXPECT.dl_oh_act,
       ca_docs: uniq(convRows.map((r) => r.ca_id)).length
     }],
+    // แถวย่อยราย batch — รวมจากบรรทัดชุดเดียวกันด้วยกฎ GROUP BY ของ SQL ฝั่งนั้น
+    // (วัตถุดิบ/แปรสภาพ ต่อใบปิดงานที่บรรทัดอ้าง · summary cost ต่อใบ) ไม่ได้พิมพ์เลขซ้ำ
+    'งานที่ปล่อยราย batch (task)': TASK_ROWS,
+    'ใบปิดงานผลิต (WOC)': WOC_ROWS.map((w) => Object.assign({}, w, {
+      woc_date_iso: w.woc_date.split('/').reverse().join('-')
+    })),
+    'ภาพรวม — วัตถุดิบราย batch': groupSum(rmLines, 'woc_id', 'amount', 'rm_cost', true),
+    'ภาพรวม — แปรสภาพราย batch': groupSum(convRows, 'woc_id', 'std_cost', 'dl_oh_std', false),
+    'ภาพรวม — Summary Cost ราย batch': Object.keys(scValueByDoc).map((k) => ({
+      wo_id: WO_ID, tran_id: Number(k), amount: scValueByDoc[k]
+    })),
     'Cost ref ของสินค้าที่ผลิต': [],
     // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ไม่ผูกกับยอดต้นทุน แค่ให้ onRequest ยิงได้ไม่พัง
     'ตัวกรอง — บริษัท': [{ id: 2, name: 'Foodstar' }],
@@ -203,6 +248,6 @@ function summary() {
 }
 
 module.exports = {
-  CLASS_WIP, WO_ID, FG_ITEM, WO_HEADER, WO_LINES, ISSUE_LINES, WOC_ROWS, CA_ROWS,
+  CLASS_WIP, WO_ID, FG_ITEM, WO_HEADER, WO_LINES, ISSUE_LINES, WOC_ROWS, TASK_ROWS, CA_ROWS,
   EXPECT, drilldown, summary
 };
