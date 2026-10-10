@@ -354,6 +354,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'tr.tot td{font-weight:700;background:var(--pj-warning-bg)}'
     + 'tr.grand td{font-weight:700;background:var(--pj-success-bg)}'
     + 'tr.sub td{background:var(--pj-surface-alt);font-weight:600}'
+    // แถวย่อยราย batch ใต้แถว WO ของชั้นภาพรวม — ตัวเล็กลงและเยื้องให้เห็นว่าเป็นลูกของแถวบน
+    + 'tr.brow td{font-size:var(--fs-sm)}'
+    + 'tr.brow td.bk{padding-left:var(--sp-5)}'
     + '.card{background:var(--pj-surface);border:1px solid var(--pj-border);'
     + 'border-radius:var(--radius-md);padding:var(--sp-3);margin-bottom:var(--sp-3)}'
     + '.kv td:first-child{background:var(--pj-surface-alt);font-weight:600;width:150px}'

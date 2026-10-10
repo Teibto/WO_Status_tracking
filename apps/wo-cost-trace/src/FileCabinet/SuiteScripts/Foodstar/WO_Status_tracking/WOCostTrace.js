@@ -162,7 +162,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
              -- บวกข้ามขั้น · **เพิ่มคอลัมน์ใน SELECT อย่างเดียว** ห้ามแตะ WHERE/JOIN/GROUP BY
              -- เพราะชุดแถวที่ query นี้คืนคือฐานของยอดที่ต้องเท่ากับชั้นภาพรวมทุกหลัก
              TASK.custrecord_mfg_tm_operation_sequence AS op_seq,
-             TASK.custrecord_mfg_tm_last_task          AS last_task
+             TASK.custrecord_mfg_tm_last_task          AS last_task,
+             -- แถวราย batch ของชั้นภาพรวมต้องได้วันที่ปิดงานเป็น ISO ไปลง Excel (เพิ่มใน SELECT อย่างเดียว)
+             TO_CHAR(WOC.trandate, 'YYYY-MM-DD')       AS woc_date_iso
       FROM transaction WOC
       JOIN transactionline TLM ON TLM.transaction = WOC.id AND TLM.mainline = 'T'
       LEFT JOIN customrecord_mfg_task_management TASK ON TASK.id = WOC.custbody_mfg_task_mgn_ref
@@ -815,6 +817,94 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     `));
   }
 
+  // ═══ queries — แถวราย batch ของชั้นภาพรวม ═══════════════════════════════════
+  //
+  // WO ที่แตกหลาย batch ได้แถวย่อยต่อ batch ใต้แถว WO · **แถว WO ยังมาจากชุด query ข้างบนเหมือนเดิม
+  // ทุกหลัก** ชุดนี้เพิ่มมาเพื่อแตกยอดเท่านั้น ห้ามเอายอดจากชุดนี้ไปแทนยอดของแถว WO
+  //
+  // เงื่อนไข WHERE ต้องเป็นชุดเดียวกับ query ระดับ WO ของช่องนั้นทุกข้อ แล้ว GROUP BY ละเอียดขึ้น
+  // (ใบปิดงาน / ใบ summary cost) · ผลรวมทุก batch จึงเท่ากับแถว WO เสมอ — `summaryBatches`
+  // ตรวจซ้ำตอนรันจริงแล้วขึ้นหมายเหตุถ้าไม่เท่า
+  //
+  // จับคู่ batch ใน JS ผ่านใบปิดงาน (`batchIndex`) ตัวเดียวกับชั้นเจาะลึก ไม่ join task ใน SQL
+  //   วัตถุดิบ  → บรรทัดใบเบิก `custcol_mfg2_ref_workordercompletion` = ใบปิดงานของ task สุดท้าย
+  //   แปรสภาพ → บรรทัดเอกสารปันส่วน `custcol_mfg2_ref_workordercompletion`
+  //   summary cost → ใบปิดงานที่อ้างใบนั้น (`custbody_mfg_adjsummarycost`)
+  // บรรทัดที่อ้างใบปิดงานไม่ได้ ลงแถว "ไม่ระบุ batch" — ห้ามปันตามสัดส่วน ห้ามหายเงียบ
+
+  /** รันคำสั่งแล้วบอกด้วยว่าพังไหม — แถวว่างจากคำสั่งที่พังต้องไม่อ่านเป็น "ไม่มี" */
+  function runTracked(fn) {
+    const at = QLOG.length;
+    const rows = fn();
+    let failed = false;
+    for (let i = at; i < QLOG.length; i++) { if (QLOG[i].error) failed = true; }
+    return { rows: rows || [], failed: failed };
+  }
+
+  /** วัตถุดิบต่อใบปิดงาน — WHERE ชุดเดียวกับ qSummaryRM */
+  function qSummaryRMByWoc(woIds) {
+    if (!woIds.length) return [];
+    return runChunked(woIds, part => runSQL('ภาพรวม — วัตถุดิบราย batch', `
+      SELECT TL.custcol_mfg2_ref_workorder            AS wo_id,
+             TL.custcol_mfg2_ref_workordercompletion  AS woc_id,
+             SUM(ABS(NVL(TL.foreignamount, 0)))       AS rm_cost
+      FROM transaction T
+      JOIN transactionline TL ON TL.transaction = T.id
+      LEFT JOIN item I ON I.id = TL.item
+      LEFT JOIN customrecord_thl_adjustmenttype ADJT ON ADJT.id = T.custbody_thl_adjustmenttype
+      WHERE T.recordtype = 'inventoryadjustment'
+        AND TL.mainline = 'F' AND TL.iscogs = 'F' AND TL.taxline = 'F'
+        AND TL.custcol_mfg2_ref_workorder IN (${inList(part)})
+        AND NVL(ADJT.custrecord_adjt_mfgsummarycost, 'F') = 'F'
+        AND NVL(I.custitem_mfg_summarycostitem, 'F') = 'F'
+      GROUP BY TL.custcol_mfg2_ref_workorder, TL.custcol_mfg2_ref_workordercompletion
+    `));
+  }
+
+  /** ต้นทุนแปรสภาพต่อใบปิดงาน — WHERE ชุดเดียวกับ qSummaryConv (ตัด class 1 = WIP) */
+  function qSummaryConvByWoc(woIds) {
+    if (!woIds.length) return [];
+    return runChunked(woIds, part => runSQL('ภาพรวม — แปรสภาพราย batch', `
+      SELECT TL.custcol_mfg2_ref_workorder            AS wo_id,
+             TL.custcol_mfg2_ref_workordercompletion  AS woc_id,
+             SUM(TL.custcol_mfg2_standardcost)        AS dl_oh_std
+      FROM transaction CA
+      JOIN transactionline TL ON TL.transaction = CA.id
+      JOIN transactionaccountingline TAL
+        ON TAL.transaction = TL.transaction AND TAL.transactionline = TL.id
+       AND TAL.posting = 'T' AND TAL.accountingbook = 1
+      JOIN account ACC ON ACC.id = TAL.account
+      WHERE CA.recordtype = 'customtransaction_mfg2_woc_costallocatio'
+        AND TL.custcol_mfg2_ref_workorder IN (${inList(part)})
+        AND NVL(ACC.custrecord_mfg_acc_dl_oh, 0) <> 1
+      GROUP BY TL.custcol_mfg2_ref_workorder, TL.custcol_mfg2_ref_workordercompletion
+    `));
+  }
+
+  /**
+   * ยอดใบ MFG Summary Cost ต่อใบ — WHERE ชุดเดียวกับ qSummarySummaryCost
+   * คืน `tran_id` + `amount` รูปเดียวกับ `summaryLines` ของชั้นเจาะลึก เพื่อส่งเข้า `summaryLink()`
+   * ตัวเดียวกันได้ตรง ๆ (ธงแดงราย batch จึงตัดสินด้วยตรรกะเดียวกับชั้นเจาะลึก)
+   */
+  function qSummarySCByDoc(woIds) {
+    if (!woIds.length) return [];
+    return runChunked(woIds, part => runSQL('ภาพรวม — Summary Cost ราย batch', `
+      SELECT TL.custcol_mfg2_ref_workorder      AS wo_id,
+             T.id                               AS tran_id,
+             SUM(ABS(NVL(TL.foreignamount, 0))) AS amount
+      FROM transaction T
+      JOIN transactionline TL ON TL.transaction = T.id
+      LEFT JOIN item I ON I.id = TL.item
+      LEFT JOIN customrecord_thl_adjustmenttype ADJT ON ADJT.id = T.custbody_thl_adjustmenttype
+      WHERE T.recordtype = 'inventoryadjustment'
+        AND TL.mainline = 'F' AND TL.iscogs = 'F' AND TL.taxline = 'F'
+        AND TL.custcol_mfg2_ref_workorder IN (${inList(part)})
+        AND (NVL(ADJT.custrecord_adjt_mfgsummarycost, 'F') = 'T'
+             OR NVL(I.custitem_mfg_summarycostitem, 'F') = 'T')
+      GROUP BY TL.custcol_mfg2_ref_workorder, T.id
+    `));
+  }
+
   function classifyCostRef(all, subId, dateIso) {
     if (!all || all.failed) return { verdict: 'unknown', rows: [], cost: 0 };
     const rows = (all.rows || []).filter(r => costRefInEffect(r, subId, dateIso));
@@ -1201,6 +1291,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         good: goodRows ? sumOf(goodRows, 'good_qty') : null,
         // แยกสองสาเหตุที่ไม่มีเลข: ยังไม่ปิดขั้นสุดท้าย (รู้ว่าขั้นไหน) กับ ตัดสินขั้นไม่ได้
         goodPending: goodPending,
+        // ใบปิดงานของขั้นสุดท้าย (ชุดเดียวกับที่ใช้ตัดสินยอดดี) — ชั้นภาพรวมใช้เลขที่ใบนี้เป็นชื่อแถว batch
+        lastWocs: goodRows || [],
         scrap: 0, fg: 0, fgWocs: 0, unlinkedWocs: 0, scDocs: []
       };
       // ของเสียของแต่ละขั้นเป็นคนละก้อน และใบที่ไม่ใช่ขั้นสุดท้ายมี fg_qty = 0 อยู่แล้ว
@@ -1745,6 +1837,146 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * ทุกยอดในชั้นนี้ต้องเท่ากับชั้นเจาะลึกของใบเดียวกันทุกหลัก — ถ้าไม่เท่าคือ aggregate เพี้ยน
    * ไม่ใช่เรื่องปัดเศษ
    */
+  /**
+   * ข้อมูลราย batch ของทุกใบในหน้า — ยิงก้อนละ 150 ใบเหมือนชุด query ระดับ WO
+   * ใช้ `qTasks` / `qCompletions` ตัวเดียวกับชั้นเจาะลึก (label เดียวกัน) เพื่อให้สองชั้นเห็น batch ชุดเดียวกัน
+   */
+  function summaryBatchData(woIds) {
+    const t = { rows: [], failed: false };
+    chunk(woIds, 150).forEach(part => {
+      const x = qTasks(part);
+      t.rows = t.rows.concat(x.rows);
+      if (x.failed) t.failed = true;
+    });
+    const w = runTracked(() => runChunked(woIds, qCompletions));
+    const rm = runTracked(() => qSummaryRMByWoc(woIds));
+    const conv = runTracked(() => qSummaryConvByWoc(woIds));
+    const sc = runTracked(() => qSummarySCByDoc(woIds));
+    return {
+      tasks: groupBy(t.rows, 'wo_id'), tasksFailed: t.failed,
+      wocs: groupBy(w.rows, 'wo_id'),
+      rm: groupBy(rm.rows, 'wo_id'), conv: groupBy(conv.rows, 'wo_id'), sc: groupBy(sc.rows, 'wo_id'),
+      failed: w.failed || rm.failed || conv.failed || sc.failed
+    };
+  }
+
+  /** วันที่ ISO → dd/mm/yyyy รูปเดียวกับคอลัมน์ "ปิดงานผลิต" ของแถว WO (TO_CHAR 'DD/MM/YYYY') */
+  function dmyOf(iso) {
+    const m = /^(\d{4})-(\d{2})-(\d{2})/.exec(asStr(iso));
+    return m ? m[3] + '/' + m[2] + '/' + m[1] : '';
+  }
+
+  /**
+   * แถวย่อยราย batch ของใบสั่งผลิตหนึ่งใบในชั้นภาพรวม
+   *
+   * กลุ่ม batch มาจาก `batchGroups()` ตัวเดียวกับตารางใบปิดงานของชั้นเจาะลึก จึงได้ชุด batch
+   * ลำดับ แผน (ขั้นแรก) ผลิตได้ และธงแดงเรื่องการผูกใบ summary cost ตรงกันทุกข้อ
+   * ยอดเงินจับคู่ batch ผ่านใบปิดงานที่บรรทัดนั้นอ้าง — ไม่ปันตามสัดส่วน
+   * บรรทัดที่หาใบปิดงานไม่เจอไปลงแถว "ไม่ระบุ batch" ยอดทุก batch รวมกันจึงเท่าแถว WO เสมอ
+   *
+   * แตกเป็นแถวย่อยเฉพาะเมื่อมีมากกว่าหนึ่งกลุ่ม (กติกาเดียวกับชั้นเจาะลึก) · มีกลุ่มเดียว
+   * คืน `rows: []` แล้วบอกเลข batch นั้นไว้ที่ `key` ให้แถว WO แสดงแทน
+   */
+  function summaryBatches(r, d, bpcEff) {
+    const id = r.wo_id;
+    if (d.failed) return { rows: [], count: 0, closed: 0, key: '', failed: true };
+    const wocs = d.wocs[id] || [];
+    const bg = batchGroups({
+      wocs: wocs, tasks: d.tasks[id] || [], tasksFailed: d.tasksFailed,
+      summaryLink: summaryLink(d.sc[id] || [], wocs)
+    });
+
+    // ใบปิดงาน → batch · ใบปิดงานที่ไม่อยู่ในชุด = หา batch ไม่ได้ → ''
+    const batchByWoc = batchIndex(wocs).batchByWoc;
+    const toBatch = wocId => {
+      const b = batchByWoc[asStr(wocId)];
+      return b == null ? '' : b;
+    };
+    const batchByDoc = {};
+    wocs.forEach(w => { const ia = asStr(w.sc_ia); if (ia) batchByDoc[ia] = asStr(w.batch_id); });
+
+    const money = {};
+    const add = (b, k, v) => {
+      if (!money[b]) money[b] = { rm: 0, conv: 0, sc: 0 };
+      money[b][k] += v;
+    };
+    (d.rm[id] || []).forEach(x => add(toBatch(x.woc_id), 'rm', asNum(x.rm_cost)));
+    (d.conv[id] || []).forEach(x => add(toBatch(x.woc_id), 'conv', asNum(x.dl_oh_std)));
+    (d.sc[id] || []).forEach(x => {
+      const b = batchByDoc[asStr(x.tran_id)];
+      add(b == null ? '' : b, 'sc', Math.abs(asNum(x.amount)));
+    });
+
+    // ยอดที่ลงกลุ่มที่ไม่มีใน batchGroups (ในทางปฏิบัติคือ '' = อ้างใบปิดงานไม่ได้) ต้องมีแถวของตัวเอง
+    const groups = bg.groups.slice();
+    const has = {};
+    groups.forEach(g => { has[g.key] = true; });
+    Object.keys(money).forEach(k => {
+      const m = money[k];
+      if (has[k] || (Math.abs(m.rm) < 0.005 && Math.abs(m.conv) < 0.005 && Math.abs(m.sc) < 0.005)) return;
+      groups.push({ key: k, wocs: [], tasks: 0, released: false, plan: null, good: null, fg: 0,
+        fgWocs: 0, unlinkedWocs: 0, closed: false, flagged: false, orphanMoney: true });
+      has[k] = true;
+    });
+
+    // ชื่อแถว batch = เลขที่ใบปิดงานของ task สุดท้าย (ผู้ใช้ขอแทนเลข internal id ของ batch)
+    // batch ที่ขั้นสุดท้ายยังไม่มีใบปิดงาน = "ยังไม่ปิดงาน" · ห้ามหยิบเลขใบของขั้นกลางมาแทน
+    const labelOf = g => {
+      if (g.key === '') return 'ไม่ระบุ batch';
+      const nos = uniq((g.lastWocs || []).map(w => asStr(w.woc_no)).filter(Boolean));
+      return nos.length ? nos.join(', ') : 'ยังไม่ปิดงาน';
+    };
+
+    const base = { count: bg.batches, closed: bg.closedBatches, failed: false };
+    if (groups.length < 2) return Object.assign(base, { rows: [], key: groups.length ? labelOf(groups[0]) : '' });
+
+    const rows = groups.map(g => {
+      const m = money[g.key] || { rm: 0, conv: 0, sc: 0 };
+      const cost = m.rm + m.conv;
+      const cartons = bpcEff ? g.fg / bpcEff : 0;
+      let lastIso = '';
+      g.wocs.forEach(w => { const iso = asStr(w.woc_date_iso); if (iso > lastIso) lastIso = iso; });
+
+      const notes = [];
+      if (g.key === '') {
+        notes.push({ cls: 'warn', text: g.wocs.length
+          ? 'ใบปิดงาน ' + g.wocs.length + ' ใบระบุ batch ไม่ได้ (ไม่มี task ผูก)'
+          : 'บรรทัดต้นทุนที่ไม่ได้อ้างใบปิดงานของ batch ใด — ระบุ batch ไม่ได้' });
+      } else if (!g.closed) {
+        notes.push({ cls: 'info', text: g.released ? 'ปล่อยงานแล้ว ยังไม่ปิดงาน' : 'ยังไม่ปิดงาน' });
+      }
+      if (g.flagged) {
+        notes.push({ cls: 'bad', text: 'ปิดงานแล้วแต่ใบปิดงาน ' + g.unlinkedWocs
+          + ' ใบยังไม่มีใบ MFG Summary Cost ผูก — ต้นทุน batch นี้ยังไม่ถูกสรุป' });
+      }
+      if (g.key !== '' && g.closed && Math.abs(m.rm) < 0.005) {
+        notes.push({ cls: 'warn', text: 'ไม่มีบรรทัดใบเบิกวัตถุดิบที่อ้างใบปิดงานของ batch นี้' });
+      }
+      return {
+        batch_key: g.key,
+        batch_label: labelOf(g),
+        // ลิงก์ไปใบปิดงานบนหน้าจอ — ไม่ลง Excel
+        last_wocs: (g.lastWocs || []).map(w => ({ id: asStr(w.woc_id), no: asStr(w.woc_no) })),
+        // แผน = ขั้นแรกเท่านั้น (null = ตัดสินขั้นไม่ได้ → "ไม่ทราบ") · ห้ามบวกข้ามขั้น (ดูหัว qTasks)
+        wo_qty: g.plan,
+        woc_qty: g.fg,
+        woc_last: dmyOf(lastIso),
+        woc_last_iso: lastIso,
+        rm_cost: m.rm,
+        dl_oh_cost: m.conv,
+        cost: cost,
+        cartons: cartons,
+        cost_per_unit: g.fg ? cost / g.fg : null,
+        cost_per_carton: cartons ? cost / cartons : null,
+        sc_value: m.sc,
+        sc_gap: m.sc - cost,
+        closed: g.closed,
+        notes: notes
+      };
+    });
+    return Object.assign(base, { rows: rows, key: '' });
+  }
+
   function buildSummary(f) {
     // 1 แถวต่อ 1 ใบสั่งผลิตเท่านั้น — query คืนแถวต่อบรรทัด mainline='T' ซึ่งอาจมีมากกว่าหนึ่ง
     // ถ้าไม่ตัดซ้ำ ยอดของใบนั้นจะถูกบวกสองครั้งในแถวรวมและ KPI (ชั้นเจาะลึกใช้บรรทัดแรกใบเดียว)
@@ -1775,6 +2007,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ต้นทุนต่อลังตามประเภทย่อยสินค้า (issue #54) — ต้องใช้แหล่งเดียวกับชั้นเจาะลึก
     // (`qCostPerCartonFlags` ที่ `ctx.cpcFlags` ใช้) ไม่งั้นสองชั้นได้ตัวหารไม่เท่ากัน
     const cpcFlags = qCostPerCartonFlags(uniq(use.map(r => r.item_id)));
+    // แถวย่อยราย batch — ชุด query แยก ไม่ได้ป้อนยอดของแถว WO ช่องไหนเลย
+    const bdata = summaryBatchData(woIds);
 
     const rows = use.map(h => {
       const id = asStr(h.wo_id);
@@ -1895,6 +2129,30 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         cost_ref: { verdict: cr.verdict, cost: cr.cost, ids: costRefIds(cr), rows: cr.rows.length },
         notes: notes
       };
+    });
+
+    // แตกแถวย่อยราย batch — ต่อท้ายแถว WO เท่านั้น ห้ามแก้ยอดของแถว WO
+    rows.forEach(r => {
+      const bpcEff = costPerCartonEff(r.base_per_carton, cpcFlags, r.item_id).bpcEff;
+      const b = summaryBatches(r, bdata, bpcEff);
+      r.batches = b.rows;
+      r.batch_count = b.count;
+      r.batch_closed = b.closed;
+      // ช่อง WOC ของแถว WO: แตกหลายกลุ่ม = "n batch" · กลุ่มเดียว = เลขใบปิดงาน task สุดท้าย (ไปลง Excel ด้วย)
+      r.batch_label = b.rows.length ? b.count + ' batch' : asStr(b.key);
+      if (b.failed) {
+        r.notes.push({ cls: 'warn', text: 'อ่านยอดราย batch ไม่สำเร็จ — แสดงเฉพาะยอดทั้งใบ '
+          + '(ดูสาเหตุที่ mode=json → qlog)' });
+        return;
+      }
+      if (!b.rows.length) return;
+      // ยอดทุก batch ต้องรวมได้เท่าแถว WO — ชุด query ใช้ WHERE เดียวกัน ถ้าไม่เท่าแปลว่ามีอะไรหลุด
+      const off = [['ผลิตได้', 'woc_qty'], ['วัตถุดิบ', 'rm_cost'], ['แปรสภาพ', 'dl_oh_cost'],
+        ['Summary Cost Item', 'sc_value']].filter(p => Math.abs(sumOf(b.rows, p[1]) - asNum(r[p[1]])) > 0.01);
+      if (off.length) {
+        r.notes.push({ cls: 'warn', text: 'ยอดราย batch รวมกันไม่เท่ายอดทั้งใบที่ช่อง '
+          + off.map(p => p[0]).join(' · ') + ' — ใช้ยอดทั้งใบเป็นหลัก' });
+      }
     });
 
     // เรียงตามวันที่ = วันที่ที่ใช้กรอง เพื่อให้ลำดับตรงกับสิ่งที่ผู้ใช้เลือกกรอง
@@ -2660,6 +2918,38 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return parts.join(' · ');
   }
 
+  /**
+   * แถวย่อยราย batch ใต้แถว WO (ไม่มี = คืน '')
+   * ⚠ ห้ามบวกแถวพวกนี้เข้าแถวรวมกลุ่ม/แถวรวมท้ายตาราง — ยอดซ้ำกับแถว WO ที่อยู่ข้างบนอยู่แล้ว
+   * จำนวนเซลล์ต้องเท่าหัวตาราง (17) ทุกแถว
+   */
+  function renderSummaryBatchRows(r) {
+    let h = '';
+    (r.batches || []).forEach(b => {
+      const partial = partialCostNote(b.rm_cost, b.cost);
+      h += '<tr class="brow">'
+        + `<td class="bk">${rowStatus(b.notes)}</td>`
+        + `<td class="bk">${b.batch_key === ''
+            ? '<span class="warn">ไม่ระบุ batch</span>'
+            : (b.last_wocs.length
+              ? b.last_wocs.map(w => tranLink('workordercompletion', w.id, w.no)).join('<br>')
+              : '<span class="miss">ยังไม่ปิดงาน</span>')}</td>`
+        + '<td></td>'
+        + `<td>${b.woc_last ? esc(b.woc_last) : '<span class="miss">ยังไม่ปิด</span>'}</td>`
+        + '<td></td><td></td><td></td>'
+        + (b.wo_qty == null
+          ? '<td class="n miss" title="ระบุไม่ได้ว่าแถวไหนเป็นขั้นแรกของ batch นี้ — ไม่รวมยอดข้ามขั้นให้">ไม่ทราบ</td>'
+          : numCell(b.wo_qty, 4))
+        + numCell(b.woc_qty, 4)
+        + numCell(b.rm_cost, 2) + numCell(b.dl_oh_cost, 2) + numCell(b.cost, 2)
+        + unitCell(b.cost_per_unit, 8, partial) + unitCell(b.cost_per_carton, 8, partial)
+        + numCell(b.sc_value, 2) + numCell(b.sc_gap, 2, Math.abs(b.sc_gap) > 0.01 ? 'bad' : '')
+        + `<td class="note">${b.notes.map(n => '<span class="' + n.cls + '">' + esc(n.text) + '</span>').join('<br>')}</td>`
+        + '</tr>';
+    });
+    return h;
+  }
+
   function renderSummaryGrid(sm) {
     if (!sm.rows.length) {
       // ต้องพิมพ์เงื่อนไขที่ใช้อยู่ออกมาด้วยเสมอ — "ไม่พบ" เฉย ๆ อ่านเป็น "ไม่มีข้อมูล" ได้
@@ -2672,7 +2962,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const groupByItem = sm.filters.sort === 'item';
 
     let h = `<div class="scroll"><table><thead><tr>
-      <th>ใบสั่งผลิต</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ไลน์ผลิต</th>
+      <th>ใบสั่งผลิต</th><th>WOC task สุดท้าย</th><th>วันที่ WO</th><th>ปิดงานผลิต</th><th>รหัสสินค้า</th><th>ชื่อสินค้า</th><th>ไลน์ผลิต</th>
       <th class="n">สั่งผลิต</th><th class="n">ผลิตได้ (WOC)</th>
       <th class="n">วัตถุดิบ</th><th class="n">แปรสภาพ (DL+OH)</th><th class="n">รวมต้นทุน</th>
       <th class="n">ต้นทุน/หน่วย</th><th class="n">ต้นทุน/ลัง</th>
@@ -2684,7 +2974,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const cpu = g.woc ? g.cost / g.woc : null;
       const cpc = g.cartons ? g.cost / g.cartons : null;
       const gPartial = partialCostNote(g.rm, g.cost);
-      h += `<tr class="sub"><td colspan="6">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
+      h += `<tr class="sub"><td colspan="7">รวม ${esc(g.code)} · ${g.n} ใบ</td>`
         + numCell(g.wo_qty, 4) + numCell(g.woc, 4)
         + numCell(g.rm, 2) + numCell(g.dl, 2) + numCell(g.cost, 2)
         + unitCell(cpu, 8, gPartial) + unitCell(cpc, 8, gPartial)
@@ -2725,6 +3015,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         // ตั้งใจไม่ห่อ iconImg() (ปล่อย aria-hidden ตามเดิม) — label "เปิดใบสั่งผลิตใน NetSuite"
         // ที่อยู่ในลิงก์เดียวกันบอกปลายทางไว้ครบแล้ว ห่อซ้ำจะกลายเป็นอ่านสองรอบ (#64 ขั้น 2b)
         + `<div class="nsrec">${tranLink('workorder', r.wo_id, 'เปิดใบสั่งผลิตใน NetSuite', theme.ICONS.extLink)}</div></td>`
+        + `<td>${esc(asStr(r.batch_label))}${(r.batches || []).length && r.batch_closed < r.batch_count
+            ? '<div class="nsrec">ปิดงานแล้ว ' + esc(String(r.batch_closed)) + ' batch</div>' : ''}</td>`
         + `<td>${esc(r.wo_date)}</td>`
         + `<td>${r.woc_last ? esc(r.woc_last) : '<span class="miss">ยังไม่ปิด</span>'}</td>`
         + `<td>${itemLink(r.item_id, r.item_code)}</td>`
@@ -2737,13 +3029,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + numCell(r.sc_value, 2) + numCell(r.sc_gap, 2, gapBad ? 'bad' : '')
         + `<td class="note">${r.notes.map(n => '<span class="' + n.cls + '">' + esc(n.text) + '</span>').join('<br>')}</td>`
         + '</tr>';
+      h += renderSummaryBatchRows(r);
     });
     if (groupByItem) flushGroup();
 
     // ต้นทุนต่อหน่วยของหลายสินค้ารวมกันไม่มีความหมาย — แถวรวมท้ายตารางจึงไม่แสดงช่องนั้น
     const items = uniq(sm.rows.map(r => r.item_code)).length;
     const tCpu = items === 1 && t.woc ? t.cost / t.woc : null;
-    h += `<tr class="grand"><td colspan="6">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
+    h += `<tr class="grand"><td colspan="7">รวมทั้งหมด ${sm.shown} ใบ · ${items} สินค้า</td>`
       + numCell(t.wo_qty, 4) + numCell(t.woc, 4)
       + numCell(t.rm, 2) + numCell(t.dl, 2) + numCell(t.cost, 2)
       + (items === 1 ? unitCell(tCpu, 8, partialCostNote(t.rm, t.cost)) : '<td class="n z">—</td>')
@@ -2764,6 +3057,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    */
   const SUMMARY_EXPORT_COLS = [
     { head: 'ใบสั่งผลิต', w: 16, get: r => asStr(r.wo_no) },
+    // WO ที่แตกหลาย batch ได้แถวละ batch (ดู summaryExportRows) · ช่องนี้ = เลขที่ใบปิดงานของ task สุดท้าย
+    { head: 'WOC task สุดท้าย', w: 18, get: r => asStr(r.batch_label) },
     { head: 'วันที่ WO', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.wo_date_iso) },
     { head: 'ปิดงานผลิต', w: 12, fmt: 'yyyy-mm-dd', get: r => excelDate(r.woc_last_iso) },
     { head: 'รหัสสินค้า', w: 15, get: r => asStr(r.item_code) },
@@ -2812,8 +3107,25 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * ข้อมูลสำหรับสร้างไฟล์ Excel — ฟังก์ชันบริสุทธิ์ ไม่แตะ DOM ไม่แตะ NetSuite
    * รับ model ตัวเดียวกับที่ตารางบนหน้าจอใช้ จึงได้ผลลัพธ์ตามตัวกรอง ณ ขณะที่หน้าถูกสร้างเสมอ
    */
+  /**
+   * แถวของไฟล์ Excel — 1 แถวต่อ batch (ผู้ใช้เลือกแบบแบนเพื่อ pivot ราย batch ต่อได้)
+   * WO ที่แตกหลาย batch ส่งแถวย่อยแทนแถว WO (ไม่ส่งทั้งคู่ ไม่งั้น SUM ในไฟล์ได้ยอดสองเท่า)
+   * ช่องหัวเอกสาร (เลขที่ วันที่ สินค้า ไลน์) ยกจากแถว WO มาใส่ทุกแถวให้ filter ได้
+   */
+  function summaryExportRows(sm) {
+    const out = [];
+    (sm.rows || []).forEach(r => {
+      if (!(r.batches && r.batches.length)) { out.push(r); return; }
+      // หมายเหตุของแถว WO (ธงแดงตีราคาซ้ำ · Cost ref · conversion = 1 · ยอดรวมไม่เท่า) ต้องตามไปทุกแถว
+      // เพราะในไฟล์ไม่มีแถว WO ให้อ่านแล้ว · ติดคำว่า "ทั้งใบ:" แยกจากหมายเหตุของ batch เอง
+      const woNotes = (r.notes || []).map(n => ({ cls: n.cls, text: 'ทั้งใบ: ' + asStr(n && n.text) }));
+      r.batches.forEach(b => out.push(Object.assign({}, r, b, { notes: (b.notes || []).concat(woNotes) })));
+    });
+    return out;
+  }
+
   function summaryExportData(sm) {
-    const rows = (sm.rows || []).map(r => SUMMARY_EXPORT_COLS.map(c => c.get(r)));
+    const rows = summaryExportRows(sm).map(r => SUMMARY_EXPORT_COLS.map(c => c.get(r)));
     return {
       filebase: summaryExportName(sm.filters),
       sheet: 'ภาพรวมต้นทุน',
@@ -2834,9 +3146,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
   /** จำนวนแถวที่จะได้จริง — ข้อความนี้ต้องมองเห็นตลอด ไม่ใช่ซ่อนใน tooltip */
   function summaryExportNote(sm) {
+    const n = summaryExportRows(sm).length;
+    // จำนวนแถวไม่เท่าจำนวนใบเมื่อมีใบที่แตกหลาย batch — ต้องบอกให้รู้ ไม่งั้นนับแล้วงงว่าแถวเกินมาจากไหน
+    const per = n !== sm.shown ? ' (' + sm.shown + ' ใบ · แถวละ batch)' : '';
     return sm.truncated
-      ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
-      : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
+      ? 'ได้ ' + n + ' แถวเท่าที่แสดง' + per + ' จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
+      : 'ได้ ' + n + ' แถวตามตารางด้านล่าง' + per;
   }
 
   /**

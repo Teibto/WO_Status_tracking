@@ -37,6 +37,12 @@ const FX = {
     { wo_id: 1001, rm_cost: 347651.01, doc_count: 1, item_count: 30 },
     { wo_id: 1003, rm_cost: 1000, doc_count: 1, item_count: 2 }
   ],
+  // แถวย่อยราย batch — ชุดนี้ไม่ได้ทดสอบเรื่อง batch จึงไม่มีแถว (แถว WO ไม่พึ่งชุดนี้)
+  'งานที่ปล่อยราย batch (task)': [],
+  'ใบปิดงานผลิต (WOC)': [],
+  'ภาพรวม — วัตถุดิบราย batch': [],
+  'ภาพรวม — แปรสภาพราย batch': [],
+  'ภาพรวม — Summary Cost ราย batch': [],
   'ภาพรวม — ต้นทุนแปรสภาพ': [
     { wo_id: 1001, dl_oh_std: 70298.58, dl_oh_act: 70298.58, ca_docs: 1 },
     { wo_id: 1003, dl_oh_std: 100, dl_oh_act: 100, ca_docs: 1 }
