@@ -55,7 +55,8 @@ define([], () => {
         { h: 'เวลา',          tip: 'เวลารวมที่บันทึกตรงกับช่วงเริ่ม–จบหรือยัง' },
         { h: 'WOC',           tip: 'มีการบันทึกปิดงานผลิต (Work Order Completion) ครบทุก Operation แล้วหรือยัง' },
         { h: 'ปิดงานผลิต',   tip: 'ปิดงานผลิตครบ และจำนวนที่ปิดตรงกับที่ผลิตจริงหรือยัง' },
-        { h: 'สร้างต้นทุน',  tip: 'ระบบสร้างต้นทุนของงานผลิตแล้วหรือยัง' }
+        { h: 'สร้างต้นทุน',  tip: 'ระบบสร้างต้นทุนของงานผลิตแล้วหรือยัง' },
+        { h: 'ต้นทุนมาตรฐาน', tip: 'ตั้งค่าต้นทุนมาตรฐาน (Cost Ref หรือ OH Rate) ของงานนี้ครบหรือยัง' }
       ],
       legend: [
         'ครบ / ผ่าน',
@@ -67,7 +68,9 @@ define([], () => {
       dateRangeErr: 'กรุณาเลือกช่วงวันที่ไม่เกิน 92 วัน',
       noResults:    'ไม่พบข้อมูลในช่วงเวลาที่เลือก',
       loading:      'กำลังโหลด...',
-      expand:       'คลิกเพื่อดูรายละเอียด Batch'
+      expand:       'คลิกเพื่อดูรายละเอียด Batch',
+      expandAll:    'ขยายทั้งหมด',
+      collapseAll:  'ย่อทั้งหมด'
     },
 
     en: {
@@ -107,7 +110,8 @@ define([], () => {
         { h: 'Time',           tip: 'Recorded total time matches the start–end span?' },
         { h: 'WOC',            tip: 'Has a Work Order Completion record been created for every operation?' },
         { h: 'WO Completion',  tip: 'Is the work order completed and the completed qty matching actual production?' },
-        { h: 'Cost Gen.',      tip: 'Has the system generated the production cost?' }
+        { h: 'Cost Gen.',      tip: 'Has the system generated the production cost?' },
+        { h: 'Std Cost',       tip: 'Is standard cost setup (Cost Ref or OH Rate) available for this operation?' }
       ],
       legend: [
         'Complete / passed',
@@ -119,7 +123,9 @@ define([], () => {
       dateRangeErr: 'Please select a date range of 92 days or less',
       noResults:    'No data found for the selected period',
       loading:      'Loading...',
-      expand:       'Click to view Batch details'
+      expand:       'Click to view Batch details',
+      expandAll:    'Expand all',
+      collapseAll:  'Collapse all'
     }
   };
 

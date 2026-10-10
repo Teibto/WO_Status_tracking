@@ -307,11 +307,29 @@ define(
       + '.tscroll{overflow-x:auto}'
       // ตารางหลักไม่ใช้เส้นรอบทุกช่องแบบ template เพราะกว้างเกิน 1,240px
       // เส้นแนวตั้งทุกคอลัมน์จะกลายเป็นลายทาง - คงเส้นล่างเส้นเดียวเหมือนของเดิม
-      + 'table{margin-top:6px;min-width:1240px}'
+      // min-width ลดจาก 1240 (#80) — คอลัมน์ checkpoint แคบลงมากพอที่จะพอดีจอ 1366 ได้จริง
+      + 'table{margin-top:6px;min-width:960px}'
       + 'th,td{border:0;border-bottom:1px solid var(--pj-border);padding:9px 10px;'
       + 'white-space:nowrap;vertical-align:middle}'
       + 'th{position:sticky;top:0;z-index:2;background:var(--pj-surface-alt)}'
-      + 'th.cp,td.cp{text-align:center;width:74px}'
+      // #80 — checkpoint แคบลง + **หัวคอลัมน์ตัดบรรทัดได้** (ชื่อไทยยาวกว่า 46px มาก
+      // ถ้าปล่อย nowrap หัวจะเป็นตัวกำหนดความกว้างทั้งตาราง) ชื่อเต็มยังอยู่ใน data-tip
+      + 'th.cp{white-space:normal;line-height:1.15;vertical-align:bottom;'
+      + 'text-align:center;width:48px;padding-left:3px;padding-right:3px}'
+      + 'td.cp{text-align:center;width:48px;padding-left:4px;padding-right:4px}'
+      // ชื่อสินค้า/ไลน์ผลิตยาวได้ — ตัดด้วย ellipsis ไม่ให้เป็นตัวกวาดความกว้างทั้งตาราง
+      + '.ell{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}'
+      + '.ell-inline{display:inline-block;overflow:hidden;text-overflow:ellipsis;'
+      + 'white-space:nowrap;max-width:130px;vertical-align:middle}'
+      // แถบเครื่องมือเหนือตาราง (ปุ่มขยาย/ย่อทั้งหมด) — #80
+      + '.gridbar{display:flex;justify-content:flex-end;align-items:center;'
+      + 'padding:var(--sp-2) var(--sp-5) 0}'
+      + '.gtoggle{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;'
+      + 'height:32px;padding:0 var(--sp-3);border:1px solid var(--pj-border-strong);'
+      + 'border-radius:var(--radius-sm);background:var(--pj-surface);color:var(--pj-primary);'
+      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;white-space:nowrap}'
+      + '.gtoggle:hover{background:var(--pj-surface-alt)}'
+      + '.gtoggle:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
       + 'tr.wo{cursor:pointer}'
       + 'tr.wo:hover{background:var(--pj-surface-alt)}'
       + 'tr.wo>td:first-child{font-weight:600}'
@@ -1449,11 +1467,11 @@ define(
       ).join('');
 
       const thead = `<thead><tr>
-  <th style="min-width:230px">${escapeHtml(t.cWO)}</th>
-  <th style="min-width:150px">${escapeHtml(t.cLoc)}</th>
+  <th style="min-width:200px">${escapeHtml(t.cWO)}</th>
+  <th style="min-width:110px">${escapeHtml(t.cLoc)}</th>
   <th>${escapeHtml(t.cLine)}</th>
   ${cpHeaders}
-  <th style="width:50px;text-align:center" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
+  <th style="width:44px;text-align:center" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
 </tr></thead>`;
 
       // Table body — WO rows only (batches loaded lazily via drilldown)
@@ -1500,7 +1518,7 @@ define(
     <span class="twist">▶</span>
     <strong>${escapeHtml(wo.woNumber || '')}</strong>
     <span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px">${escapeHtml(fmtDate(wo.woDate))}</span>
-    <div style="padding-left:18px;margin-top:2px">
+    <div style="padding-left:18px;margin-top:2px" class="ell">
       <span style="font-weight:600">${escapeHtml(wo.itemCode || '')}</span>
       <span style="color:var(--muted);font-weight:400"> · ${escapeHtml(wo.itemDisplayName || wo.itemName || '')}</span>
     </div>
@@ -1509,14 +1527,20 @@ define(
     </div>
   </td>
   <td>${escapeHtml(wo.locationName || '')}</td>
-  <td>${escapeHtml(wo.lineName || '')}</td>
+  <td><span class="ell-inline">${escapeHtml(wo.lineName || '')}</span></td>
   ${pillCells}
   <td style="text-align:center">${noteHtml}</td>
 </tr>
 <tr class="drilldown-placeholder hidden" data-woid="${escapeAttr(String(wo.woid))}"></tr>`;
       });
 
-      return `<div class="wrap"><div class="tscroll">
+      // ปุ่มขยาย/ย่อทั้งหมด (issue #80) — โผล่เฉพาะเมื่อมีแถว และโหลด drilldown ของ "หน้านี้" เท่านั้น
+      const hasRows = pageRows.length > 0;
+      const gridBar = hasRows
+        ? `<div class="gridbar"><button type="button" class="gtoggle" id="btnExpandAll" data-i18n="expandAll">${escapeHtml(t.expandAll)}</button></div>`
+        : '';
+
+      return `${gridBar}<div class="wrap"><div class="tscroll">
 <table>
 ${thead}
 <tbody id="rows">${tbodyHtml}</tbody>
@@ -2620,13 +2644,51 @@ function bindWoRows() {
             placeholder.classList.remove('hidden');
           });
       }
+      // อัปเดตป้ายปุ่มขยาย/ย่อทั้งหมดเมื่อสถานะแถวเปลี่ยน (issue #80)
+      if (typeof _syncExpandAllLabel === 'function') _syncExpandAllLabel();
     });
   });
+}
+
+// ── Expand / collapse all WO rows (issue #80) ─────────────────────
+// ขยายทั้งหมด = ยิง drilldown ของทุกแถวในหน้านี้ (สูงสุด 100 ใบ) แล้วเปลี่ยนปุ่มเป็น "ย่อทั้งหมด"
+// ไม่แตะ drilldown ของหน้าอื่น และไม่ cache ข้ามหน้า (โหลดใหม่ทุกครั้งที่กด)
+function _allRowsOpen() {
+  var rows = document.querySelectorAll('tr.wo');
+  if (rows.length === 0) return false;
+  for (var i = 0; i < rows.length; i++) {
+    if (!rows[i].classList.contains('open')) return false;
+  }
+  return true;
+}
+function _syncExpandAllLabel() {
+  var btn = document.getElementById('btnExpandAll');
+  if (!btn) return;
+  var t = I18N[LANG] || {};
+  btn.textContent = _allRowsOpen() ? (t.collapseAll || 'ย่อทั้งหมด') : (t.expandAll || 'ขยายทั้งหมด');
+}
+function toggleAllRows() {
+  var rows = document.querySelectorAll('tr.wo');
+  var anyClosed = false;
+  for (var i = 0; i < rows.length; i++) { if (!rows[i].classList.contains('open')) { anyClosed = true; break; } }
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    var open = r.classList.contains('open');
+    if (anyClosed && !open) r.click();
+    else if (!anyClosed && open) r.click();
+  }
+  _syncExpandAllLabel();
+}
+function bindExpandAll() {
+  var btn = document.getElementById('btnExpandAll');
+  if (btn) btn.addEventListener('click', toggleAllRows);
+  _syncExpandAllLabel();
 }
 
 // ── Init ─────────────────────────────────────────────────────────
 bindTips();
 bindWoRows();
+bindExpandAll();
 fixStickyHeader();
 window.addEventListener('resize', fixStickyHeader);
 </script>
@@ -2681,6 +2743,8 @@ window.addEventListener('resize', fixStickyHeader);
             'ยังไม่ถึงขั้นนี้',
           ],
           rollup: 'สถานะ WO = สถานะแย่สุดของ Batch ข้างใน · ตัวเลขมุม = จำนวน Batch ที่มีปัญหา · คลิกแถวเพื่อขยาย',
+          expandAll:   'ขยายทั้งหมด',
+          collapseAll: 'ย่อทั้งหมด',
           errDateRequired: 'กรุณาเลือกวันที่ทั้งคู่ / Please select both dates',
           errDateOrder:    '"ถึง" ต้องมาหลัง "ตั้งแต่" / "To" must be after "From"',
           errDateRange:    'กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน / Date range must be ${MAX_RANGE_DAYS} days or less',
@@ -2738,6 +2802,8 @@ window.addEventListener('resize', fixStickyHeader);
             'Not reached yet',
           ],
           rollup: 'WO status = worst status among its batches · corner number = batches with an issue · click a row to expand',
+          expandAll:   'Expand all',
+          collapseAll: 'Collapse all',
           errDateRequired: 'Please select both dates / กรุณาเลือกวันที่ทั้งคู่',
           errDateOrder:    '"To" must be after "From" / "ถึง" ต้องมาหลัง "ตั้งแต่"',
           errDateRange:    'Date range must be ${MAX_RANGE_DAYS} days or less / กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน',
