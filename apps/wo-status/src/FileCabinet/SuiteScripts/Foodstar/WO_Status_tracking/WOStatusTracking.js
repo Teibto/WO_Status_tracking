@@ -559,12 +559,14 @@ define(
       // Production line options (issue #90)
       const lineRows = Q.getProductionLines();
 
-      // Default date range: today-6 → today (7 วัน) — ผู้ใช้เปลี่ยนได้ถึง MAX_RANGE_DAYS
-      const today = new Date();
-      const todayStr = formatDate(today);
-      const fromDate = new Date(today);
-      fromDate.setDate(fromDate.getDate() - 6);
-      const fromStr = formatDate(fromDate);
+      // Default date range = เดือนปัจจุบัน ตามเวลาของ server (issue #92) — วันที่ 1 ถึงวันสุดท้าย
+      // ความหมายเดียวกับรายงาน BOM: new Date(y, m, 1) → new Date(y, m+1, 0)
+      // ใช้เฉพาะหน้าแรกที่ยังไม่มีวันที่ส่งมา · ผู้ใช้เปลี่ยนได้ถึง MAX_RANGE_DAYS
+      // เดือนยาวสุด 31 วัน (นับหัวท้าย) = WIDE_RANGE_DAYS พอดี จึงไม่ขึ้นคำเตือนช่วงกว้าง
+      // formatDate ประกอบ y-m-d จากค่า local ตรง ๆ — ไม่ใช้ toISOString() ที่ทำให้วันเลื่อนตาม timezone
+      const now = new Date();
+      const fromStr = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+      const toStr   = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
       const html = buildPageShell({
         lang,
@@ -576,7 +578,7 @@ define(
         selectedLine: '',
         selectedItem: '',
         selectedFrom: fromStr,
-        selectedTo: todayStr,
+        selectedTo: toStr,
         scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
         kpiHtml: '',
         gridHtml: '',
