@@ -266,15 +266,23 @@ define(['N/query', 'N/log'], (query, log) => {
    *  - Assembly item and planned qty live on the mainline transactionline (mainline='T')
    *  - BUILTIN.DF() used for location name and item name resolution
    *
-   * @param {Object} params - {dateFrom, dateTo, subsidiaryId?, locationId?}
-   * @returns {Array} [{woid, wonum, itemId, itemName, qty, trandate, locationId, locationName,
-   *                    productionLine, approvalStatus, backOrderQty}]
+   * Paging (issue #78)
+   *  - `paging = { page, pageSize }` คืนเฉพาะแถวของหน้านั้นผ่าน window function แล้วกรอง
+   *    `rn BETWEEN` ที่ query รอบนอก — **ห้ามใช้ `OFFSET n ROWS`** เพราะ SuiteQL เงียบ ๆ
+   *    ไม่ทำตาม (ไม่ error) ทำให้ได้หน้าเดิมทุกครั้ง
+   *  - `COUNT(*) OVER ()` พา**จำนวน WO ทั้งช่วง**มาพร้อมแถวของหน้า จึงไม่ต้องยิง COUNT แยก
+   *    ข้อแลก: ถ้าหน้านั้นไม่มีแถวเลย (เกินหน้าสุดท้าย) จะไม่รู้ total — ผู้เรียกต้องถอยไปหน้า 1
+   *    เองเมื่อยังไม่รู้จำนวน
+   *  - ไม่ส่ง `paging` = พฤติกรรมเดิม (ทุกแถว ไม่มี total_count) — เผื่อผู้เรียก/เทสเดิม
+   *
+   * @param {Object} params - {dateFrom, dateTo, subsidiaryId?, locationId?, subItemTypeId?, woNumber?, batchNumber?, osNumber?}
+   * @param {Object} [paging] - {page (1-based), pageSize}
+   * @returns {{rows: Array, total: number}}
    */
-  function getCP1_Approve(params) {
+  function getCP1_Approve(params, paging) {
     const { whereClauses, queryParams } = buildWoFilter(params);
 
-    const sql = `
-      SELECT
+    const selectCols = `
         t.id                                              AS woid,
         t.tranid                                          AS wo_number,
         tl_main.item                                      AS item_id,
@@ -289,39 +297,68 @@ define(['N/query', 'N/log'], (query, log) => {
         BUILTIN.DF(t.custbody_mfg_production_line)        AS line_name,
         t.custbody_apc_document_approval_status           AS approval_status,
         BUILTIN.DF(t.custbody_apc_document_approval_status) AS approval_status_name,
-        t.custbody_mfg_qty_produce_back_order             AS back_order_qty
+        t.custbody_mfg_qty_produce_back_order             AS back_order_qty`;
+
+    const fromWhere = `
       FROM transaction t
       JOIN transactionline tl_main
         ON tl_main.transaction = t.id
        AND tl_main.mainline    = 'T'
       JOIN item ON item.id = tl_main.item
-      WHERE ${whereClauses.join('\n        AND ')}
+      WHERE ${whereClauses.join('\n        AND ')}`;
+
+    const usePaging = !!(paging && paging.page > 0 && paging.pageSize > 0);
+    let sql;
+    if (usePaging) {
+      // ตัวเลขหน้า/ขนาดหน้าเป็นค่าที่เราสร้างเอง ไม่ได้มาจากผู้ใช้ → ฝังใน SQL ได้ ไม่ต้องผูก param
+      // (ถ้าผูก param ลำดับ param ของ CP1 จะเปลี่ยน และเทสที่ยัน contract ของตัวกรองจะพังโดยไม่จำเป็น)
+      const start = (paging.page - 1) * paging.pageSize + 1;
+      const end   = paging.page * paging.pageSize;
+      sql = `
+      SELECT * FROM (
+        SELECT
+${selectCols},
+          COUNT(*) OVER ()                                       AS total_count,
+          ROW_NUMBER() OVER (ORDER BY t.trandate DESC, t.tranid) AS rn
+${fromWhere}
+      ) paged
+      WHERE paged.rn BETWEEN ${start} AND ${end}
+      ORDER BY paged.rn
+      `;
+    } else {
+      sql = `
+      SELECT
+${selectCols}
+${fromWhere}
       ORDER BY t.trandate DESC, t.tranid
-    `;
+      `;
+    }
 
     // CP1 is the canonical WO list; use paged runner to avoid the 5 000-row
-    // silent truncation cap of asMappedResults(). Every downstream checkpoint
-    // consumes the woids returned here, so losing rows here loses WOs everywhere.
+    // silent truncation cap of asMappedResults().
     const rows = runSQLPaged(sql, queryParams);
-    log.debug({ title: 'CP1 rows', details: rows.length });
+    log.debug({ title: 'CP1 rows', details: rows.length + (usePaging ? ' page=' + paging.page : '') });
 
-    return rows.map(r => ({
-      woid:               asStr(r.woid),
-      woNumber:           asStr(r.wo_number),
-      itemId:             asStr(r.item_id),
-      itemCode:           asStr(r.item_code),
-      itemDisplayName:    asStr(r.item_displayname),
-      itemName:           asStr(r.item_name),
-      qty:                asNum(r.qty),
-      qtyUnit:            asStr(r.unit_name),
-      woDate:             asStr(r.wo_date),
-      locationId:         asStr(r.location_id),
-      locationName:       asStr(r.location_name),
-      lineName:           asStr(r.line_name),
-      approvalStatus:     asStr(r.approval_status),
-      approvalStatusName: asStr(r.approval_status_name),
-      backOrderQty:       asNum(r.back_order_qty),
-    }));
+    return {
+      total: usePaging && rows.length ? asNum(rows[0].total_count) : rows.length,
+      rows: rows.map(r => ({
+        woid:               asStr(r.woid),
+        woNumber:           asStr(r.wo_number),
+        itemId:             asStr(r.item_id),
+        itemCode:           asStr(r.item_code),
+        itemDisplayName:    asStr(r.item_displayname),
+        itemName:           asStr(r.item_name),
+        qty:                asNum(r.qty),
+        qtyUnit:            asStr(r.unit_name),
+        woDate:             asStr(r.wo_date),
+        locationId:         asStr(r.location_id),
+        locationName:       asStr(r.location_name),
+        lineName:           asStr(r.line_name),
+        approvalStatus:     asStr(r.approval_status),
+        approvalStatusName: asStr(r.approval_status_name),
+        backOrderQty:       asNum(r.back_order_qty),
+      })),
+    };
   }
 
   // ═══════════════════════════════════════════════════════════════════════════════

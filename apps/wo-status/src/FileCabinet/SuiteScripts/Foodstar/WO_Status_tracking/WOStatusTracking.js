@@ -15,7 +15,7 @@
  * QUERY CONTRACT — shapes expected from WOStatusTracking_Queries.js
  * ─────────────────────────────────────────────────────────────────
  *
- * getCP1_Approve(params) → [{
+ * getCP1_Approve(params, paging?) → { total: number, rows: [{
  *   woid: number,        // internalid of Work Order
  *   woNumber: string,    // WO document number, e.g. "WO-26-00148"
  *   itemName: string,    // manufactured item name
@@ -27,7 +27,9 @@
  *   lineId: number|null, // custbody production line internal id
  *   lineName: string,    // custbody production line display name
  *   approvalStatus: number, // 1=pending, 2=approved
- * }]
+ * }] }
+ *   paging = {page, pageSize} → total คือจำนวน WO ทั้งช่วง (COUNT(*) OVER ()), rows เฉพาะหน้านั้น
+ *   ไม่ส่ง paging → total = rows.length (ทุกแถว) — พฤติกรรมเดิมก่อน #78
  *
  * getCP2_Release(woids) → [{
  *   woid: string,
@@ -120,6 +122,24 @@ define(
 
     // ─── Constants ────────────────────────────────────────────────
     const PAGE_SIZE = 100;
+
+    /**
+     * เพดานช่วงวันที่ของตัวกรอง (issue #78)
+     *
+     * เดิมเพดานคือ 7 วัน เพราะงานหนักผูกกับ "จำนวน WO ทั้งช่วง" — CP1 คืน WO ทุกใบใน
+     * ช่วง แล้วยิง CP2–CP9 ให้ทุกใบก่อนจะเพิ่ง slice เอา 100 แถวมาแสดง
+     *
+     * ตอนนี้ CP1 แบ่งหน้าด้วย window function และ CP2–CP9 รับเฉพาะ woids ของหน้าปัจจุบัน
+     * งานหนักจึงผูกกับขนาดหน้า ⇒ เพดานเดิมไม่จำเป็นต้องตื้นอีก
+     * ค่า 92 วัน (= 1 ไตรมาส) เป็นเพดานกันพิมพ์ผิด/เผลอลากปี ไม่ใช่ข้อจำกัดเชิงสมรรถนะ
+     */
+    const MAX_RANGE_DAYS = 92;
+
+    /**
+     * แสดงคำเตือน (ไม่บล็อก) เมื่อช่วงกว้างกว่าเท่านี้ — บอกให้รู้ว่ากำลังสแกนข้อมูลมาก
+     * และผลรวมต่อหน้าถูกคิดเฉพาะหน้า
+     */
+    const WIDE_RANGE_DAYS = 31;
 
     /** ไอคอนปฏิทินของปุ่มเปิด date picker (issue #45)
      *  วาดด้วย currentColor ทั้งตัว — สีจึงมาจาก CSS token ไม่ใช่ hex ในไฟล์นี้ */
@@ -279,6 +299,10 @@ define(
       + '.kpi.err{border-left-color:var(--pj-error)}.kpi.err .n{color:var(--pj-error)}'
       + '.kpi.wait{border-left-color:var(--pj-warning)}.kpi.wait .n{color:var(--pj-warning)}'
       + '.kpi.ok{border-left-color:var(--pj-success)}.kpi.ok .n{color:var(--pj-success)}'
+      // บรรทัดกำกับขอบเขตของ KPI (issue #78) — ตัวเลข 4 ใบข้างบนเป็นของหน้าปัจจุบัน
+      // บรรทัดนี้บอกจำนวน WO ทั้งช่วงไม่ให้อ่านตัวเลขการ์ดเป็นยอดรวม
+      + '.kpiscope{font-size:11px;color:var(--pj-text-muted);padding:0 var(--sp-5) var(--sp-3)}'
+      + '.kpiscope b{color:var(--pj-text);font-weight:700}'
       + '.wrap{padding:0 var(--sp-5) 40px}'
       + '.tscroll{overflow-x:auto}'
       // ตารางหลักไม่ใช้เส้นรอบทุกช่องแบบ template เพราะกว้างเกิน 1,240px
@@ -502,7 +526,7 @@ define(
       // Sub item type options (issue #27)
       const sitRows = Q.getSubItemTypes();
 
-      // Default date range: today-6 → today (≤7 days)
+      // Default date range: today-6 → today (7 วัน) — ผู้ใช้เปลี่ยนได้ถึง MAX_RANGE_DAYS
       const today = new Date();
       const todayStr = formatDate(today);
       const fromDate = new Date(today);
@@ -536,6 +560,101 @@ define(
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
       context.response.write(html);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Date-range guard + page-scoped checkpoint loading (issue #78)
+    // ══════════════════════════════════════════════════════════════
+
+    /** จำนวนวันแบบนับหัวท้าย (01/09→07/09 = 7) — ใช้กำหนดเพดานช่วงวันที่ */
+    function rangeDays(dateFrom, dateTo) {
+      return Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1;
+    }
+
+    /** ข้อความเพดานช่วงวันที่ — ที่เดียว ใช้ทั้ง renderResults และ renderFragment */
+    function dateRangeErrorMsg(lang) {
+      return lang === 'en'
+        ? `Date range must be ${MAX_RANGE_DAYS} days or less. Please go back and refine your filter.`
+        : `กรุณาเลือกช่วงวันที่ไม่เกิน ${MAX_RANGE_DAYS} วัน — กรุณากลับไปแก้ไขตัวกรอง`;
+    }
+
+    /** คำเตือน (ไม่บล็อก) เมื่อช่วงกว้าง — คืน '' ถ้าไม่ต้องเตือน */
+    function wideRangeNotice(dateFrom, dateTo, lang) {
+      if (!dateFrom || !dateTo) return '';
+      const days = rangeDays(dateFrom, dateTo);
+      if (days <= WIDE_RANGE_DAYS) return '';
+      return lang === 'en'
+        ? `Wide range (${days} days) — the grid shows ${PAGE_SIZE} WOs per page and the summary counts only WOs on the current page.`
+        : `ช่วงกว้าง (${days} วัน) — ตารางแสดงหน้าละ ${PAGE_SIZE} ใบ และสรุปนับเฉพาะใบสั่งผลิตในหน้านี้`;
+    }
+
+    /**
+     * โหลดสถานะของ "หน้าเดียว" (issue #78)
+     *
+     * ลำดับ: CP1 แบบมี paging → ได้ WO เฉพาะหน้า + จำนวนทั้งช่วง → ยิง CP2–CP9 เฉพาะ woids ของหน้านั้น
+     * ⇒ งานหนักสุด (CP2–CP9) ผูกกับขนาดหน้า ไม่ใช่จำนวน WO ทั้งช่วง จึงยกเพดาน 7 วันได้โดยไม่ทำให้
+     *   งานต่อการเปิดหนึ่งครั้งโตตามช่วงวันที่
+     *
+     * หน้าที่เกินหน้าสุดท้ายจะได้ 0 แถวและไม่รู้จำนวนทั้งช่วง (COUNT(*) OVER () มากับแถว) —
+     * ถอยไปหน้า 1 เพื่อเอาจำนวนจริงมาแสดงแทนการโชว์หน้าว่างที่ไม่มีเลขกำกับ
+     *
+     * @returns {{matrix: Array, totalWO: number, page: number}}
+     */
+    function loadCheckpointMatrix(searchParams, requestedPage) {
+      let page = Math.max(1, requestedPage || 1);
+
+      const fetchPage = (p) => {
+        try {
+          const res = Q.getCP1_Approve(searchParams, { page: p, pageSize: PAGE_SIZE });
+          return res || { rows: [], total: 0 };
+        } catch (e) {
+          log.error({ title: 'CP1 query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
+          return { rows: [], total: 0, failed: true };
+        }
+      };
+
+      let res = fetchPage(page);
+      if (page > 1 && (res.rows || []).length === 0) {
+        page = 1;
+        res = fetchPage(1);
+      }
+      const cp1Rows = res.rows || [];
+      const totalWO = res.total || cp1Rows.length;
+      const allWoids = cp1Rows.map(r => r.woid);
+
+      // ── CP2–CP9 — เฉพาะ WO ในหน้านี้เท่านั้น ─────────────────────
+      let cp2Data = [], cp3aData = [], cp3bData = [],
+          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
+          cp9Data = [];
+
+      if (allWoids.length > 0) {
+        try { cp2Data  = Q.getCP2_Release(allWoids);        } catch (e) { log.error({ title: 'CP2 failed',  details: String(e) }); }
+        try { cp3aData = Q.getCP3a_BomComponents(allWoids); } catch (e) { log.error({ title: 'CP3a failed', details: String(e) }); }
+        try { cp3bData = Q.getCP3b_FedItems(allWoids);      } catch (e) { log.error({ title: 'CP3b failed', details: String(e) }); }
+        try { cp4Data  = Q.getCP4_Machine(allWoids);        } catch (e) { log.error({ title: 'CP4 failed',  details: String(e) }); }
+        try { cp5Data  = Q.getCP5_Labor(allWoids);          } catch (e) { log.error({ title: 'CP5 failed',  details: String(e) }); }
+        try { cp6Data  = Q.getCP6_Time(allWoids);           } catch (e) { log.error({ title: 'CP6 failed',  details: String(e) }); }
+        try { cp7Data  = Q.getCP7_WOC(allWoids);            } catch (e) { log.error({ title: 'CP7 failed',  details: String(e) }); }
+        try { cp8Data  = Q.getCP8_CostGen(allWoids);        } catch (e) { log.error({ title: 'CP8 failed',  details: String(e) }); }
+        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);   } catch (e) { log.error({ title: 'CP9 failed',  details: String(e) }); }
+      }
+
+      const matrix = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
+                                       cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
+                                       cp9Data);
+      return { matrix, totalWO, page };
+    }
+
+    /** นับ KPI จาก matrix ของหน้าเดียว */
+    function computeKpis(matrix) {
+      let ok = 0, wait = 0, err = 0;
+      matrix.forEach(wo => {
+        const bucket = woKpiBucket(wo.cpStatus);
+        if (bucket === 'ok')        ok++;
+        else if (bucket === 'err')  err++;
+        else                        wait++;
+      });
+      return { pageCount: matrix.length, ok, wait, err };
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -603,74 +722,37 @@ define(
 
       const sitRows = Q.getSubItemTypes();
 
-      // ── Server-side date range guard (≤7 days) ──────────────────
+      // ── Server-side date range guard (issue #78) ─────────────────
       // Skip when a specific-entity filter (WO/Batch/OS) is provided
       if (!hasEntityFilter && dateFrom && dateTo) {
-        const d1 = new Date(dateFrom), d2 = new Date(dateTo);
-        const diffDays = (d2 - d1) / (1000 * 60 * 60 * 24);
-        if (diffDays > 7 || diffDays < 0) {
-          const errMsg = lang === 'en'
-            ? 'Date range must be ≤ 7 days. Please go back and refine your filter.'
-            : 'กรุณาเลือกช่วงวันที่ไม่เกิน 7 วัน — กรุณากลับไปแก้ไขตัวกรอง';
+        const days = rangeDays(dateFrom, dateTo);
+        if (days > MAX_RANGE_DAYS || days < 1) {
           context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
-          context.response.write(buildErrorPage(errMsg));
+          context.response.write(buildErrorPage(dateRangeErrorMsg(lang)));
           return;
         }
       }
+      const wideNote = hasEntityFilter ? '' : wideRangeNotice(dateFrom, dateTo, lang);
+      if (wideNote) scopeNoticeLines.push(wideNote);
 
-      // ── Step 1: CP1 — get canonical WO list ──────────────────────
+      // ── Step 1–3: CP1 (หน้าเดียว) → CP2–CP9 เฉพาะหน้า → matrix ───
       const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
-      let cp1Rows = [];
-      try {
-        cp1Rows = Q.getCP1_Approve(searchParams);
-      } catch (e) {
-        log.error({ title: 'CP1 query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
-      }
+      const loaded   = loadCheckpointMatrix(searchParams, page);
+      const matrix   = loaded.matrix;
+      const totalWO  = loaded.totalWO;
+      const livePage = loaded.page;
 
-      const allWoids = cp1Rows.map(r => r.woid);
+      // ── Step 4: Compute KPIs (ของหน้าปัจจุบัน) ──────────────────
+      const kpi = computeKpis(matrix);
 
-      // ── Step 2: CP2–CP9 — run all checkpoint queries ──────────────
-      let cp2Data = [], cp3aData = [], cp3bData = [],
-          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
-          cp9Data = [];
-
-      if (allWoids.length > 0) {
-        try { cp2Data  = Q.getCP2_Release(allWoids);          } catch (e) { log.error({ title: 'CP2 failed',  details: String(e) }); }
-        try { cp3aData = Q.getCP3a_BomComponents(allWoids);   } catch (e) { log.error({ title: 'CP3a failed', details: String(e) }); }
-        try { cp3bData = Q.getCP3b_FedItems(allWoids);        } catch (e) { log.error({ title: 'CP3b failed', details: String(e) }); }
-        try { cp4Data  = Q.getCP4_Machine(allWoids);          } catch (e) { log.error({ title: 'CP4 failed',  details: String(e) }); }
-        try { cp5Data  = Q.getCP5_Labor(allWoids);            } catch (e) { log.error({ title: 'CP5 failed',  details: String(e) }); }
-        try { cp6Data  = Q.getCP6_Time(allWoids);             } catch (e) { log.error({ title: 'CP6 failed',  details: String(e) }); }
-        try { cp7Data  = Q.getCP7_WOC(allWoids);              } catch (e) { log.error({ title: 'CP7 failed',  details: String(e) }); }
-        try { cp8Data  = Q.getCP8_CostGen(allWoids);          } catch (e) { log.error({ title: 'CP8 failed',  details: String(e) }); }
-        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);     } catch (e) { log.error({ title: 'CP9 failed',  details: String(e) }); }
-      }
-
-      // ── Step 3: Build status matrix ────────────────────────────
-      const matrix = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
-                                       cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
-                                       cp9Data);
-
-      // ── Step 4: Compute KPIs ────────────────────────────────────
-      let kpiTotal = matrix.length, kpiOk = 0, kpiWait = 0, kpiErr = 0;
-      matrix.forEach(wo => {
-        const bucket = woKpiBucket(wo.cpStatus);
-        if (bucket === 'ok')        kpiOk++;
-        else if (bucket === 'err')  kpiErr++;
-        else                        kpiWait++;
-      });
-
-      // ── Step 5: Paginate ────────────────────────────────────────
-      const totalPages = Math.max(1, Math.ceil(kpiTotal / PAGE_SIZE));
-      const pageStart  = (page - 1) * PAGE_SIZE;
-      const pageEnd    = Math.min(pageStart + PAGE_SIZE, kpiTotal);
-      const pageRows   = matrix.slice(pageStart, pageEnd);
+      // ── Step 5: Pagination (จำนวนหน้าจาก WO ทั้งช่วง) ────────────
+      const totalPages = Math.max(1, Math.ceil(totalWO / PAGE_SIZE));
 
       // ── Step 6: Build HTML sections ────────────────────────────
-      const kpiHtml       = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
-      const gridHtml      = buildGridHtml(pageRows, lang);
+      const kpiHtml       = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
+      const gridHtml      = buildGridHtml(matrix, lang);
       const paginationHtml = buildPaginationHtml({
-        page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang,
+        page: livePage, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang,
         woNumber, batchNumber, osNumber, embed
       });
 
@@ -688,9 +770,9 @@ define(
         kpiHtml,
         gridHtml,
         paginationHtml,
-        page,
+        page: livePage,
         totalPages,
-        totalWO: kpiTotal,
+        totalWO,
         scriptId,
         deployId,
         embed,
@@ -734,6 +816,15 @@ define(
         return;
       }
 
+      // ด่านเพดานช่วงวันที่ — path นี้คือทางที่ปุ่ม "ค้นหา" ยิงจริง จึงต้องมีด่านเดียวกับ
+      // renderResults ไม่ใช่พึ่งด่านฝั่งเบราว์เซอร์อย่างเดียว (issue #78)
+      const fragHasEntity = !!(woNumber || batchNumber || osNumber);
+      if (!fragHasEntity && dateFrom && dateTo && rangeDays(dateFrom, dateTo) > MAX_RANGE_DAYS) {
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write('<div class="schema-notice">' + escapeHtml(dateRangeErrorMsg(lang)) + '</div>');
+        return;
+      }
+
       // ── Filter scope (subsidiary/location) ───────────────────────
       // นี่คือทางที่ปุ่ม "ค้นหา" จริง ๆ ยิงมา (fetch AJAX — ดู client JS `btnSearch` handler)
       // ไม่ใช่แค่ path โหลดหน้าแรก จึงต้องบีบ subsidiaryId ที่นี่ด้วย ไม่งั้นด่านสิทธิ์ที่ทำใน
@@ -756,48 +847,24 @@ define(
       if (locScope.failed) scopeNoticeLines.push(lang === 'en'
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
+      if (!fragHasEntity) {
+        const wide = wideRangeNotice(dateFrom, dateTo, lang);
+        if (wide) scopeNoticeLines.push(wide);
+      }
       const scopeNoticeHtml = buildScopeNoticeHtml(scopeNoticeLines);
 
       const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
-      let cp1Rows = [];
-      try { cp1Rows = Q.getCP1_Approve(searchParams); } catch (e) { log.error({ title: 'Fragment CP1 failed', details: String(e) }); }
+      const loaded   = loadCheckpointMatrix(searchParams, page);
+      const matrix   = loaded.matrix;
+      const totalWO  = loaded.totalWO;
+      const livePage = loaded.page;
 
-      const allWoids = cp1Rows.map(r => r.woid);
-      let cp2Data = [], cp3aData = [], cp3bData = [],
-          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
-          cp9Data = [];
+      const kpi        = computeKpis(matrix);
+      const totalPages = Math.max(1, Math.ceil(totalWO / PAGE_SIZE));
 
-      if (allWoids.length > 0) {
-        try { cp2Data  = Q.getCP2_Release(allWoids);        } catch (e) { log.error({ title: 'Fragment CP2 failed',  details: String(e) }); }
-        try { cp3aData = Q.getCP3a_BomComponents(allWoids); } catch (e) { log.error({ title: 'Fragment CP3a failed', details: String(e) }); }
-        try { cp3bData = Q.getCP3b_FedItems(allWoids);      } catch (e) { log.error({ title: 'Fragment CP3b failed', details: String(e) }); }
-        try { cp4Data  = Q.getCP4_Machine(allWoids);        } catch (e) { log.error({ title: 'Fragment CP4 failed',  details: String(e) }); }
-        try { cp5Data  = Q.getCP5_Labor(allWoids);          } catch (e) { log.error({ title: 'Fragment CP5 failed',  details: String(e) }); }
-        try { cp6Data  = Q.getCP6_Time(allWoids);           } catch (e) { log.error({ title: 'Fragment CP6 failed',  details: String(e) }); }
-        try { cp7Data  = Q.getCP7_WOC(allWoids);            } catch (e) { log.error({ title: 'Fragment CP7 failed',  details: String(e) }); }
-        try { cp8Data  = Q.getCP8_CostGen(allWoids);        } catch (e) { log.error({ title: 'Fragment CP8 failed',  details: String(e) }); }
-        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);   } catch (e) { log.error({ title: 'Fragment CP9 failed',  details: String(e) }); }
-      }
-
-      const matrix   = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
-                                         cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
-                                         cp9Data);
-      let kpiTotal = matrix.length, kpiOk = 0, kpiWait = 0, kpiErr = 0;
-      matrix.forEach(wo => {
-        const bucket = woKpiBucket(wo.cpStatus);
-        if (bucket === 'ok')       kpiOk++;
-        else if (bucket === 'err') kpiErr++;
-        else                       kpiWait++;
-      });
-
-      const totalPages = Math.max(1, Math.ceil(kpiTotal / PAGE_SIZE));
-      const pageStart  = (page - 1) * PAGE_SIZE;
-      const pageEnd    = Math.min(pageStart + PAGE_SIZE, kpiTotal);
-      const pageRows   = matrix.slice(pageStart, pageEnd);
-
-      const kpiHtml        = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
-      const gridHtml       = buildGridHtml(pageRows, lang);
-      const paginationHtml = buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
+      const kpiHtml        = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
+      const gridHtml       = buildGridHtml(matrix, lang);
+      const paginationHtml = buildPaginationHtml({ page: livePage, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
       const legendHtml     = buildLegendHtml(lang);
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
@@ -1336,12 +1403,16 @@ define(
 </div>`;
     }
 
-    function buildKpiHtml(total, ok, wait, err, lang) {
+    /**
+     * KPI ของ **หน้าปัจจุบัน** (issue #78) — ตัวเลข 4 ใบข้างบนนับเฉพาะ WO ในหน้านี้
+     * จึงต้องมีบรรทัดล่างบอกจำนวน WO ทั้งช่วงเสมอ ไม่ให้อ่านเป็นยอดรวมทั้งช่วงโดยเข้าใจผิด
+     */
+    function buildKpiHtml(pageTotal, ok, wait, err, rangeTotal, lang) {
       const t = getI18nLabels(lang);
       return `
 <div class="kpis">
   <div class="kpi">
-    <div class="n">${total}</div>
+    <div class="n">${pageTotal}</div>
     <div class="l" data-i18n="kTotal">${t.kTotal}</div>
   </div>
   <div class="kpi ok">
@@ -1356,7 +1427,8 @@ define(
     <div class="n">${err}</div>
     <div class="l" data-i18n="kErr">${t.kErr}</div>
   </div>
-</div>`;
+</div>
+<div class="kpiscope" data-i18n="kRange">${escapeHtml(t.kRange)}: <b>${rangeTotal}</b></div>`;
     }
 
     function buildGridHtml(pageRows, lang) {
@@ -1629,6 +1701,9 @@ ${gridHtml ? legendHtml : ''}
 const I18N = ${i18nJson};
 const STATUS_ICONS = ${statusIconsJson};
 let LANG = ${JSON.stringify(lang)};
+// เพดานช่วงวันที่ (issue #78) — ส่งค่าจากเซิร์ฟเวอร์เพื่อให้ด่านฝั่งเบราว์เซอร์กับฝั่งเซิร์ฟเวอร์
+// ใช้ตัวเลขเดียวกัน ไม่มีทางเพี้ยนออกจากกัน
+const MAX_RANGE_DAYS = ${MAX_RANGE_DAYS};
 // ปุ่มเดือนก่อน/ถัดไปของปฏิทิน (issue #64 ขั้น 4) — svg เดียวกับ theme.ICONS.chevronLeft/Right
 // ฝังเป็นสตริงตอน render (เหมือน I18N/STATUS_ICONS ข้างบน) เพราะ ICONS อยู่ฝั่งเซิร์ฟเวอร์
 const CAL_PREV_SVG = ${JSON.stringify(theme.ICONS.chevronLeft)};
@@ -2342,7 +2417,7 @@ document.getElementById('btnSearch').addEventListener('click', function() {
       if (!from || !to) { alert(t.errDateRequired || 'กรุณาเลือกวันที่'); return; }
       var d1 = new Date(from), d2 = new Date(to);
       if (d2 < d1) { alert(t.errDateOrder || '"ถึง" ต้องมาหลัง "ตั้งแต่"'); return; }
-      if ((d2 - d1) / 86400000 > 7) { alert(t.errDateRange || 'ช่วงไม่เกิน 7 วัน'); return; }
+      if ((d2 - d1) / 86400000 + 1 > MAX_RANGE_DAYS) { alert(t.errDateRange || 'ช่วงวันที่กว้างเกินกำหนด'); return; }
     }
     fetchResults({
       lang:         (document.getElementById('hidLang') || {}).value || 'th',
@@ -2577,7 +2652,8 @@ window.addEventListener('resize', fixStickyHeader);
           fFrom: 'วันที่ผลิต — ตั้งแต่',
           fTo:   'ถึง',
           go:    'ค้นหา',
-          kTotal:'ใบสั่งผลิต',
+          kTotal:'ใบสั่งผลิต (หน้านี้)',
+          kRange:'ใบสั่งผลิตทั้งช่วง',
           kOk:   'ครบทุกขั้น',
           kWait: 'กำลังดำเนินการ',
           kErr:  'พบความผิดปกติ',
@@ -2607,7 +2683,7 @@ window.addEventListener('resize', fixStickyHeader);
           rollup: 'สถานะ WO = สถานะแย่สุดของ Batch ข้างใน · ตัวเลขมุม = จำนวน Batch ที่มีปัญหา · คลิกแถวเพื่อขยาย',
           errDateRequired: 'กรุณาเลือกวันที่ทั้งคู่ / Please select both dates',
           errDateOrder:    '"ถึง" ต้องมาหลัง "ตั้งแต่" / "To" must be after "From"',
-          errDateRange:    'กรุณาเลือกช่วงไม่เกิน 7 วัน / Date range must be ≤ 7 days',
+          errDateRange:    'กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน / Date range must be ${MAX_RANGE_DAYS} days or less',
           errDateFormat:   'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026 / Invalid date format',
           // ปฏิทินของหน้านี้ (issue #45) — ปีเป็น ค.ศ. ให้ตรงกับช่องข้อความ ไม่ใช่ พ.ศ.
           calOpen:   'เปิดปฏิทิน',
@@ -2633,7 +2709,8 @@ window.addEventListener('resize', fixStickyHeader);
           fFrom: 'WO Date — From',
           fTo:   'To',
           go:    'Search',
-          kTotal:'Work Orders',
+          kTotal:'Work orders (this page)',
+          kRange:'Work orders in range',
           kOk:   'All steps complete',
           kWait: 'In progress',
           kErr:  'Issues found',
@@ -2663,7 +2740,7 @@ window.addEventListener('resize', fixStickyHeader);
           rollup: 'WO status = worst status among its batches · corner number = batches with an issue · click a row to expand',
           errDateRequired: 'Please select both dates / กรุณาเลือกวันที่ทั้งคู่',
           errDateOrder:    '"To" must be after "From" / "ถึง" ต้องมาหลัง "ตั้งแต่"',
-          errDateRange:    'Date range must be ≤ 7 days / กรุณาเลือกช่วงไม่เกิน 7 วัน',
+          errDateRange:    'Date range must be ${MAX_RANGE_DAYS} days or less / กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน',
           errDateFormat:   'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026 / รูปแบบวันที่ไม่ถูกต้อง',
           calOpen:   'Open calendar',
           calPrev:   'Previous month',

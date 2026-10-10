@@ -36,7 +36,8 @@ define([], () => {
                   'กรกฎาคม', 'สิงหาคม', 'กันยายน', 'ตุลาคม', 'พฤศจิกายน', 'ธันวาคม'],
       calDow:    ['อา', 'จ', 'อ', 'พ', 'พฤ', 'ศ', 'ส'],
       go:      'ค้นหา',
-      kTotal:  'ใบสั่งผลิต',
+      kTotal:  'ใบสั่งผลิต (หน้านี้)',
+      kRange:  'ใบสั่งผลิตทั้งช่วง',
       kOk:     'ครบทุกขั้น',
       kWait:   'กำลังดำเนินการ',
       kErr:    'พบความผิดปกติ',
@@ -63,7 +64,7 @@ define([], () => {
         'ยังไม่ถึงขั้นนี้'
       ],
       rollup:       'สถานะ WO = สถานะแย่สุดของ Batch ข้างใน · ตัวเลขมุม = จำนวน Batch ที่มีปัญหา · คลิกแถวเพื่อขยาย',
-      dateRangeErr: 'กรุณาเลือกช่วงวันที่ไม่เกิน 7 วัน',
+      dateRangeErr: 'กรุณาเลือกช่วงวันที่ไม่เกิน 92 วัน',
       noResults:    'ไม่พบข้อมูลในช่วงเวลาที่เลือก',
       loading:      'กำลังโหลด...',
       expand:       'คลิกเพื่อดูรายละเอียด Batch'
@@ -87,7 +88,8 @@ define([], () => {
                   'July', 'August', 'September', 'October', 'November', 'December'],
       calDow:    ['Su', 'Mo', 'Tu', 'We', 'Th', 'Fr', 'Sa'],
       go:      'Search',
-      kTotal:  'Work Orders',
+      kTotal:  'Work orders (this page)',
+      kRange:  'Work orders in range',
       kOk:     'All steps complete',
       kWait:   'In progress',
       kErr:    'Issues found',
@@ -114,7 +116,7 @@ define([], () => {
         'Not reached yet'
       ],
       rollup:       'WO status = worst status among its batches · corner number = batches with an issue · click a row to expand',
-      dateRangeErr: 'Please select a date range of 7 days or less',
+      dateRangeErr: 'Please select a date range of 92 days or less',
       noResults:    'No data found for the selected period',
       loading:      'Loading...',
       expand:       'Click to view Batch details'
