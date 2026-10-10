@@ -12,7 +12,7 @@ const H = require('../../../test/lib/_harness');
 const eq = H.makeEq();
 
 function sqlRows(sql) {
-  if (/customrecord_cseg_subitemtype/.test(sql)) return [];
+  if (/customrecord_mfg_productionline/.test(sql)) return [];
   if (/FROM subsidiary/i.test(sql)) return [];
   if (/ROW_NUMBER\(\) OVER \(ORDER BY t\.trandate/.test(sql)) {
     return [{

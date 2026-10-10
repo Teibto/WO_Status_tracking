@@ -11,7 +11,7 @@
  * ส่วนที่ตั้งใจต่างกัน (normalize ก่อนเทียบ แล้วเทียบแยกว่าตรงกับที่ "ตั้งใจ" จริงไหม)
  *   1. ข้อความ "ไม่พบตัวเลือกที่ตรงกัน" — wo-status มีสองภาษา (หน้านี้มีปุ่มสลับ ไทย/ENG จริง)
  *      wo-cost-trace เป็นภาษาไทยล้วนทั้งหน้า (ไม่มีกลไกสลับภาษาเลยสักจุด) — ตั้งใจให้ต่าง ไม่ใช่ลืม
- *   2. รายการชื่อ select ที่ enhance ตอนโหลดหน้า — subsidiaryId/locationId/subItemTypeId
+ *   2. รายการชื่อ select ที่ enhance ตอนโหลดหน้า — subsidiaryId/locationId/lineId
  *      (wo-status) vs sub/loc (wo-cost-trace) เพราะคนละหน้า คนละชื่อ field จริง
  */
 const fs = require('fs');
@@ -71,7 +71,7 @@ function normalize(text, emptyMsg, enhanceTargets) {
 const statusNorm = statusBody && normalize(
   statusBody,
   "'ไม่พบตัวเลือกที่ตรงกัน / No matching option'",
-  "['subsidiaryId', 'locationId', 'subItemTypeId']"
+  "['subsidiaryId', 'locationId', 'lineId']"
 );
 const traceNorm = traceBody && normalize(
   traceBody,
@@ -86,8 +86,8 @@ eq('wo-status ใช้ข้อความสองภาษา (มีปุ�
 eq('wo-cost-trace ใช้ข้อความไทยล้วน (ไม่มีกลไกสลับภาษาในหน้านี้)',
   (traceBody || '').indexOf("'ไม่พบตัวเลือกที่ตรงกัน'") >= 0
   && (traceBody || '').indexOf('No matching option') < 0, true);
-eq('wo-status enhance ช่อง subsidiaryId/locationId/subItemTypeId',
-  (statusBody || '').indexOf("['subsidiaryId', 'locationId', 'subItemTypeId']") >= 0, true);
+eq('wo-status enhance ช่อง subsidiaryId/locationId/lineId',
+  (statusBody || '').indexOf("['subsidiaryId', 'locationId', 'lineId']") >= 0, true);
 eq('wo-cost-trace enhance ช่อง sub/loc', (traceBody || '').indexOf("['sub', 'loc']") >= 0, true);
 
 // ── หลัง normalize สองจุดที่ตั้งใจต่างแล้ว ต้องเหมือนกัน byte ต่อ byte ──────

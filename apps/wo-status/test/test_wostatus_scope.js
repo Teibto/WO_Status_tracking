@@ -43,7 +43,7 @@ function sqlRows(sql) {
     if (MODE.locThrow) throw new Error('Invalid or unsupported search (จำลอง)');
     return LOCS;
   }
-  if (/cseg_subitemtype/.test(sql)) return []; // ไม่เกี่ยวกับเทสนี้ ให้เหลือ "ทุกประเภทย่อย"
+  if (/customrecord_mfg_productionline/.test(sql)) return []; // ไม่เกี่ยวกับเทสนี้ ให้เหลือ "ทุกไลน์ผลิต"
   if (/AS wo_number/.test(sql)) return WO_ROWS; // CP1 เท่านั้น — CP3a ก็มี `t.type = 'WorkOrd'` เหมือนกัน
   return [];
 }

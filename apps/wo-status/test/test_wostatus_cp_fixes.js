@@ -33,7 +33,7 @@ const CP6_OK = [{ task_id: '1', woid: '1001', batch_id: '1', woc_id: '500',
 let MODE = {};
 
 function sqlRows(sql) {
-  if (/customrecord_cseg_subitemtype/.test(sql)) return [];
+  if (/customrecord_mfg_productionline/.test(sql)) return [];
   if (/FROM subsidiary/i.test(sql)) return [{ id: '2', name: 'Foodstar Co., Ltd.' }];
   if (/FROM location WHERE custrecord_mfg_productionplant/.test(sql)) return [{ id: '10', name: 'PD_B1' }];
   if (/AS wo_number/.test(sql)) return [WO_ROW];
