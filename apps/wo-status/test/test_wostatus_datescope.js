@@ -31,7 +31,7 @@ for (let i = 0; i < 250; i++) {
 
 /** จำลอง ROWNUM pagination ของจริง: อ่าน `rn BETWEEN a AND b` จาก SQL แล้ว slice fixture */
 function sqlRows(sql) {
-  if (/customrecord_cseg_subitemtype/.test(sql)) return [];
+  if (/customrecord_mfg_productionline/.test(sql)) return [];
   if (/FROM subsidiary/i.test(sql)) return [];
   if (/t\.type\s*=\s*'WorkOrd'/.test(sql)) {
     const m = sql.match(/rn BETWEEN (\d+) AND (\d+)/);

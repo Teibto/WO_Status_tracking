@@ -556,8 +556,8 @@ define(
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
-      // Sub item type options (issue #27)
-      const sitRows = Q.getSubItemTypes();
+      // Production line options (issue #90)
+      const lineRows = Q.getProductionLines();
 
       // Default date range: today-6 → today (7 วัน) — ผู้ใช้เปลี่ยนได้ถึง MAX_RANGE_DAYS
       const today = new Date();
@@ -570,10 +570,11 @@ define(
         lang,
         subRows,
         locRows,
-        sitRows,
+        lineRows,
         selectedSub: '',
         selectedLoc: '',
-        selectedSit: '',
+        selectedLine: '',
+        selectedItem: '',
         selectedFrom: fromStr,
         selectedTo: todayStr,
         scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
@@ -709,7 +710,8 @@ define(
       const batchNumber  = (p.batchNumber  || '').trim().toUpperCase();
       const osNumber     = (p.osNumber     || '').trim().toUpperCase();
       const embed        = p.embed === '1';
-      const subItemTypeId = p.subItemTypeId || '';
+      const lineId       = p.lineId || '';
+      const itemCode     = (p.itemCode || '').trim();
       const hasEntityFilter = !!(woNumber || batchNumber || osNumber);
 
       // ── Server-side date format guard ───────────────────────────
@@ -753,7 +755,7 @@ define(
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
-      const sitRows = Q.getSubItemTypes();
+      const lineRows = Q.getProductionLines();
 
       // ── Server-side date range guard (issue #78) ─────────────────
       // Skip when a specific-entity filter (WO/Batch/OS) is provided
@@ -769,7 +771,7 @@ define(
       if (wideNote) scopeNoticeLines.push(wideNote);
 
       // ── Step 1–3: CP1 (หน้าเดียว) → CP2–CP9 เฉพาะหน้า → matrix ───
-      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const searchParams = { subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       const loaded   = loadCheckpointMatrix(searchParams, page);
       const matrix   = loaded.matrix;
       const totalWO  = loaded.totalWO;
@@ -785,7 +787,7 @@ define(
       const kpiHtml       = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
       const gridHtml      = buildGridHtml(matrix, lang);
       const paginationHtml = buildPaginationHtml({
-        page: livePage, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang,
+        page: livePage, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang,
         woNumber, batchNumber, osNumber, embed
       });
 
@@ -793,10 +795,11 @@ define(
         lang,
         subRows,
         locRows,
-        sitRows,
+        lineRows,
         selectedSub: subsidiaryId,
         selectedLoc: locationId,
-        selectedSit: subItemTypeId,
+        selectedLine: lineId,
+        selectedItem: itemCode,
         selectedFrom: dateFrom,
         selectedTo: dateTo,
         scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
@@ -836,7 +839,8 @@ define(
       const batchNumber  = (p.batchNumber || '').trim().toUpperCase();
       const osNumber     = (p.osNumber    || '').trim().toUpperCase();
       const embed        = p.embed === '1';
-      const subItemTypeId = p.subItemTypeId || '';
+      const lineId       = p.lineId || '';
+      const itemCode     = (p.itemCode || '').trim();
 
       // ชั้น fragment ไม่มี shell ให้แสดงหน้า error จึงตอบเป็นแถบแจ้งใน results-zone
       if (!woNumber && !batchNumber && !osNumber
@@ -886,7 +890,7 @@ define(
       }
       const scopeNoticeHtml = buildScopeNoticeHtml(scopeNoticeLines);
 
-      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const searchParams = { subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, woNumber, batchNumber, osNumber };
       const loaded   = loadCheckpointMatrix(searchParams, page);
       const matrix   = loaded.matrix;
       const totalWO  = loaded.totalWO;
@@ -897,7 +901,7 @@ define(
 
       const kpiHtml        = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
       const gridHtml       = buildGridHtml(matrix, lang);
-      const paginationHtml = buildPaginationHtml({ page: livePage, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
+      const paginationHtml = buildPaginationHtml({ page: livePage, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
       const legendHtml     = buildLegendHtml(lang);
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
@@ -1633,11 +1637,11 @@ ${thead}
 </div></div>`;
     }
 
-    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
+    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
       if (totalPages <= 1) return '';
 
       const makeLink = (p, label, active) => {
-        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
+        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
         return active
           ? `<span class="pgcur">${label}</span>`
           : `<a href="?${qs}" class="pglink">${label}</a>`;
@@ -1663,8 +1667,8 @@ ${thead}
     // Full page shell — HTML, CSS, inline JS
     // ══════════════════════════════════════════════════════════════
     function buildPageShell({
-      lang, subRows, locRows, sitRows,
-      selectedSub, selectedLoc, selectedSit, selectedFrom, selectedTo,
+      lang, subRows, locRows, lineRows,
+      selectedSub, selectedLoc, selectedLine, selectedItem, selectedFrom, selectedTo,
       scopeNoticeHtml,
       kpiHtml, gridHtml, paginationHtml,
       page, totalPages, totalWO,
@@ -1685,9 +1689,9 @@ ${thead}
       // Location options — ไม่ใช่ด่านสิทธิ์ ค่านอกลิสต์เก็บไว้แสดง+เตือนแทนการบีบ (buildLocationOptions)
       const locOptions = buildLocationOptions(locRows, selectedLoc);
 
-      // Sub item type options (issue #27)
-      const sitOptions = (sitRows || []).map(r =>
-        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedSit) ? 'selected' : ''}>
+      // Production line options (issue #90)
+      const lineOptions = (lineRows || []).map(r =>
+        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedLine) ? 'selected' : ''}>
           ${escapeHtml(r.name)}
         </option>`
       ).join('');
@@ -1737,34 +1741,13 @@ ${embed ? '' : theme.topbar({
   <input type="hidden" id="hidWoNumber"    name="woNumber"    value="${escapeHtml(woNumber)}" />
   <input type="hidden" id="hidBatchNumber" name="batchNumber" value="${escapeHtml(batchNumber)}" />
   <input type="hidden" id="hidOsNumber"    name="osNumber"    value="${escapeHtml(osNumber)}" />
+  <!-- ลำดับตัวกรองตามผู้ใช้ (issue #90): บริษัท · วันที่ · สถานที่ผลิต · WO/Batch/Order Sheet · ไลน์ผลิต · สินค้า -->
   <div class="filterbar">
-    <div class="fld" style="flex:1 1 200px;min-width:180px;">
-      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">WO / Batch / Order Sheet</label>
-      <input type="text" id="entityFilter"
-             value="${escapeAttr(woNumber || batchNumber || osNumber)}"
-             placeholder="WOFSC... / WOFSC-B... / OS-..."
-             style="background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;width:100%;"
-             autocomplete="off" spellcheck="false" />
-    </div>
     <div class="fld">
       <label data-i18n="fSub">${escapeHtml(t.fSub)}</label>
       <select name="subsidiaryId">
         <option value="" data-i18n-placeholder="allSub">${escapeHtml(t.allSub)}</option>
         ${subOptions}
-      </select>
-    </div>
-    <div class="fld">
-      <label data-i18n="fLoc">${escapeHtml(t.fLoc)}</label>
-      <select name="locationId">
-        <option value="" data-i18n-placeholder="allLoc">${escapeHtml(t.allLoc)}</option>
-        ${locOptions}
-      </select>
-    </div>
-    <div class="fld">
-      <label data-i18n="fSit">${escapeHtml(t.fSit)}</label>
-      <select name="subItemTypeId">
-        <option value="" data-i18n-placeholder="allSit">${escapeHtml(t.allSit)}</option>
-        ${sitOptions}
       </select>
     </div>
     <div class="fld" id="date-fld-from">
@@ -1790,6 +1773,34 @@ ${embed ? '' : theme.topbar({
                 data-i18n-title="calOpen" title="${escapeAttr(t.calOpen)}"
                 aria-label="${escapeAttr(t.calOpen)}" aria-haspopup="dialog">${CAL_ICON}</button>
       </div>
+    </div>
+    <div class="fld">
+      <label data-i18n="fLoc">${escapeHtml(t.fLoc)}</label>
+      <select name="locationId">
+        <option value="" data-i18n-placeholder="allLoc">${escapeHtml(t.allLoc)}</option>
+        ${locOptions}
+      </select>
+    </div>
+    <div class="fld" style="flex:1 1 200px;min-width:180px;">
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">WO / Batch / Order Sheet</label>
+      <input type="text" id="entityFilter"
+             value="${escapeAttr(woNumber || batchNumber || osNumber)}"
+             placeholder="WOFSC... / WOFSC-B... / OS-..."
+             style="background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;width:100%;"
+             autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="fld">
+      <label data-i18n="fLine">${escapeHtml(t.fLine)}</label>
+      <select name="lineId">
+        <option value="" data-i18n-placeholder="allLine">${escapeHtml(t.allLine)}</option>
+        ${lineOptions}
+      </select>
+    </div>
+    <div class="fld" style="flex:1 1 180px;min-width:160px;">
+      <label data-i18n="fItem">${escapeHtml(t.fItem)}</label>
+      <input type="text" name="itemCode" id="itemCode" value="${escapeAttr(selectedItem || '')}"
+             data-i18n-placeholder="phItem" placeholder="${escapeAttr(t.phItem)}"
+             autocomplete="off" spellcheck="false" />
     </div>
     <button type="button" id="btnSearch" data-i18n="go">${escapeHtml(t.go)}</button>
   </div>
@@ -2226,7 +2237,7 @@ function _isoFromDateInput(el) {
 })();
 
 // ── Redwood searchable combobox (issue #64 ขั้น 3 — list field) ─────────────────
-// ครอบ <select> ที่เป็น "ข้อมูล" (มาจาก SuiteQL — subsidiaryId/locationId/subItemTypeId)
+// ครอบ <select> ที่เป็น "ข้อมูล" (มาจาก SuiteQL — subsidiaryId/locationId/lineId)
 // ด้วยกล่องค้นหา ไม่ทิ้ง <select> เดิม (ยังเป็นตัวเก็บค่าจริง label for= ยังโฟกัสไปหาได้เพราะ
 // ซ่อนด้วย sr-only ไม่ใช่ display:none — ดูเหตุผลที่ shared/WOReportTheme.js .sr-only)
 // เกณฑ์ตัดจำนวนตัวเลือกแบบ ">8" ถูกผู้ใช้ปฏิเสธแล้ว (MRP #500) — ฟังก์ชันนี้จึง**ไม่มี**เงื่อนไข
@@ -2498,7 +2509,7 @@ function _isoFromDateInput(el) {
     }
   });
 
-  ['subsidiaryId', 'locationId', 'subItemTypeId'].forEach(function(name) {
+  ['subsidiaryId', 'locationId', 'lineId'].forEach(function(name) {
     var select = document.querySelector('select[name="' + name + '"]');
     if (select) enhanceRwSelect(select);
   });
@@ -2532,7 +2543,8 @@ document.getElementById('btnSearch').addEventListener('click', function() {
       lang:         (document.getElementById('hidLang') || {}).value || 'th',
       subsidiaryId: (document.querySelector('[name=subsidiaryId]') || {}).value || '',
       locationId:   (document.querySelector('[name=locationId]')   || {}).value || '',
-      subItemTypeId: (document.querySelector('[name=subItemTypeId]') || {}).value || '',
+      lineId:       (document.querySelector('[name=lineId]')       || {}).value || '',
+      itemCode:     ((document.getElementById('itemCode') || {}).value || '').trim(),
       dateFrom:     from,
       dateTo:       to,
       page:         1,
@@ -2569,7 +2581,7 @@ document.getElementById('btnSearch').addEventListener('click', function() {
 
   // ช่องวันที่เป็น text แล้ว — Enter จะ submit ฟอร์มดิบ ๆ พา dd/mm/yyyy ไปทาง URL
   // ดักให้ไปทางเดียวกับปุ่มค้นหา (เซิร์ฟเวอร์ยังรับสองรูปแบบไว้เป็นตาข่ายอีกชั้น)
-  ['dateFrom', 'dateTo'].forEach(function(id) {
+  ['dateFrom', 'dateTo', 'itemCode'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('keydown', function(e) {
@@ -2594,7 +2606,8 @@ function buildFragmentUrl(p) {
   params.set('lang',        p.lang        || 'th');
   params.set('subsidiaryId', p.subsidiaryId || '');
   params.set('locationId',   p.locationId   || '');
-  params.set('subItemTypeId', p.subItemTypeId || '');
+  params.set('lineId',       p.lineId       || '');
+  params.set('itemCode',     p.itemCode     || '');
   params.set('dateFrom',     p.dateFrom     || '');
   params.set('dateTo',       p.dateTo       || '');
   params.set('page',         String(p.page  || 1));
@@ -2796,8 +2809,10 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— ทุกบริษัท —',
           fLoc:  'สถานที่ผลิต',
           allLoc:'— ทุกสถานที่ —',
-          fSit:  'ประเภทย่อยสินค้า',
-          allSit:'— ทุกประเภทย่อย —',
+          fLine: 'ไลน์ผลิต',
+          allLine:'— ทุกไลน์ผลิต —',
+          fItem: 'รหัสสินค้า',
+          phItem:'รหัสหรือชื่อสินค้า',
           fFrom: 'วันที่ผลิต — ตั้งแต่',
           fTo:   'ถึง',
           go:    'ค้นหา',
@@ -2855,8 +2870,10 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— All subsidiaries —',
           fLoc:  'Location',
           allLoc:'— All locations —',
-          fSit:  'Sub Item Type',
-          allSit:'— All sub item types —',
+          fLine: 'Production Line',
+          allLine:'— All production lines —',
+          fItem: 'Item code',
+          phItem:'Code or name',
           fFrom: 'WO Date — From',
           fTo:   'To',
           go:    'Search',

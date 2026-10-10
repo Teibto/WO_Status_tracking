@@ -192,60 +192,50 @@ define(['N/query', 'N/log'], (query, log) => {
       whereClauses.push(`tl_main.subsidiary = ?`);
       queryParams.push(params.subsidiaryId);
     }
-    // Sub Item Type ของสินค้าที่ผลิต (issue #27)
+    // Production Line และ Item code (issue #90 — แทน Sub Item Type ของ #27 ที่ผู้ใช้สั่งลบ)
     //
     // เติมที่นี่ที่เดียวพอ ไม่ต้องแตะ CP2–CP9 เลย — มีแค่ getCP1_Approve ที่เรียก
     // buildWoFilter และ CP อื่นรับ `woids` ที่ CP1 คืนมา (ดูคอมเมนต์ของ runSQLPaged
     // ใน CP1 ว่าเป็นรายการ WO ตัวจริง) · `item` ถูก join ไว้แล้วใน CP1
-    if (params.subItemTypeId) {
-      whereClauses.push(`item.cseg_subitemtype = ?`);
-      queryParams.push(params.subItemTypeId);
+    //   lineId   = custbody_mfg_production_line บนหัว WO (CP1 อ่านฟิลด์เดียวกันเป็น line_name)
+    //   itemCode = ค้นบางส่วนทั้งรหัสและชื่อสินค้า ไม่สนตัวพิมพ์ แบบช่อง Item ของ PCRC
+    if (params.lineId) {
+      whereClauses.push(`t.custbody_mfg_production_line = ?`);
+      queryParams.push(params.lineId);
+    }
+    if (params.itemCode) {
+      const like = '%' + String(params.itemCode).toUpperCase() + '%';
+      whereClauses.push(`(UPPER(item.itemid) LIKE ? OR UPPER(item.displayname) LIKE ?)`);
+      queryParams.push(like, like);
     }
 
     return { whereClauses, queryParams };
   }
 
   /**
-   * รายการค่า Sub Item Type สำหรับ dropdown ตัวกรอง (issue #27)
+   * รายการไลน์ผลิตสำหรับ dropdown ตัวกรอง (issue #90)
    *
-   * `cseg_subitemtype` เป็น **custom segment บน item** ไม่ใช่ custom field (`custitem_*`)
-   * ที่ยืนยันว่าใช้ได้จริงบน production คือ `BUILTIN.DF(itm.cseg_subitemtype)`
-   * ซึ่งรายงาน FS COGS Reconcile ใช้อยู่
-   *
-   * ⚠ ยังไม่มีใครยืนยันชื่อตารางรายการค่าของ segment ตัวนี้ จึงลองสองทางเรียงกัน
-   *   1. ตาราง master `customrecord_cseg_subitemtype` — แถวน้อย เร็ว แต่ชื่อยังเป็นการเดา
-   *   2. ค่าที่ item ใช้อยู่จริง — ไม่ต้องเดาชื่อตาราง แต่กวาดทั้ง item และเสี่ยงกับ
-   *      กับดักที่จดไว้ว่า `BUILTIN.DF` ในคำสั่งที่มี `GROUP BY` แล้วพัง
-   *      (`DISTINCT` ไม่ใช่ `GROUP BY` แต่ยังไม่ได้ยิงจริงบนบัญชีนี้)
-   *
-   * `log.audit` บอกว่าทางไหนได้ผล — พอรู้คำตอบให้ลบอีกทางออกและจดไว้ใน #27
-   * ถ้าพังทั้งสองทางจะคืนรายการว่าง ซึ่งทำให้ dropdown มีแต่ตัวเลือก "ทุกประเภทย่อย"
-   * (แบบเดียวกับที่ subsidiary/location ทำอยู่) — ไม่ทำให้หน้าพัง แต่ต้องดู log
+   * เฉพาะไลน์ที่มี WO อ้างถึงจริง — รายการเดียวกับที่ PCRC (Report as Finished) ใช้ แต่ดูจาก
+   * WorkOrd แทน WOCompl · TRIM เพราะชื่อใน customrecord_mfg_productionline มีช่องว่างท้ายบางแถว
+   * alias `w` (ไม่ใช่ `t`) โดยตั้งใจ: `t.type = 'WorkOrd'` เป็นลายเซ็นที่เทสใช้แยก query ของ CP1
+   * พังเมื่อไหร่คืนรายการว่าง (dropdown เหลือแค่ "ทุกไลน์") แบบเดียวกับ subsidiary/location
    *
    * @returns {Array} [{id, name}]
    */
-  function getSubItemTypes() {
-    try {
-      const rows = runSQL(`SELECT id, name FROM customrecord_cseg_subitemtype ORDER BY name`);
-      if (rows.length) {
-        log.audit({ title: 'Sub item type list', details: 'จากตาราง master · ' + rows.length + ' ค่า' });
-        return rows.map(r => ({ id: asStr(r.id), name: asStr(r.name) }));
-      }
-    } catch (e) {
-      log.debug({ title: 'Sub item type master ใช้ไม่ได้ — ถอยไปดึงจาก item', details: String(e) });
-    }
-
+  function getProductionLines() {
     try {
       const rows = runSQL(`
-        SELECT DISTINCT cseg_subitemtype AS id, BUILTIN.DF(cseg_subitemtype) AS name
-        FROM item
-        WHERE cseg_subitemtype IS NOT NULL
+        SELECT DISTINCT pl.id AS id, TRIM(pl.name) AS name
+        FROM customrecord_mfg_productionline pl
+        WHERE pl.id IN (
+          SELECT DISTINCT w.custbody_mfg_production_line FROM transaction w
+          WHERE w.type = 'WorkOrd' AND w.custbody_mfg_production_line IS NOT NULL
+        )
         ORDER BY 2
       `);
-      log.audit({ title: 'Sub item type list', details: 'จากค่าที่ item ใช้ · ' + rows.length + ' ค่า' });
       return rows.map(r => ({ id: asStr(r.id), name: asStr(r.name) }));
     } catch (e) {
-      log.error({ title: 'Sub item type list failed ทั้งสองทาง', details: String(e) });
+      log.error({ title: 'Production line list failed', details: String(e) });
       return [];
     }
   }
@@ -275,7 +265,7 @@ define(['N/query', 'N/log'], (query, log) => {
    *    เองเมื่อยังไม่รู้จำนวน
    *  - ไม่ส่ง `paging` = พฤติกรรมเดิม (ทุกแถว ไม่มี total_count) — เผื่อผู้เรียก/เทสเดิม
    *
-   * @param {Object} params - {dateFrom, dateTo, subsidiaryId?, locationId?, subItemTypeId?, woNumber?, batchNumber?, osNumber?}
+   * @param {Object} params - {dateFrom, dateTo, subsidiaryId?, locationId?, lineId?, itemCode?, woNumber?, batchNumber?, osNumber?}
    * @param {Object} [paging] - {page (1-based), pageSize}
    * @returns {{rows: Array, total: number}}
    */
@@ -931,7 +921,7 @@ ${fromWhere}
 
   // ─── Public API ───────────────────────────────────────────────────────────────
   return {
-    getSubItemTypes,
+    getProductionLines,
     getCP1_Approve,
     getCP2_Release,
     getCP3a_BomComponents,

@@ -1,7 +1,7 @@
 /**
  * เทส — Redwood searchable combobox ของ WO Status Tracking (issue #64 ขั้น 3 — list field)
  *
- * สามช่องข้อมูล (มาจาก SuiteQL): subsidiaryId · locationId · subItemTypeId ต้องถูกครอบเป็น
+ * สามช่องข้อมูล (มาจาก SuiteQL): subsidiaryId · locationId · lineId (#90 แทน subItemTypeId) ต้องถูกครอบเป็น
  * combobox ค้นได้ — ตัวควบคุมรายการสั้นคงที่ (sort/month/basis) ไม่มีอยู่ในหน้านี้ (อยู่ที่
  * wo-cost-trace แทน มีเทสของตัวเองที่ test_summary_listfield.js)
  *
@@ -22,12 +22,12 @@ const eq = H.makeEq();
 
 const SUBS = [{ id: '2', name: 'Foodstar Co., Ltd.' }, { id: '5', name: 'FS Group' }];
 const LOCS = [{ id: '10', name: 'PD_B1' }, { id: '23', name: 'PD_B2' }, { id: '30', name: 'PD_B3' }];
-const SIT = [{ id: '1', name: 'วัตถุดิบหลัก' }, { id: '4', name: 'บรรจุภัณฑ์' }];
+const LINES = [{ id: '3', name: 'Line1' }, { id: '5', name: 'Line5' }];
 
 function sqlRows(sql) {
   if (/FROM subsidiary/i.test(sql)) return SUBS;
   if (/FROM location WHERE custrecord_mfg_productionplant/i.test(sql)) return LOCS;
-  if (/customrecord_cseg_subitemtype/.test(sql)) return SIT;
+  if (/customrecord_mfg_productionline/.test(sql)) return LINES;
   return [];
 }
 
@@ -60,7 +60,7 @@ console.log('\n── markup ของช่องข้อมูล ──');
 eq('subsidiaryId ยังเป็น <select> เดิม ไม่มี attribute แปลกเพิ่ม',
   /<select name="subsidiaryId">/.test(form), true);
 eq('locationId ยังเป็น <select> เดิม', /<select name="locationId">/.test(form), true);
-eq('subItemTypeId ยังเป็น <select> เดิม', /<select name="subItemTypeId">/.test(form), true);
+eq('lineId ยังเป็น <select> เดิม', /<select name="lineId">/.test(form), true);
 
 // ── ชั้น 2: CSS block ต้องอยู่ครบ (ก๊อปมาจาก shared/WOReportTheme.js ผ่าน sync:theme) ──
 console.log('\n── CSS block ──');
@@ -284,10 +284,10 @@ if (engineSrc && chevronSvgJson) {
     { value: '10', text: 'PD_B1' },
     { value: '23', text: 'PD_B2' },
   ]);
-  const selSit = makeSelect(dom, 'subItemTypeId', [
-    { value: '', text: 'ทุกประเภทย่อย' },
-    { value: '1', text: 'วัตถุดิบหลัก' },
-    { value: '4', text: 'บรรจุภัณฑ์' },
+  const selSit = makeSelect(dom, 'lineId', [
+    { value: '', text: 'ทุกไลน์ผลิต' },
+    { value: '3', text: 'Line1' },
+    { value: '5', text: 'Line5' },
   ]);
   makeFld(selSub);
   makeFld(selLoc);
