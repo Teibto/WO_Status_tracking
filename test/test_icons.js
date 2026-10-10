@@ -38,7 +38,7 @@ const H = require('./lib/_harness');
 
 const eq = H.makeEq({ json: true });
 
-const BAD_GLYPHS = ['✓', '✕', '◷', '⚠', '↗'];
+const BAD_GLYPHS = ['✓', '✕', '◷', '⚠', '↗', '⬇'];
 
 // ── 1. source guard — ทุกไฟล์ .js ใต้ src/ ของทั้งสองแอป ──────────────────────
 console.log('── source guard: ไม่มี ✓ ◷ ✕ ⚠ ↗ เหลือในโค้ด (ไม่รวมคอมเมนต์) ──');
@@ -71,12 +71,13 @@ const iconBlock = iconMatch ? iconMatch[0] : '';
 // COMPONENTS ของ shared/WOReportTheme.js — ทำไมไม่ใช้ theme.ICONS ตรงนั้นได้)
 // calendar เพิ่มพร้อม date field ของ WO Cost Trace (#75) — ปุ่มเปิดปฏิทินต้องเป็น svg 16px
 // info เพิ่มพร้อมหน้าคู่มือของ WO Cost Trace (#96) — ปุ่ม i ที่หัวหน้ารายงาน
-['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight', 'chevronDown', 'calendar', 'info']
+// download เพิ่มที่ #96 — แทนตัวอักษร ⬇ บนปุ่ม Export Excel
+['check', 'cross', 'clock', 'warn', 'help', 'extLink', 'chevronLeft', 'chevronRight', 'chevronDown', 'calendar', 'info', 'download']
   .forEach((name) => {
     eq('ICONS มี ' + name, new RegExp('\\b' + name + ':').test(iconBlock), true);
   });
 const svgTags = iconBlock.match(/<svg[^>]*>/g) || [];
-eq('มี <svg> ครบ 11 ตัว', svgTags.length, 11);
+eq('มี <svg> ครบ 12 ตัว', svgTags.length, 12);
 eq('ทุก <svg> เป็น viewBox 0 0 16 16', svgTags.every((s) => s.indexOf('viewBox="0 0 16 16"') >= 0), true);
 eq('ทุก <svg> มี width/height=16', svgTags.every((s) => /width="16"/.test(s) && /height="16"/.test(s)), true);
 eq('ทุก <svg> aria-hidden + focusable=false', svgTags.every((s) => /aria-hidden="true"/.test(s) && /focusable="false"/.test(s)), true);

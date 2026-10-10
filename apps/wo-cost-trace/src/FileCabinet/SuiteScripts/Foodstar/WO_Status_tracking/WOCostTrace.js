@@ -2431,7 +2431,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    */
   function renderSummaryExport(sm) {
     if (!sm.rows.length) {
-      return '<div class="xbar"><button type="button" class="btn" disabled>⬇ Export Excel</button>'
+      return '<div class="xbar"><button type="button" class="btn" disabled>' + C.ICONS.download + 'Export Excel</button>'
         + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span></div>';
     }
     const d = summaryExportData(sm);
@@ -2440,7 +2440,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const note = sm.truncated
       ? 'ได้ ' + sm.shown + ' แถวเท่าที่แสดง จากทั้งหมด ' + sm.total + ' ใบที่เข้าเงื่อนไข'
       : 'ได้ ' + sm.shown + ' แถวตามตารางด้านล่าง';
-    return '<div class="xbar"><button type="button" class="btn" id="btnXlsx">⬇ Export Excel</button>'
+    return '<div class="xbar"><button type="button" class="btn" id="btnXlsx">' + C.ICONS.download + 'Export Excel</button>'
       + '<span class="xnote">' + esc(note) + ' · หัวและลำดับคอลัมน์ตรงกับตาราง · '
       + 'ไม่มีแถวรวม เพื่อให้ sort และ pivot ต่อใน Excel ได้</span></div>'
       + '<script src="' + XLSX_CDN + '"><\/script>'

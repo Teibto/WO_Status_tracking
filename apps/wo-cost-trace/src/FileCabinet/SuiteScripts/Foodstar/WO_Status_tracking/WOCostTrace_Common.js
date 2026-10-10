@@ -260,6 +260,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'border:var(--bw-control) solid var(--c-border-control);border-radius:var(--r-md);'
     + 'font-size:var(--t-base);background-color:var(--c-surface);color:var(--c-text)}'
     + 'textarea{height:auto}'
+    // <select multiple> (ช่องเลือกหลายคลังของชั้นความพร้อม `rlocsel` size=6) ต้องสูงตามจำนวนแถว —
+    // height:32px ข้างบนชนะ attribute size แล้วกล่องจะเหลือแถวเดียวจนเลือกคลังไม่ได้
+    + 'select[multiple]{height:auto;padding:var(--sp-1)}'
     + 'input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;'
     + 'border-color:var(--c-border-control);box-shadow:var(--focus-ring)}'
     + '.rw-select,.rw-combobox .rw-combobox-input{height:var(--btn-h);padding-top:0;padding-bottom:0;'
@@ -278,7 +281,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'vertical-align:middle}'
     + 'th{font-size:var(--t-sm);font-weight:600;color:var(--c-text-muted);'
     + 'background-color:var(--c-surface-3);letter-spacing:normal;text-transform:none}'
-    + 'tbody tr:hover td{background-color:var(--c-surface-2)}'
+    // ยกเว้นแถวรวม (.tot/.grand/.sub) — (0,1,3) ของ hover ชนะ (0,1,2) ของ tr.tot td แล้วสีแถวรวมจะหายตอนชี้
+    + 'tbody tr:not(.tot):not(.grand):not(.sub):hover td{background-color:var(--c-surface-2)}'
     // ── การ์ดตัวเลข (60-view.css .kpi) — ความหมายอยู่ที่สีของค่า ไม่ใช่แถบซ้าย ──
     + '.kpi-grid{gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(190px,1fr));'
     + 'margin-bottom:var(--sp-4)}'
@@ -469,6 +473,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + ':focus-visible,.btn:focus-visible,summary:focus-visible,.datebtn:focus-visible,'
     + '.cal-nav:focus-visible,.cal-day:focus-visible,.cal-today:focus-visible,.iconbtn:focus-visible{'
     + 'outline:none !important;box-shadow:var(--focus-ring) !important}'
+    // ช่องพิมพ์วันที่อยู่ใน .datewrap ที่วาดวง focus ให้ทั้งกรอบแล้ว (:focus-within) — วงของ input เอง
+    // จะซ้อนและถูก overflow:hidden ตัดเหลือเส้นเข้มข้างปุ่มปฏิทิน
+    + '.datewrap input[type=text]:focus-visible{box-shadow:none !important}'
     + '.rw-select:focus,.rw-select:focus-visible,'
     + '.rw-combobox .rw-combobox-input:focus,.rw-combobox .rw-combobox-input:focus-visible{'
     + 'box-shadow:var(--focus-ring) !important}';

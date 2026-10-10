@@ -188,6 +188,12 @@ const LITERAL = /#[0-9a-fA-F]{3,8}\b|\brgba?\(|\bhsla?\(/g;
 eq('REPORT_CSS ใช้ token ของ CCRC (--btn-h · --focus-ring · --c-surface-3)',
   ['var(--btn-h)', 'var(--focus-ring)', 'var(--c-surface-3)'].every((t) => C.REPORT_CSS.indexOf(t) >= 0), true);
 eq('--focus-ring อ้าง var(--c-text) ไม่ใช่ hex', /--focus-ring:0 0 0 2px var\(--c-text\)/.test(C.REPORT_CSS), true);
+// height:32px ของ select ต้องไม่ไปบีบ <select multiple size=6> ของชั้นความพร้อมให้เหลือแถวเดียว
+eq('select[multiple] คืนความสูงเป็น auto', /select\[multiple\]\{height:auto/.test(C.REPORT_CSS), true);
+// hover ต้องไม่ทับสีแถวรวม (tr.tot/.grand/.sub)
+eq('hover ของแถวยกเว้นแถวรวม', /tbody tr:not\(\.tot\):not\(\.grand\):not\(\.sub\):hover td/.test(C.REPORT_CSS)
+  && !/(^|\})tbody tr:hover td\{/.test(C.REPORT_CSS), true);
+eq('ปุ่ม Export Excel ใช้ไอคอน svg ไม่ใช่ตัวอักษร ⬇', solo.indexOf('⬇') >= 0, false);
 
 // ═══ 8. WO Status ไม่ได้รับ CSS ชุด CCRC (theme กลางแก้แบบเพิ่มของเท่านั้น) ═════
 console.log('\n── 8. WO Status Tracking ไม่เปลี่ยนหน้าตา ──');
