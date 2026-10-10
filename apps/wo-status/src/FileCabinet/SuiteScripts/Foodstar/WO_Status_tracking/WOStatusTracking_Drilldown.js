@@ -268,9 +268,23 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
   }
 
   /**
+   * ตรวจว่าบรรทัด BOM นี้เป็นวัตถุดิบที่ต้องป้อนจริงหรือไม่
+   * ต้องเหมือนกับ isFeedableBomLine ใน WOStatusTracking_Queries.js ทุกบรรทัด — B โหลด A ไม่ได้
+   * (define ของ B ไม่มี dependency ไปที่ Queries) จึงสำเนาไว้ที่นี่ ถ้าแก้ที่หนึ่งต้องแก้ที่อีกที่
+   */
+  function isFeedableBomLine(row) {
+    const itemSource = asStr(row.item_source);
+    const isSummary  = asStr(row.is_summary_cost);
+    return !!itemSource && itemSource !== 'PHANTOM' && isSummary !== 'T';
+  }
+
+  /**
    * Q8: BOM components for the WO (CP3 at task level)
    * Returns {taskId → Set<itemName>} for BOM items and fed items.
    * Used to compute which items are missing per task.
+   *
+   * ตัดบรรทัดที่ไม่ใช่วัตถุดิบจริงออก (self line / OthCharge, phantom, summary cost)
+   * ด้วยกติกาเดียวกับ getCP3a_BomComponents ใน WOStatusTracking_Queries.js
    */
   function queryBomComponents(woid) {
     // BOM components via transactionline (assemblycomponent not exposed in SuiteQL)
@@ -278,16 +292,21 @@ define(['N/query', 'N/log', './WOStatusTracking_Labels', './WOReportTheme'], (qu
       SELECT
         tl.custcol_mfg_line_tmref AS task_id,
         tl.item                    AS item_id,
-        item.displayname           AS item_name
+        item.displayname           AS item_name,
+        tl.itemsource              AS item_source,
+        NVL(item.custitem_mfg_summarycostitem, 'F') AS is_summary_cost
       FROM transactionline tl
       JOIN item ON item.id = tl.item
       WHERE tl.transaction = ?
         AND tl.mainline    = 'F'
         AND tl.item        IS NOT NULL
+        AND tl.itemsource  IS NOT NULL
+        AND tl.itemsource  <> 'PHANTOM'
+        AND NVL(item.custitem_mfg_summarycostitem, 'F') <> 'T'
     `;
     const rows = runSQL(sql, [woid]);
     const byTask = {};
-    rows.forEach(r => {
+    rows.filter(isFeedableBomLine).forEach(r => {
       const tid = String(asNum(r.task_id));
       if (!byTask[tid]) byTask[tid] = new Set();
       byTask[tid].add(asStr(r.item_name) || String(asNum(r.item_id)));
