@@ -242,8 +242,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '--w-regular:400;--w-semibold:600;--w-bold:700;--lh-tight:1.25;--lh-normal:1.5;'
     + '--bw-control:0.8px;--btn-h:32px;--btn-px:14px;--tap-min:40px;'
     + '--focus-ring:0 0 0 2px var(--c-text);'
-    // [src: 00-tokens.css:136]
-    + '--layout-topbar:56px}'
+    // [src: 00-tokens.css:136] · [src: 00-tokens.css:140-141] ขนาดไอคอนของ CCRC (ผู้ใช้ตัดสิน 2026-10-11)
+    + '--layout-topbar:56px;--icon:18px;--icon-lg:20px}'
     // ── หน้า (10-shell.css body · 40-app.css .viewbody) ──
     + 'body{font-family:var(--f-sans);background:var(--c-bg);color:var(--c-text);'
     + 'font-size:var(--t-base);line-height:var(--lh-normal)}'
@@ -253,7 +253,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'h2{font-size:var(--t-md);font-weight:var(--w-bold);margin:var(--sp-6) 0 var(--sp-3);'
     + 'padding-bottom:var(--sp-2);border-bottom:1px solid var(--c-border)}'
     + 'h3{font-size:var(--t-base);font-weight:var(--w-semibold);color:var(--c-text-subtle)}'
-    + '.topbar{min-height:var(--layout-topbar);padding:0 var(--sp-6)}'
+    // ── แถบหัวเรื่องแบบ CCRC (10-shell.css .topbar/.viewtitle) — ชื่อหน้าเป็น h1.viewtitle ในแถบเอง
+    // ไม่ใช่ breadcrumb ตัวเล็ก + h1 อีกตัวใต้แถบ (QA #96 ข้อ 14) · `flex-wrap:nowrap` ทับของ theme กลาง
+    + '.topbar{min-height:var(--layout-topbar);display:flex;align-items:center;gap:var(--sp-3);'
+    + 'padding:0 var(--sp-6);background:var(--c-surface);border-bottom:1px solid var(--c-border);flex-wrap:nowrap}'
+    + '.topbar .right{display:flex;align-items:center;gap:var(--sp-2);margin-left:auto}'
+    + '.viewtitle{margin:0;display:flex;align-items:baseline;gap:var(--sp-2);font-size:var(--t-xl);'
+    + 'font-weight:var(--w-bold);line-height:var(--lh-tight);letter-spacing:normal;min-width:0}'
+    // ป้าย "WO Cost Trace" = .badge--brand ของ CCRC (42-controls.css:45-54) · theme กลางวาด .engine-badge
+    // เป็นแถบแบรนด์ทึบตัวขาว (WOReportTheme.js ห้ามแก้ — WO Status ใช้ไฟล์เดียวกัน) จึงทับทุก property ที่นี่
+    + '.engine-badge{display:inline-flex;align-items:center;justify-content:center;gap:0;'
+    + 'min-width:20px;height:20px;padding:0 6px;margin-left:0;border-radius:var(--r-pill);'
+    + 'background:var(--c-brand-soft);color:var(--c-brand);font-size:var(--t-xs);'
+    + 'font-weight:var(--w-semibold);letter-spacing:normal;white-space:nowrap;flex:none}'
     // ── ตัวควบคุม (90-forms.css .field / .btn) ──
     + 'label{font-size:var(--t-sm);font-weight:var(--w-regular);color:var(--c-text-muted);letter-spacing:normal}'
     + 'input[type=text],input[type=date],select,textarea{height:var(--btn-h);padding:0 var(--sp-2);'
@@ -263,10 +275,23 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // <select multiple> (ช่องเลือกหลายคลังของชั้นความพร้อม `rlocsel` size=6) ต้องสูงตามจำนวนแถว —
     // height:32px ข้างบนชนะ attribute size แล้วกล่องจะเหลือแถวเดียวจนเลือกคลังไม่ได้
     + 'select[multiple]{height:auto;padding:var(--sp-1)}'
+    // ตัวเลือกที่เลือกแล้วของ <select multiple> = โทนเดียวกับแถวที่เลือกของ combobox CCRC
+    // (47-combobox.css:170-173) · Chrome วาดพื้น option:checked ด้วยสีระบบทับ background-color
+    // จึงต้องมี inset box-shadow ด้วยถึงจะเห็นสี token จริง
+    + 'select[multiple] option:checked{background-color:var(--c-brand-soft);color:var(--c-brand);'
+    + 'box-shadow:inset 0 0 0 100px var(--c-brand-soft)}'
     + 'input[type=text]:focus,input[type=date]:focus,select:focus{outline:none;'
     + 'border-color:var(--c-border-control);box-shadow:var(--focus-ring)}'
-    + '.rw-select,.rw-combobox .rw-combobox-input{height:var(--btn-h);padding-top:0;padding-bottom:0;'
+    // padding ตาม 47-combobox.css:107 — ข้อความเริ่มที่ 8px ตรงกับ text/date input · ขวา 32px เว้นที่ลูกศร
+    + '.rw-select,.rw-combobox .rw-combobox-input{height:var(--btn-h);min-height:var(--btn-h);'
+    + 'padding:0 var(--sp-8) 0 var(--sp-2);'
     + 'border-width:var(--bw-control);border-color:var(--c-border-control);font-size:var(--t-base)}'
+    // รายการของ combobox (47-combobox.css:153-173) — เส้นขอบอ่อน · แถวสูง --btn-h · hover surface-3
+    + '.rw-combobox-list{border-color:var(--c-border);padding:var(--sp-1) 0}'
+    + '.rw-combobox-option{min-height:var(--btn-h);padding:0 var(--sp-2);font-size:var(--t-base)}'
+    + '.rw-combobox-option:hover{background-color:var(--c-surface-3)}'
+    + '.rw-combobox-option.is-active,.rw-combobox-option[aria-selected="true"]{'
+    + 'background-color:var(--c-brand-soft);color:var(--c-brand)}'
     + '.btn{height:var(--btn-h);padding:0 var(--btn-px);gap:var(--sp-2);justify-content:center;'
     + 'border:var(--bw-control) solid var(--c-border-control);border-radius:var(--r-md);'
     + 'background-color:var(--c-surface);color:var(--c-text);'
@@ -275,17 +300,30 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.btn.primary{background-color:var(--c-brand);border-color:var(--c-brand);color:var(--c-brand-on)}'
     + '.btn.primary:hover:enabled{background-color:var(--c-brand-strong);border-color:var(--c-brand-strong);'
     + 'color:var(--c-brand-on)}'
+    // ปุ่มที่กดไม่ได้ = ปุ่มเดิมจางลง (42-controls.css:40) ไม่ใช่พื้นเทาเปลี่ยนสีแบบ theme กลาง
+    + '.btn:disabled{background-color:var(--c-surface);border-color:var(--c-border-control);'
+    + 'color:var(--c-text);opacity:.45;cursor:not-allowed}'
     // ── ตาราง (80-tables.css .rw-table) — หัวโทนกลาง ไม่ใช่แถบแบรนด์ · เส้นแนวนอนอย่างเดียว ──
-    + 'table{border:1px solid var(--c-border);font-size:var(--t-base);color:var(--c-text)}'
+    // กรอบนอก + การเลื่อนเป็นของ wrapper (.rw-tablewrap / .scroll) ไม่ใช่ของ <table> — แบบ 80-tables.css:45-50
+    // `shell()` ห่อทุก <table> ที่ยังไม่อยู่ใน .scroll ให้เอง (QA #96 ข้อ 2 — หน้าเจาะลึกล้นแนวนอน)
+    + 'table{border:0;font-size:var(--t-base);color:var(--c-text)}'
     + 'th,td{padding:var(--sp-2) var(--sp-3);border:0;border-bottom:1px solid var(--c-border);'
     + 'vertical-align:middle}'
-    + 'th{font-size:var(--t-sm);font-weight:600;color:var(--c-text-muted);'
+    // nowrap ตาม 80-tables.css:24 · ใช้กับ th ทุกตัว ไม่ใช่แค่ thead th เพราะตารางหน้าเจาะลึก/ความพร้อม
+    // ไม่มี <thead> (แถวหัวเป็น <tr><th> ตรง ๆ) — ทุกตารางอยู่ใน wrapper ที่เลื่อนได้แล้วจึงไม่ดันหน้าให้ล้น
+    + 'th{font-size:var(--t-sm);font-weight:600;color:var(--c-text-muted);white-space:nowrap;'
     + 'background-color:var(--c-surface-3);letter-spacing:normal;text-transform:none}'
+    + '.rw-tablewrap{overflow:auto;max-width:100%;border:1px solid var(--c-border);border-radius:var(--r-lg);'
+    + 'background:var(--c-surface);margin:var(--sp-1) 0 var(--sp-3)}'
+    + '.rw-tablewrap>table{margin:0}'
+    + '.rw-tablewrap tr:last-child>td,.scroll tbody tr:last-child>td{border-bottom:0}'
+    // ตาราง kv ในการ์ด — การ์ดมีกรอบอยู่แล้ว wrapper ไม่วาดกรอบซ้ำ (QA #96 ข้อ 11 กรอบซ้อน)
+    + '.card>.rw-tablewrap{border:0;border-radius:0;margin:0;background:none}'
     // ยกเว้นแถวรวม (.tot/.grand/.sub) — (0,1,3) ของ hover ชนะ (0,1,2) ของ tr.tot td แล้วสีแถวรวมจะหายตอนชี้
     + 'tbody tr:not(.tot):not(.grand):not(.sub):hover td{background-color:var(--c-surface-2)}'
     // ── การ์ดตัวเลข (60-view.css .kpi) — ความหมายอยู่ที่สีของค่า ไม่ใช่แถบซ้าย ──
     + '.kpi-grid{gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(190px,1fr));'
-    + 'margin-bottom:var(--sp-4)}'
+    + 'margin-bottom:var(--sp-6)}'
     + '.kpi-card{border:1px solid var(--c-border);border-radius:var(--r-lg);'
     + 'padding:var(--sp-3) var(--sp-4);gap:var(--sp-1)}'
     + '.kpi-card:hover{box-shadow:none}'
@@ -294,35 +332,50 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.kpi-card.accent-warning,.kpi-card.accent-error{border-left-color:var(--c-border)}'
     + '.kpi-label{font-size:var(--t-sm);font-weight:var(--w-regular);letter-spacing:normal;'
     + 'color:var(--c-text-muted);line-height:var(--lh-tight)}'
+    // ป้าย/บรรทัดขยายตัดบรรทัดได้แบบ .kpi .k/.hint ของ CCRC — theme กลางตั้ง nowrap+ellipsis ไว้
+    // (WOReportTheme.js ห้ามแก้) ข้อความยาวอย่าง "ผลต่าง summary cost" จึงถูกตัดเป็น … (QA #96 ข้อ 20)
+    + '.kpi-label,.kpi-meta{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}'
     + '.kpi-value{font-family:var(--f-mono);font-size:var(--t-xl);font-weight:var(--w-bold);'
     + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums}'
     + '.kpi-card.accent-success .kpi-value{color:var(--c-success)}'
     + '.kpi-card.accent-warning .kpi-value{color:var(--c-warning)}'
     + '.kpi-card.accent-error .kpi-value{color:var(--c-danger)}'
     + '.kpi-card.accent-info .kpi-value{color:var(--c-info)}'
-    // ── หัวหน้า + ปุ่มไอคอน i (10-shell.css .iconbtn · ขนาด --btn-h ตาม hit target ของ Redwood) ──
-    + '.pagehead{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3);min-height:var(--btn-h)}'
-    + '.pagehead h1{margin:0}'
-    + '.iconbtn{width:var(--btn-h);height:var(--btn-h);flex:none;margin-left:auto;'
+    // ── ปุ่มไอคอน i (10-shell.css:134-140 .iconbtn — 40×40 = --tap-min · สีหมึกเต็ม) ──
+    + '.iconbtn{width:var(--tap-min);height:var(--tap-min);flex:none;'
     + 'display:inline-flex;align-items:center;justify-content:center;'
-    + 'border-radius:var(--r-md);color:var(--c-text-muted);text-decoration:none}'
+    + 'border:0;background:none;border-radius:var(--r-md);color:var(--c-text);text-decoration:none;cursor:pointer}'
     + '.iconbtn:hover{background-color:var(--c-surface-3);color:var(--c-text)}'
-    + '.iconbtn svg{display:block}';
+    + '.iconbtn svg{display:block}'
+    // ── หัวหน้าในโหมด embed (ไม่มี topbar) — h1 + ปุ่ม i ชิดขวา ──
+    + '.pagehead{display:flex;align-items:center;gap:var(--sp-2);margin-bottom:var(--sp-3)}'
+    + '.pagehead h1{margin:0}'
+    + '.pagehead .iconbtn{margin-left:auto}'
+    // ชั้นภาพรวมใน embed ไม่มี h1 — ปุ่ม i ลอยมุมขวาบน "ในแถวเดียวกับ" กล่องตัวกรอง ไม่กินแถวเปล่าของตัวเอง
+    // (QA #96 ข้อ 6) · กล่องตัวกรองเป็น BFC (overflow:hidden ที่ .filterbox) จึงหดหลบ float ไม่ลอดใต้ปุ่ม
+    + '.pagehead.is-float{float:right;margin:0 0 0 var(--sp-2)}';
 
   const REPORT_CSS = CCRC_CSS
     + 'body{padding:0}'
     + '.content{padding:var(--sp-6)}'
+    // ── โหมด embed (CCRC ฝังใน .appframe — 72-appframe.css) ─────────────────────────────
+    // กรอบของ CCRC เป็นพื้น --c-surface · เนื้อหาไม่เยื้องเข้าจากขอบซ้าย/ขวา ให้แนวตรงกับหัว .sec ของ
+    // CCRC ที่อยู่เหนือกรอบ (QA #96 ข้อ 6 — เดิมเยื้อง 25px) · h1 ของหน้าย่อยเท่าหัว .sec (--t-md · ข้อ 7)
+    + 'body.is-embed{background:var(--c-surface)}'
+    + 'body.is-embed .content{padding:var(--sp-4) 0 var(--sp-6)}'
+    + 'body.is-embed h1{font-size:var(--t-md)}'
     + '.sub{color:var(--c-text-muted);font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
     + '.crumb{font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
-    + 'form{background:var(--pj-surface);border:1px solid var(--pj-border);'
-    + 'border-radius:var(--r-lg);padding:var(--sp-4);margin-bottom:var(--sp-4)}'
+    + '.crumb a{display:inline-flex;align-items:center;gap:var(--sp-1);vertical-align:middle}'
+    // ฟอร์มไม่มีการ์ด — วางบนพื้นหน้าแบบ .filterbar ของ CCRC (45-redwood.css:81 · ผู้ใช้ตัดสิน QA #96 ข้อ 18)
+    + 'form{margin:0 0 var(--sp-4);padding:0}'
     // ── แถบตัวกรอง ────────────────────────────────────────────────────────────
     // ใช้คำศัพท์ .filterbar/.fld ชุดเดียวกับ wo-status (WOStatusTracking.js) โดยตั้งใจ —
     // ป้ายอยู่ "เหนือ" ตัวควบคุมเสมอ ไม่ใช่ข้อความไหลต่อกันคั่นด้วย &nbsp; แบบเดิม ซึ่งทำให้
     // อ่านไม่ออกว่าป้ายไหนเป็นของช่องไหนเมื่อบรรทัดตัดคำ
     // ต่างจากของ wo-status สองข้อ — ห้ามยกกฎของที่นั่นมาทับทั้งก้อน:
-    //   1. ไม่มี padding/พื้น/เส้นขอบที่ .filterbar เพราะที่นี่ `form` เป็นการ์ดอยู่แล้ว
-    //      (กฎ form{} ด้านบน) ใส่ซ้ำจะได้กล่องพื้นเทาซ้อนอยู่ในกล่องขาวอีกชั้น
+    //   1. ไม่มี padding/พื้น/เส้นขอบที่ .filterbar — ฟอร์มวางบนพื้นหน้าตรง ๆ แบบ CCRC
+    //      (ชั้นภาพรวมห่อด้วยกล่องพับ .filterbox ซึ่งเป็นหน้าตา accordion อยู่แล้ว)
     //   2. ความกว้างคุมเป็นราย .fld (ไม่ใช่ min-width:150px เท่ากันหมดแบบที่นั่น) เพราะฟอร์ม
     //      ภาพรวมมี 9 ช่องที่ความยาวเนื้อหาต่างกันมาก — "ไม่เกิน" รับเลขไม่กี่หลัก ส่วน
     //      "เรียงตาม" มีตัวเลือกยาวกว่า 20 ตัวอักษร · ตัวเลขความกว้างอยู่ที่ .fld จุดเดียว
@@ -363,21 +416,17 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ── ที่พับ "ตัวกรองเพิ่มเติม" ของชั้นภาพรวม (issue #86) ───────────
     // ตัวกรองรอง 5 ช่องเคยอยู่แถวเดียวกันกับแถวหลัก คั่นด้วย .brk — กินแนวตั้งไป 231px
     // ทั้งที่ส่วนใหญ่ไม่ได้ถูกตั้ง · สถานะกาง/พับมาจาก attribute `open` ที่เซิร์ฟเวอร์ใส่มา ไม่ใช่ JS
-    // † ขอบเขตด้วย .morefld เท่านั้น — กฎ details{}/summary{} รวมด้านล่างเป็นของ
-    // หัวข้อพับในหน้าเจาะลึก แก้กฎรวมเมื่อไหร่หน้านั้นเปลี่ยนหน้าตาตามไปด้วย
-    + '.morefld{margin:var(--sp-3) 0 0}'
-    // width:fit-content ไม่ใช่ display:inline-block — <summary> มีสามเหลี่ยมเปิด/ปิด
-    // ได้เพราะ display เป็น list-item เปลี่ยน display เมื่อไหร่ marker หายทันที
-    // แล้วผู้ใช้จะไม่รู้ว่ากดตรงนี้แล้วมีช่องกรองเพิ่มมา
-    + '.morefld>summary{width:fit-content;padding:3px var(--sp-2);'
-    + 'font-size:var(--fs-sm);color:var(--pj-text-muted)}'
+    // หน้าตาเป็น accordion ของ CCRC เหมือนหัวข้อพับทุกอันในรายงาน (กฎ details{}/summary{} รวมด้านล่าง ·
+    // QA #96 ข้อ 8) · marker ของเบราว์เซอร์ถูกซ่อน ตัวบอกว่า "กดแล้วกาง" คือไอคอน svg ที่หมุน 90°
+    // ซึ่ง markup ใส่ผ่าน `accSummary()` ทุกจุด — ห้ามเขียน <summary> เปล่าโดยไม่มีไอคอน
+    + '.morefld{margin:var(--sp-3) var(--sp-4) 0}'
     + '.morefld>.filterbar{margin-top:var(--sp-3)}'
     // ── ทั้งกล่องตัวกรองของชั้นภาพรวมหุบได้ (issue #86) ───────────────────────
     // ห่อ **เฉพาะช่องกรอก** — `.act` อยู่นอกกล่อง หุบแล้วปุ่มต้องยังกดได้
-    // summary คงพื้น/ขอบจากกฎ summary{} รวมไว้ (เป็น "หัวกล่อง" ของฟอร์ม ไม่ใช่ลิงก์เล็ก ๆ
-    // แบบ .morefld>summary) · ห้ามแตะ display ด้วยเหตุผลเดียวกับ .morefld — marker จะหาย
-    + '.filterbox{margin:0}'
-    + '.filterbox>summary{padding:6px var(--sp-3);font-size:var(--fs-sm);font-weight:600}'
+    // overflow:hidden ทำให้กล่องเป็น BFC → หดหลบปุ่ม i ที่ลอยขวา (.pagehead.is-float) ในโหมด embed
+    // (รายการ combobox และปฏิทินเป็น position:fixed จึงไม่ถูกตัด)
+    + '.filterbox{margin:0;overflow:hidden}'
+    + '.filterbox>summary{font-weight:var(--w-semibold)}'
     + '.filterbox>.filterbar{margin-top:var(--sp-3)}'
     // ── ช่องวันที่ (references/date-field.md) ─────────────────────────────────
     // กรอบทั้งก้อนอยู่ที่ .datewrap ใบเดียว (border + focus-ring) · input กับปุ่มข้างในไม่มี
@@ -395,22 +444,24 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'display:flex;align-items:center;justify-content:center;'
     + 'background:none;border:0;border-left:1px solid var(--pj-border-strong);border-radius:0;'
     + 'cursor:pointer;color:var(--pj-text-muted);transition:background-color .1s ease,color .1s ease}'
-    + '.datebtn:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+    // hover ของปุ่มไอคอนทั้งหมด = พื้น surface-3 หมึกเต็ม แบบ .iconbtn/.btn ของ CCRC (10-shell.css:140 · 90-forms.css:32)
+    + '.datebtn:hover{background:var(--c-surface-3);color:var(--c-text)}'
     + '.datebtn:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:-2px}'
     // overscroll-behavior:contain — ปฏิทินที่ถูกย่อมีแถบเลื่อนของตัวเอง ถ้าเลื่อนจนสุดขอบแล้ว
     // scroll chain ต่อไปที่หน้าเว็บ event จะมี target เป็น document ซึ่งตัวกันใน `_reposition`
     // มองไม่เห็น → `_position()` ล้าง max-height แล้ว scrollTop กลับเป็น 0 (รีวิว #86)
     + '.cal{position:fixed;z-index:40;width:238px;background:var(--pj-surface);'
     + 'overscroll-behavior:contain;'
-    + 'border:1px solid var(--pj-border-strong);border-radius:var(--radius-md);'
-    + 'box-shadow:var(--shadow-lg);padding:var(--sp-2);font-size:var(--fs-sm)}'
+    // กรอบแผงลอยแบบรายการ combobox / .popbody ของ CCRC (47-combobox.css:157 · 45-redwood.css:153) — เส้นอ่อน
+    + 'border:1px solid var(--c-border);border-radius:var(--r-md);'
+    + 'box-shadow:var(--sh-md);padding:var(--sp-2);font-size:var(--fs-sm)}'
     + '.cal[hidden]{display:none}'
     + '.cal-head{display:flex;align-items:center;gap:var(--sp-1);margin-bottom:var(--sp-1)}'
     + '.cal-nav{background:none;border:1px solid var(--pj-border);color:var(--pj-text-dim);'
     + 'width:24px;height:24px;flex:0 0 24px;padding:0;display:inline-flex;'
     + 'align-items:center;justify-content:center;border-radius:var(--radius-sm);cursor:pointer;'
     + 'transition:background-color .1s ease,color .1s ease}'
-    + '.cal-nav:hover{background:var(--pj-surface-alt);color:var(--pj-primary)}'
+    + '.cal-nav:hover{background:var(--c-surface-3);color:var(--c-text)}'
     + '.cal-nav:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:1px}'
     + '.cal-month,.cal-year{font-family:inherit;font-size:var(--fs-sm);font-weight:700;'
     + 'color:var(--pj-text);background:var(--pj-surface);border:1px solid var(--pj-border);'
@@ -423,7 +474,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.cal-day{border:0;background:none;font-family:inherit;font-size:var(--fs-sm);'
     + 'color:var(--pj-text);padding:5px 0;border-radius:var(--radius-sm);cursor:pointer;'
     + 'font-variant-numeric:tabular-nums;transition:background-color .1s ease}'
-    + '.cal-day:hover{background:var(--pj-surface-alt)}'
+    + '.cal-day:hover{background:var(--c-surface-3)}'
     + '.cal-day.muted{color:var(--pj-text-muted)}'
     + '.cal-day.today{box-shadow:inset 0 0 0 1px var(--pj-primary);font-weight:700}'
     + '.cal-day.sel{background:var(--pj-primary);color:var(--c-brand-on);font-weight:700}'
@@ -449,10 +500,29 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.card{background:var(--pj-surface);border:1px solid var(--pj-border);'
     + 'border-radius:var(--r-lg);padding:var(--sp-3);margin-bottom:var(--sp-3)}'
     + '.kv td:first-child{background:var(--pj-surface-alt);font-weight:600;width:150px}'
-    + 'details{margin:var(--sp-2) 0}'
-    + 'summary{cursor:pointer;padding:6px var(--sp-2);background:var(--pj-surface-alt);'
-    + 'border:1px solid var(--pj-border);border-radius:var(--radius-sm)}'
-    + 'summary:hover{background:var(--pj-muted-bg)}'
+    // ── หัวข้อพับทุกอัน = accordion ของ CCRC (45-redwood.css:118-140 · QA #96 ข้อ 8) ──────────
+    // กรอบ 6px อยู่ที่ตัว <details> · หัว (summary) ไม่มีพื้น/ขอบของตัวเอง สูงอย่างน้อย --tap-min ·
+    // marker ของเบราว์เซอร์ซ่อน ใช้ไอคอน svg (.accico) ที่หมุน 90° ตอนกาง · ข้อความอยู่ใน .acclbl
+    // (summary เป็น flex — ข้อความเปล่าที่ไม่ห่อจะแตกเป็น flex item ทีละท่อนแล้วช่องว่างหาย)
+    + 'details{margin:0 0 var(--sp-3);border:1px solid var(--c-border);border-radius:var(--r-lg);'
+    + 'background:var(--c-surface)}'
+    + 'details[open]{padding-bottom:var(--sp-3)}'
+    + 'details>summary{display:flex;align-items:center;gap:var(--sp-2);min-height:var(--tap-min);'
+    + 'padding:0 var(--sp-4);cursor:pointer;list-style:none;font-size:var(--t-base);color:var(--c-text);'
+    + 'background:none;border:0;border-radius:var(--r-lg)}'
+    + 'details>summary::-webkit-details-marker{display:none}'
+    + 'details>summary::marker{content:""}'
+    + 'details>summary:hover{background-color:var(--c-surface-2)}'
+    + 'details[open]>summary{border-bottom:1px solid var(--c-border);border-radius:var(--r-lg) var(--r-lg) 0 0}'
+    + '.accico{display:inline-flex;flex:none;color:var(--c-text-muted);transition:transform .15s ease}'
+    + 'details[open]>summary>.accico{transform:rotate(90deg)}'
+    + '.acclbl{flex:1 1 auto;min-width:0;padding:var(--sp-2) 0}'
+    + '.acclbl b{font-weight:var(--w-semibold)}'
+    // เนื้อในของหัวข้อพับเว้นขอบเท่า padding ของหัว (.accbody ของ CCRC: 12px บน · 16px ข้าง)
+    + 'details>summary+*{margin-top:var(--sp-3)}'
+    + 'details>:not(summary){margin-left:var(--sp-4);margin-right:var(--sp-4)}'
+    + 'details>.rw-tablewrap,details>.scroll{margin-left:var(--sp-4);margin-right:var(--sp-4)}'
+    + '@media (prefers-reduced-motion: reduce){.accico{transition:none}}'
     // NetSuite ship CSS reset `:focus{outline:0}` มาด้วย (ท่าเดียวกับ .cal-nav/.cal-day ของ
     // wo-status ที่ #64 ขั้น 4 ปิดช่องว่างนี้ไว้แล้ว) — <summary> คือ element โฟกัสได้จริงของ
     // <details> ที่ไม่เคยมีการปิด outline มาก่อนเลยตกหล่นในสองขั้นก่อนหน้า
@@ -467,8 +537,13 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // .tag คือ .badge.info ของ template — คงชื่อคลาสเดิมไว้เพราะ markup ใช้อยู่ 19 จุด
     + '.tag{display:inline-block;padding:1px 8px;border-radius:var(--r-pill);font-size:var(--t-xs);'
     + 'font-weight:600;background:var(--pj-info-bg);color:var(--pj-info);margin-left:var(--sp-1)}'
-    + '.err{background:var(--pj-error-bg);border:1px solid var(--pj-error);color:var(--pj-error);'
-    + 'padding:var(--sp-2) var(--sp-3);border-radius:var(--r-md);margin:var(--sp-2) 0;font-size:var(--t-sm)}'
+    // กล่องผิดพลาด = .alert.alert--danger ของ CCRC (44-feedback.css:192-212) — เส้นซ้ายหนา 3px สีอันตราย
+    // พื้นอ่อน ข้อความสีหมึก (ไม่ใช่ตัวแดงทั้งก้อนในกรอบแดงรอบด้านแบบเดิม)
+    + '.err{display:block;background:var(--c-danger-soft);border:1px solid var(--c-border);'
+    + 'border-left:3px solid var(--c-danger);color:var(--c-text);padding:var(--sp-3) var(--sp-4);'
+    + 'border-radius:var(--r-md);margin:0 0 var(--sp-3);font-size:var(--t-base)}'
+    + '.err>b:first-child{color:var(--c-danger);font-weight:var(--w-semibold)}'
+    + '.err pre{margin-top:var(--sp-2);color:var(--c-text-muted)}'
     + '.miss{color:var(--pj-warning)}'
     + '.note{font-size:var(--fs-xs);line-height:1.35}'
     // ตัวชี้สถานะของแถวที่คอลัมน์แรก (#77 ข้อ 2.2) — คอลัมน์ "หมายเหตุ" อยู่ขวาสุดของตาราง
@@ -476,7 +551,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ไม่ได้แทนคอลัมน์หมายเหตุ (ข้อความเต็มยังอยู่ที่เดิม และ export Excel ยังอ่านจากที่เดิม)
     + '.rowstat{display:flex;align-items:center;gap:3px;font-size:var(--fs-xs);'
     + 'line-height:1.35;margin-bottom:2px}'
-    + '.rowstat svg{width:12px;height:12px;flex:0 0 auto}'
+    // ไอคอน 18px เท่าทุกไอคอนของหน้า (--icon · ผู้ใช้ตัดสิน 2026-10-11) — เดิมย่อเหลือ 12px
     // สารบัญของหน้าเจาะลึก (#77 ข้อ 2.4) — หน้ายาว 8 หัวข้อ ข้ามหัวข้อโดยไม่ต้องเลื่อนทั้งหน้า
     + '.toc{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:7px 0;'
     + 'padding:7px var(--sp-2);border:1px solid var(--pj-border);border-radius:var(--radius-sm);'
@@ -509,39 +584,87 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.nsrec{margin-top:2px}'
     + '.nsrec a{font-size:10px;color:var(--pj-text-muted);text-decoration:none}'
     + '.nsrec a:hover{color:var(--pj-primary);text-decoration:underline}'
-    // ไอคอนลิงก์นอก (#64 ขั้น 2) — markup ยังเป็น svg 16px ตามมาตรฐาน แต่ตัวอักษรข้างเคียงแค่
-    // 10px จึงย่อการ์แสดงผลด้วย CSS ให้สัดส่วนเข้ากัน (ไม่ใช่แก้ viewBox/attribute ของไอคอน)
-    + '.nsrec svg{width:11px;height:11px;vertical-align:-1px;margin-left:2px}'
-    // ── focus ring แบบ CCRC (40-app.css) — วงหมึกเข้ม 2px แทน outline สีแบรนด์ ──
+    // ไอคอนลิงก์นอก (#64 ขั้น 2) — 18px เท่าทุกไอคอน (เดิมย่อเหลือ 11px ตามตัวอักษร 10px ข้างเคียง)
+    + '.nsrec a{display:inline-flex;align-items:center;gap:2px}'
+    // ── ขนาดไอคอน: 18px ทุกตัว (--icon ของ CCRC 00-tokens.css:140 · 40-app.css:13) ─────────────
+    // svg ใน theme กลาง/LOCAL_ICONS เขียน width/height เป็น attribute — CSS ชนะ attribute เสมอ
+    // ยกเว้นลูกศรของ combobox ซึ่ง CCRC เองบีบไว้ 16px ในช่องของมัน (47-combobox.css:145-151)
+    + '.topbar svg,.content svg,.cal svg{width:var(--icon);height:var(--icon);flex:none}'
+    + '.content svg{vertical-align:-3px}'
+    + '.rw-combobox .rw-combobox-chevron svg{width:16px;height:16px}'
+    // ── focus ring แบบ CCRC (40-app.css:8) — วงหมึกเข้ม 2px + มุม --r-md แทน outline สีแบรนด์ ──
     // ต้องวางท้ายสุดและใช้ selector เดียวกับกฎเดิม (theme กลาง + ข้างบน) เพราะทุกกฎเป็น !important
     // (NetSuite ship `:focus{outline:0}` มา) — !important ที่ specificity เท่ากัน ตัวหลังชนะ
     + ':focus-visible,.btn:focus-visible,summary:focus-visible,.datebtn:focus-visible,'
     + '.cal-nav:focus-visible,.cal-day:focus-visible,.cal-today:focus-visible,.iconbtn:focus-visible{'
-    + 'outline:none !important;box-shadow:var(--focus-ring) !important}'
+    + 'outline:none !important;box-shadow:var(--focus-ring) !important;border-radius:var(--r-md)}'
     // ช่องพิมพ์วันที่อยู่ใน .datewrap ที่วาดวง focus ให้ทั้งกรอบแล้ว (:focus-within) — วงของ input เอง
     // จะซ้อนและถูก overflow:hidden ตัดเหลือเส้นเข้มข้างปุ่มปฏิทิน
     + '.datewrap input[type=text]:focus-visible{box-shadow:none !important}'
     + '.rw-select:focus,.rw-select:focus-visible,'
     + '.rw-combobox .rw-combobox-input:focus,.rw-combobox .rw-combobox-input:focus-visible{'
-    + 'box-shadow:var(--focus-ring) !important}';
+    + 'box-shadow:var(--focus-ring) !important}'
+    // ── จอแคบ ≤1023px (QA #96 ข้อ 3-4) — ต้องอยู่ท้ายสุดของ CSS เพื่อชนะกฎความสูง 32px ข้างบน ──
+    // ใน CCRC ค่านี้วัดกับความกว้างของ iframe ไม่ใช่ของจอ — กรอบที่ฝังเรากว้าง ~847px ก็เข้าเงื่อนไขนี้
+    //   ตัวควบคุมสูง --tap-min (90-forms.css:42-43 · 47-combobox.css:177-180)
+    //   topbar 0 16px (10-shell.css:201) · เนื้อหา 16px (40-app.css:27-28) — embed ยังไม่เยื้องซ้ายขวา
+    // `select:not([multiple])` — ช่องเลือกหลายคลังของชั้นความพร้อมต้องสูงตามจำนวนแถว ไม่ใช่ 40px
+    + '@media (max-width:1023px){'
+    + '.topbar{padding:0 var(--sp-4)}'
+    + '.content{padding:var(--sp-4)}'
+    + 'body.is-embed .content{padding:var(--sp-4) 0}'
+    + '.btn,input[type=text],input[type=date],select:not([multiple]),.rw-select,'
+    + '.rw-combobox .rw-combobox-input,.datewrap{height:var(--tap-min);min-height:var(--tap-min)}'
+    + '.rw-combobox-option{min-height:var(--tap-min)}'
+    // ช่องพิมพ์ใน .datewrap ยืดตามกรอบ (height:auto ข้างบน) — min-height 40px จะดันให้ล้นกรอบที่สูง 40px รวมเส้นขอบ
+    + '.datewrap input[type=text]{min-height:0}'
+    + '}';
 
   const CSS = theme.css(REPORT_CSS);
 
-  /** แถบหัวเรื่อง — โหมด embed ไม่ใส่ เพราะหน้าที่ฝังเราไว้มีหัวเรื่องของตัวเองแล้ว */
-  function pageTop(title, badge) {
+  /**
+   * แถบหัวเรื่องแบบ CCRC (10-shell.css .topbar) — `h1.viewtitle` ชื่อหน้า · ป้าย WO Cost Trace ·
+   * ปุ่ม i ชิดขวา · โหมด embed ไม่ใส่ เพราะหน้าที่ฝังเราไว้มีหัวเรื่องของตัวเองแล้ว
+   * ไม่ใช้ `theme.topbar()` เพราะมันวาด breadcrumb 12px แล้วหน้ายังต้องมี h1 อีกตัวใต้แถบ (QA #96 ข้อ 14)
+   * @param {string} title
+   * @param {Object} [helpParams] พารามิเตอร์ของหน้าสำหรับปุ่ม i — ไม่ส่ง = ไม่มีปุ่ม (หน้าคู่มือเอง)
+   */
+  function pageTop(title, helpParams) {
     if (EMBED) return '';
-    return theme.topbar({
-      crumbs: ['Foodstar', 'รายงานต้นทุนการผลิต'],
-      title: title,
-      badge: badge || 'WO Cost Trace'
-    });
+    return '<header class="topbar"><h1 class="viewtitle">' + esc(title) + '</h1>'
+      + '<span class="engine-badge">WO Cost Trace</span>'
+      + (helpParams ? '<div class="right">' + helpButton(helpParams) + '</div>' : '')
+      + '</header>';
   }
 
-  /** โครงหน้ามาตรฐาน — style + แถบหัวเรื่อง + เนื้อหาใน .content ของ template
-   *  ต่อท้ายด้วยสคริปต์ปฏิทินของ date field เสมอ (ทุกชั้นมีช่องวันที่) */
-  function shell(title, body, extraCss) {
-    return CSS + (extraCss || '') + pageTop(title) + '<div class="content">' + body + '</div>'
-      + renderDateFieldScript();
+  /**
+   * ห่อทุก `<table>` ที่ยังไม่อยู่ใน `.scroll` ด้วย `.rw-tablewrap` (80-tables.css:45-50) — wrapper เป็น
+   * เจ้าของกรอบและการเลื่อนแนวนอน ตารางกว้างจึงเลื่อนในกรอบของตัวเอง ไม่ดันทั้งหน้าให้ล้น
+   * (QA #96 ข้อ 2: หน้าเจาะลึก scrollWidth 1067 > 847) · ทำที่ shell จุดเดียวเพราะตารางเปล่ามี ~20 จุด
+   * ในสามไฟล์ ห่อทีละจุดแล้วจุดที่เพิ่มใหม่จะหลุด · ตารางในรายงานนี้ไม่มีตารางซ้อนตาราง
+   */
+  function wrapTables(html) {
+    return String(html).replace(/(<div class="scroll">)?(<table\b[\s\S]*?<\/table>)/g,
+      (all, scroll, tbl) => (scroll ? all : '<div class="rw-tablewrap">' + tbl + '</div>'));
+  }
+
+  /**
+   * โครงหน้ามาตรฐาน — เอกสาร HTML เต็ม (doctype = standards mode · QA #96 ข้อ 0 เดิมไม่มีจึงเป็น
+   * quirks mode) + style + แถบหัวเรื่อง + เนื้อหาใน .content · ต่อท้ายด้วยสคริปต์ปฏิทินของ date field
+   * เสมอ (ทุกชั้นมีช่องวันที่) · โหมด embed ติดคลาส `is-embed` ที่ body
+   * @param {string} title       ชื่อหน้า — ใช้ทั้ง <title> และ h1.viewtitle ของ topbar
+   * @param {string} body
+   * @param {string} [extraCss]  `<style>` เพิ่มของชั้นนั้น
+   * @param {Object} [helpParams] พารามิเตอร์ของปุ่ม i ใน topbar (เปิดเดี่ยว) — ชุดเดียวกับที่ส่งให้ pageHead
+   */
+  function shell(title, body, extraCss, helpParams) {
+    return '<!doctype html><html lang="th"><head><meta charset="utf-8">'
+      + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      + '<title>' + esc(title) + '</title>'
+      + CSS + (extraCss || '') + '</head>'
+      + '<body' + (EMBED ? ' class="is-embed"' : '') + '>'
+      + pageTop(title, helpParams) + '<div class="content">' + wrapTables(body) + '</div>'
+      + renderDateFieldScript() + '</body></html>';
   }
 
 
@@ -579,17 +702,27 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   // `view` เป็นชื่อพารามิเตอร์ใหม่ (ไม่ใช้ `mode` เพราะ `mode=json` มีความหมายอยู่แล้ว)
   const HELP_VIEW = 'help';
 
-  // ไอคอนที่ WO Cost Trace ใช้คนเดียว (ปุ่ม i · ปุ่ม Export) อยู่ที่นี่ ไม่ใส่ใน WOReportTheme.js
-  // เพราะไฟล์ theme บน File Cabinet ใช้ path เดียวกับ WO Status Tracking — งานของ cost trace
-  // ต้องไม่แตะรายงานนั้น (คำสั่งผู้ใช้ 2026-10-10) · รูปแบบเดียวกับ theme.ICONS: svg 16px currentColor
+  // ไอคอนที่ WO Cost Trace ใช้คนเดียว (ปุ่ม i · ปุ่ม Export · ลิงก์ย้อนกลับ) อยู่ที่นี่ ไม่ใส่ใน
+  // WOReportTheme.js เพราะไฟล์ theme บน File Cabinet ใช้ path เดียวกับ WO Status Tracking — งานของ
+  // cost trace ต้องไม่แตะรายงานนั้น (คำสั่งผู้ใช้ 2026-10-10) · svg currentColor viewBox 16 วาดที่
+  // 18px (--icon ของ CCRC · ผู้ใช้ตัดสิน 2026-10-11) — ไอคอนจาก theme.ICONS ที่ attribute ยังเป็น 16
+  // ถูกขยายเป็น 18px ด้วย CSS (`.content svg` ใน REPORT_CSS)
   const LOCAL_ICONS = {
-    info: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+    info: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
       + 'focusable="false"><circle cx="8" cy="8" r="6.2" stroke="currentColor" stroke-width="1.4"/>'
       + '<path d="M8 7.2v4" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"/>'
       + '<path d="M8 4.8h.01" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>',
-    download: '<svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+    download: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
       + 'focusable="false"><path d="M8 2.5v7.6M4.8 7l3.2 3.2L11.2 7M3 13h10" stroke="currentColor" '
-      + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+      + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // ลิงก์ "กลับ" — แทนตัวอักษร ← ที่เคยใช้เป็นไอคอน (QA #96 ข้อ 13)
+    arrowLeft: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M13 8H3.5M7.5 4L3.5 8l4 4" stroke="currentColor" '
+      + 'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    // ตัวบอกกาง/พับของหัวข้อพับ (.accico หมุน 90° ตอน [open]) — ทรงเดียวกับ chevronRight ของ theme
+    chevronRight: '<svg width="18" height="18" viewBox="0 0 16 16" fill="none" aria-hidden="true" '
+      + 'focusable="false"><path d="M6 3.2L10.4 8 6 12.8" stroke="currentColor" stroke-width="1.5" '
+      + 'stroke-linecap="round" stroke-linejoin="round"/></svg>'
   };
   const HELP_LABEL = 'คู่มือและเอกสารอ้างอิงทางเทคนิคของรายงานนี้';
 
@@ -605,12 +738,27 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   }
 
   /**
-   * แถวหัวหน้า — ชื่อชั้น (h1) + ปุ่ม i ชิดขวา
-   * โหมด embed ไม่วาด h1 ได้เมื่อ `hideTitleInEmbed` (ชั้นภาพรวม: CCRC แสดงชื่อรายงานที่ viewbody เอง)
+   * แถวหัวหน้าในโหมด embed — ชื่อชั้น (h1 ขนาด --t-md) + ปุ่ม i ชิดขวา
+   * เปิดเดี่ยวคืนค่าว่าง: ชื่อหน้าและปุ่ม i อยู่ใน topbar ที่ `shell(title, body, css, helpParams)` วาด
+   * (QA #96 ข้อ 14 — ไม่มี h1 ซ้ำใต้แถบ) · ผู้เรียกต้องส่ง helpParams ชุดเดียวกันให้ shell ด้วย
+   * โหมด embed + `hideTitleInEmbed` (ชั้นภาพรวม: CCRC แสดงชื่อรายงานที่ viewbody เอง) ไม่มี h1 —
+   * ปุ่ม i ลอยมุมขวาบนในแถวเดียวกับเนื้อหาแรก ไม่กินแถวเปล่าของตัวเอง (QA #96 ข้อ 6)
    */
   function pageHead(title, helpParams, hideTitleInEmbed) {
-    const h1 = (EMBED && hideTitleInEmbed) ? '' : '<h1>' + esc(title) + '</h1>';
-    return '<div class="pagehead">' + h1 + helpButton(helpParams) + '</div>';
+    if (!EMBED) return '';
+    if (hideTitleInEmbed) return '<div class="pagehead is-float">' + helpButton(helpParams) + '</div>';
+    return '<div class="pagehead"><h1>' + esc(title) + '</h1>' + helpButton(helpParams) + '</div>';
+  }
+
+  /**
+   * หัวของหัวข้อพับ (`<summary>`) แบบ accordion ของ CCRC — ไอคอน svg ที่หมุนตอนกาง + ข้อความใน .acclbl
+   * marker ของเบราว์เซอร์ถูกซ่อนด้วย CSS ทุก <summary> ในรายงานจึงต้องสร้างผ่านฟังก์ชันนี้
+   * (test_help_page ข้อ 9 ตรวจว่าทุก summary ที่ render ออกมามีไอคอน)
+   * @param {string} innerHtml ข้อความหัว — HTML ที่ escape แล้ว
+   */
+  function accSummary(innerHtml) {
+    return '<summary><span class="accico">' + LOCAL_ICONS.chevronRight + '</span>'
+      + '<span class="acclbl">' + innerHtml + '</span></summary>';
   }
 
   /** สรุป query ที่พัง — ขึ้นบนหน้ารายงานทันที ไม่ต้องเปิดหน้าคู่มือก่อน (ย้ายจาก entry ที่ #96) */
@@ -1136,7 +1284,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
 
   /** ต้นทุน/หน่วยจาก BOM มาตรฐาน × average cost — วิธีที่สองสำหรับ cross-check */
   function renderQLog() {
-    let h = '<details><summary>รายละเอียดทางเทคนิค — คำสั่งดึงข้อมูล ' + QLOG.length + ' ชุด</summary>';
+    let h = '<details>' + accSummary('รายละเอียดทางเทคนิค — คำสั่งดึงข้อมูล ' + QLOG.length + ' ชุด');
     QLOG.forEach(q => {
       h += `<div class="card"><b>${esc(q.label)}</b> — ${q.rows} แถว · ${q.ms} ms`
         + (q.error ? `<div class="err">ERROR: ${esc(q.error)}</div>` : '')
@@ -1368,6 +1516,8 @@ ${costCols}
     HELP_VIEW: HELP_VIEW,
     helpButton: helpButton,
     pageHead: pageHead,
+    accSummary: accSummary,
+    wrapTables: wrapTables,
     renderErrors: renderErrors,
     // date field (date-field.md)
     dateField: dateField,

@@ -2287,6 +2287,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       ${hidden}
       <div class="filterbar">
         <div class="fld" style="flex:0 0 220px">
@@ -2441,7 +2442,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
       ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       <details class="filterbox" open>
-      <summary>${esc(boxLabel)}</summary>
+      ${C.accSummary(esc(boxLabel))}
       <div class="filterbar">
         <div class="fld" style="flex:0 0 200px">
           <label>Subsidiary</label>
@@ -2469,7 +2470,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         </div>
       </div>
       <details class="morefld"${advOpen ? ' open' : ''}>
-        <summary>${esc(advLabel)}</summary>
+        ${C.accSummary(esc(advLabel))}
         <div class="filterbar">
           <div class="fld" style="flex:0 0 190px">
             <label>เดือน (เติมช่วงวันที่ให้)</label>
@@ -2503,7 +2504,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           </div>
         </div>
       </details>
-      <div class="sub" style="margin:var(--sp-3) 0 0">
+      <div class="sub" style="margin-top:var(--sp-3)">
         เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง"
         · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
         · RM Location = คลัง/ถังที่เบิกวัตถุดิบเข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ)
@@ -3455,7 +3456,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     h += renderSummaryExport(sm);
     h += renderSummaryGrid(sm);
 
-    return shell(SUMMARY_TITLE, h);
+    return shell(SUMMARY_TITLE, h, '', filterParams(f));
   }
 
   function renderWOHeader(s) {
@@ -3935,16 +3936,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const it = ctx.itemById[asStr(r.item_id)] || {};
 
       if (!producers.length && !roll) {
-        h += `<details><summary>${esc(r.item_code)} — ${esc(r.item_name)}
+        h += `<details>${C.accSummary(`${esc(r.item_code)} — ${esc(r.item_name)}
           <span class="tag">ซื้อมาใช้ตรง</span> ต้นทุน/หน่วยที่คิดเข้า WO
-          <b>${esc(fmt(r.unit_cost, 8))}</b></summary>
+          <b>${esc(fmt(r.unit_cost, 8))}</b>`)}
           <div class="lvl3">${renderLedger(ctx, r.item_id, r.item_code + ' — ' + r.item_name)}</div></details>`;
         return;
       }
 
       const rollTxt = roll ? ' · BOM มาตรฐาน × average cost ได้ <b>' + esc(fmt(roll.unit_cost, 8)) + '</b>' : '';
-      h += `<details open><summary>${esc(r.item_code)} — ${esc(r.item_name)}
-        · ต้นทุน/หน่วยที่คิดเข้า WO นี้ <b>${esc(fmt(r.unit_cost, 8))}</b>${rollTxt}</summary><div class="lvl2">`;
+      h += `<details open>${C.accSummary(`${esc(r.item_code)} — ${esc(r.item_name)}
+        · ต้นทุน/หน่วยที่คิดเข้า WO นี้ <b>${esc(fmt(r.unit_cost, 8))}</b>${rollTxt}`)}<div class="lvl2">`;
 
       // ต้นทุน/หน่วยที่คิดเข้า WO คือ average cost ของตัวกึ่งสำเร็จรูปเอง ณ เวลาเบิก
       // ต้องกาง ledger ของมันให้เห็น ไม่งั้นตัวเลขนี้ไม่มีหลักฐานรองรับ
@@ -4067,21 +4068,21 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const it = ctx.itemById[asStr(itemId)] || {};
     const stored = asNum(it.avg_cost);
     if (!rows.length) {
-      return `<details><summary>${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
-        · average cost ในระบบ ${esc(fmt(stored, 8))}</summary></details>`;
+      return `<details>${C.accSummary(`${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
+        · average cost ในระบบ ${esc(fmt(stored, 8))}`)}</details>`;
     }
     const last = rows[rows.length - 1];
     const gap = stored - asNum(last.run_avg);
     const trusted = closeEnough(asNum(last.run_avg), stored);
     const cls = trusted ? 'ok' : 'bad';
     const asof = avgAsOf(rows, ctx.asOf);
-    let h = `<details><summary>${esc(label)} — ${rows.length} รายการ ·
+    let h = `<details>${C.accSummary(`${esc(label)} — ${rows.length} รายการ ·
       ค่าเฉลี่ยที่คำนวณได้ <b>${esc(fmt(asNum(last.run_avg), 8))}</b> ·
       average cost ในระบบ <b>${esc(fmt(stored, 8))}</b>
       <span class="${cls}">ผลต่าง ${esc(fmt(gap, 8))}</span>
       ${asof ? ' · ณ ' + esc(ctx.asOf) + ' <b>' + esc(fmt(asof.avg, 8)) + '</b>'
              : ' · ณ ' + esc(ctx.asOf) + ' <span class="warn">ยังไม่มีความเคลื่อนไหว</span>'}
-      ${trusted ? '' : ' <span class="bad">— ยังนับไม่ครบ ห้ามใช้อ้างอิง</span>'}</summary>`;
+      ${trusted ? '' : ' <span class="bad">— ยังนับไม่ครบ ห้ามใช้อ้างอิง</span>'}`)}`;
     if (asof) {
       h += '<p class="sub">average cost ณ ' + esc(ctx.asOf) + ' = <b>' + esc(fmt(asof.avg, 10)) + '</b>'
         + ' (คงเหลือ ' + esc(fmt(asof.qty, 6)) + ' มูลค่า ' + esc(fmt(asof.val, 2))
@@ -4219,10 +4220,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     bad.forEach(id => {
       const a = ctx.auditByItem[id];
       const it = ctx.itemById[id] || {};
-      h += `<details><summary><span class="bad">ยังไม่ตรง</span>
+      h += `<details>${C.accSummary(`<span class="bad">ยังไม่ตรง</span>
         ${esc(asStr(it.item_code))} — ${esc(asStr(it.item_name))} ·
         คำนวณได้ <b>${esc(fmt(a.baseAvg, 8))}</b> · ระบบเก็บ <b>${esc(fmt(a.stored, 8))}</b> ·
-        ผลต่าง <b>${esc(fmt(a.stored - a.baseAvg, 8))}</b></summary>
+        ผลต่าง <b>${esc(fmt(a.stored - a.baseAvg, 8))}</b>`)}
         <table><tr><th>ประเภทเอกสาร</th><th>บรรทัด</th><th class="n">บรรทัด</th>
         <th>ลงบัญชีสินทรัพย์</th><th class="n">รวมปริมาณ</th><th class="n">รวมยอดบัญชี (สกุลฐาน)</th>
         <th class="n">ยอดสกุลเอกสาร</th><th>นับใน ledger?</th><th class="n">ถ้านับเพิ่ม avg จะเป็น</th></tr>`;
@@ -4309,17 +4310,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   }
 
   function renderPage(m) {
+    // ปุ่ม i: เปิดเดี่ยวอยู่ใน topbar (ส่งให้ shell) · embed อยู่ใน pagehead — พารามิเตอร์ชุดเดียวกัน
+    const helpParams = Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam });
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
-      + '">← ภาพรวมหลายใบสั่งผลิต</a>'
+      + '">' + C.ICONS.arrowLeft + 'ภาพรวมหลายใบสั่งผลิต</a>'
       + (m.woKey ? ' · <a href="' + selfUrl({ ready: m.woKey })
         + '">ตรวจความพร้อม master ของใบนี้</a>' : '')
       + '</div>'
-      + pageHead(DRILL_TITLE, Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam }), false)
+      + pageHead(DRILL_TITLE, helpParams, false)
       + '<div class="sub">ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง — วัตถุดิบที่เบิก '
       + '→ ใบสั่งผลิตที่ทำกึ่งสำเร็จรูป → เอกสารรับเข้าที่ทำให้ average cost เป็นค่านั้น</div>'
       + renderForm(m.woKey, (m.ctx && m.ctx.asOf) || '', m.filters);
 
-    const page = (body) => shell(DRILL_TITLE, body);
+    const page = (body) => shell(DRILL_TITLE, body, '', helpParams);
     if (m.notFound) return page(h + renderErrors() + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>');
     if (!m.ok) return page(h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>');
 
@@ -4390,8 +4393,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * @param {string} [o.extraCss]
    */
   function renderHelpPage(o) {
-    let h = '<div class="crumb"><a href="' + esc(selfUrl(o.back)) + '">← กลับไปหน้ารายงาน</a></div>'
-      + '<h1>คู่มือรายงาน — ' + esc(o.layerTitle) + '</h1>';
+    const title = 'คู่มือรายงาน — ' + o.layerTitle;
+    // เปิดเดี่ยว: ชื่อหน้าอยู่ใน topbar (h1.viewtitle) ไม่วาด h1 ซ้ำ · embed: h1 ขนาดเท่าหัว .sec ของ CCRC
+    let h = '<div class="crumb"><a href="' + esc(selfUrl(o.back)) + '">' + C.ICONS.arrowLeft
+      + 'กลับไปหน้ารายงาน</a></div>'
+      + (C.isEmbed() ? '<h1>' + esc(title) + '</h1>' : '');
     if (o.guide) h += '<h2>อ่านตารางนี้อย่างไร</h2>' + o.guide;
     h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>'
       + '<div class="sub">คำสั่งดึงข้อมูลชุดเดียวกับหน้ารายงาน รันใหม่ด้วยตัวกรองเดียวกันตอนเปิดหน้านี้ '
@@ -4399,7 +4405,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + renderErrors()
       + (o.error ? '<div class="err">' + esc(o.error.message) + '</div>' : '')
       + renderQLog();
-    return shell('คู่มือ — ' + o.layerTitle, h, o.extraCss);
+    return shell(title, h, o.extraCss);
   }
 
   /** ชั้นภาพรวม: รายการใน dropdown + ยอดรวม — หน้ารายงานและหน้าคู่มือเรียกตัวเดียวกัน log จึงเท่ากัน */
@@ -4462,7 +4468,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         ctx.response.write(shell(READY_TITLE,
           pageHead(READY_TITLE, readyParams, false)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderErrors(), READY_CSS));
+          + renderErrors(), READY_CSS, readyParams));
         return;
       }
       if (wantJson) {
@@ -4493,7 +4499,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         ctx.response.write(shell(SUMMARY_TITLE,
           pageHead(SUMMARY_TITLE, filterParams(filters), true) + renderSummaryForm(filters)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderErrors()));
+          + renderErrors(), '', filterParams(filters)));
         return;
       }
       if (wantJson) {
@@ -4528,7 +4534,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         pageHead(DRILL_TITLE, drillParams, false)
         + renderForm(woKey, '', filters)
         + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-        + renderErrors()));
+        + renderErrors(), '', drillParams));
       return;
     }
     // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม

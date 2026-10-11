@@ -1162,6 +1162,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       Array.prototype.map.call(s.selectedOptions,function(o){return o.value}).join(','):'');">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       <input type="hidden" name="rloc" id="rlocval" value="${esc(p.locAll ? 'all' : (rd.stock_locs || []).join(','))}">
       <div class="filterbar">
         <div class="fld" style="flex:0 0 250px">
@@ -1457,16 +1458,17 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
 
   function renderReadyPage(rd) {
     // ปุ่ม i พาพารามิเตอร์ของหน้านี้ไปครบ (entry ตั้ง rd.helpParams) — หน้าคู่มือรันชุดเดียวกันซ้ำ
-    let h = pageHead(READY_TITLE, rd.helpParams || { ready: rd.woKey }, false)
+    const helpParams = rd.helpParams || { ready: rd.woKey };
+    let h = pageHead(READY_TITLE, helpParams, false)
       + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
       + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
     h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
-      + '">← กลับภาพรวมต้นทุน</a>'
+      + '">' + C.ICONS.arrowLeft + 'กลับภาพรวมต้นทุน</a>'
       + (rd.ok && rd.basis === 'wo'
         ? ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
       + '</div>';
     h += renderReadyForm(rd);
-    const page = (body) => shell(READY_TITLE, body, READY_CSS);
+    const page = (body) => shell(READY_TITLE, body, READY_CSS, helpParams);
     // query ที่พังขึ้นบนหน้าทันที — query log เต็มอยู่หน้าคู่มือ (#96)
     h += renderErrors();
     if (!rd.ok) {
