@@ -83,7 +83,8 @@ eq('ผลต่างสุทธิ (ยอดเงิน) อยู่ใบ
 eq('รวมต้นทุนการผลิตมาก่อนผลต่างสุทธิ', at('รวมต้นทุนการผลิต') < at('ผลต่างสุทธิ'), true);
 eq('การ์ดตัวเลขภาพรวม 10 ใบ = 5 × 2 แถวเต็ม', (ov.match(/class="kpi-card/g) || []).length, 10);
 eq('กริดภาพรวม 5 คอลัมน์คงที่', has('#wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'), true);
-eq('≤640 สองคอลัมน์', has('@media (max-width:640px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'), true);
+// breakpoint ของกริดภาพรวมย้ายไป 1099/1049(embed)/449 หลัง QA SB1 — ตรวจที่ test_trace_ux_qa_sb1.js
+eq('กริดภาพรวมยังลงสองคอลัมน์เมื่อแคบ', has('{#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'), true);
 eq('จอแคบ: การ์ดทั่วไปขั้นต่ำ 150px แบบ .kpis ของ CCRC', has('.kpi-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}'), true);
 
 // ═══ 4. คำอธิบายตัวกรองอยู่หน้าคู่มือ ═══════════════════════════════════════════════════

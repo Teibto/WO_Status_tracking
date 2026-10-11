@@ -327,7 +327,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'margin-bottom:var(--sp-6)}'
     // การ์ดตัวเลขหน้าภาพรวม 10 ใบ = สองแถว แถวละ 5 (#98) — บน: จำนวนใบ + ยอดเงิน · ล่าง: ใบที่มีปัญหา
     // auto-fit เหลือใบกำพร้า (9+1 ที่กรอบ 1810 · 4+4+2 ที่ 904) · เลือกด้วย ~ หลังฟอร์มภาพรวม เพราะ markup
-    // `<div class="kpi-grid">` ถูกเทสอื่นอ้างตรงตัว · ≤640 สองคอลัมน์
+    // `<div class="kpi-grid">` ถูกเทสอื่นอ้างตรงตัว · กรอบแคบลง 2 → 1 คอลัมน์ (กฎ @media ท้าย CSS — QA SB1 #98)
     + '#wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
     + '.kpi-card{border:1px solid var(--c-border);border-radius:var(--r-lg);'
     + 'padding:var(--sp-3) var(--sp-4);gap:var(--sp-1)}'
@@ -341,7 +341,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // (WOReportTheme.js ห้ามแก้) ข้อความยาวอย่าง "ผลต่าง summary cost" จึงถูกตัดเป็น … (QA #96 ข้อ 20)
     + '.kpi-label,.kpi-meta{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}'
     + '.kpi-value{font-family:var(--f-mono);font-size:var(--t-xl);font-weight:var(--w-bold);'
-    + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums}'
+    + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums;'
+    // ตาข่ายสุดท้าย — ค่าที่ยาวเกินที่ breakpoint ท้าย CSS เผื่อไว้ (15 อักขระ) ตัดบรรทัดในการ์ด ไม่ล้นออกนอกการ์ด
+    + 'overflow-wrap:anywhere}'
     + '.kpi-card.accent-success .kpi-value{color:var(--c-success)}'
     + '.kpi-card.accent-warning .kpi-value{color:var(--c-warning)}'
     + '.kpi-card.accent-error .kpi-value{color:var(--c-danger)}'
@@ -683,7 +685,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ช่องพิมพ์ใน .datewrap ยืดตามกรอบ (height:auto ข้างบน) — min-height 40px จะดันให้ล้นกรอบที่สูง 40px รวมเส้นขอบ
     + '.datewrap input[type=text]{min-height:0}'
     + '}'
-    + '@media (max-width:640px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}';
+    // การ์ดภาพรวม 10 ใบ: 5 → 2 → 1 คอลัมน์ (QA SB1 #98 — เดิม 5 คอลัมน์ถึง 641px ตัวเลขล้นการ์ดที่ ~641–1023)
+    // ไม่มีใบกำพร้าได้แค่ 5/2/1 · breakpoint คิดจากค่ายาว 15 อักขระ (-123,456,789.12 · Consolas 20px ≈ 165px)
+    // + padding 32 + เส้น 2 ≈ 199px ต่อใบ → 5 ใบ + gap 4×12 ต้องการกริด ≥1043px
+    //   เปิดเดี่ยว กริด = จอ − 48 (≥1024) → 5 คอลัมน์ตั้งแต่ 1100px · embed กริด = กรอบ iframe → ตั้งแต่ 1050px
+    //   (CCRC จอ 1366 ที่ sidebar เปิด กรอบ ~1088 ยังได้ 5 คอลัมน์) · 2 คอลัมน์ต้องการกริด ≥410 → ≤449 เหลือ 1
+    // วัดด้วย media ไม่ใช่ container query — container-type ที่ .content เป็นที่ยึดของ popup position:fixed
+    + '@media (max-width:1099px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'
+    + '@media (min-width:1050px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}'
+    + '@media (max-width:449px){#wct-summary-form~.kpi-grid{grid-template-columns:minmax(0,1fr)}}';
 
   const CSS = theme.css(REPORT_CSS);
 

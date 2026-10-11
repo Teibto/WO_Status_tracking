@@ -28,6 +28,8 @@ const H = require('../../../test/lib/_harness');
 const BASE = {
   // ทางค้นด้วยรหัสสินค้า — BASE ค้นด้วยเลขที่ใบสั่งผลิต จึงไม่มีแถวทางนี้
   'สินค้าจากรหัส': [],
+  // ชื่อบริษัทในหัวหน้าความพร้อม (QA SB1 #98) — entry ใช้ query รายชื่อบริษัทของตัวกรองภาพรวม
+  'ตัวกรอง — บริษัท': [{ id: 2, name: 'บริษัททดสอบ' }],
   'WO header': [
     { wo_id: 191254, wo_no: 'WO-FSC-00000392', wo_date: '7/8/2026', wo_date_iso: '2026-08-07',
       wo_status: 'Released', subsidiary: 'Foodstar Co., Ltd.', wo_type: 'Production' }
@@ -505,15 +507,15 @@ eq('702 บอกเหตุผลว่าอาจผลิตเอง',
 eq('603 ไม่มี Item Receipt เลย = ตรวจไม่ได้เหมือนกัน', T.stockDateVerdict(rd65, 603).cls, 'unk');
 
 const html65 = T.renderReadyPage(rd65);
-eq('มีหัวข้อความพร้อม stock', html65.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)') >= 0, true);
+eq('มีหัวข้อความพร้อม stock', html65.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน</h2>') >= 0, true);
 eq('มีลิงก์ไปเปิดใบรับเข้าที่ช้า (เลขที่ใบรับกดไปดูได้)',
   html65.indexOf('itemrcpt.nl?id=5002') >= 0, true);
 eq('เห็นเลขที่ใบรับที่ช้าบนหน้า', html65.indexOf('IR-0002') >= 0, true);
 eq('KPI นับวัตถุดิบรับเข้าหลังวันปิดงาน = 1 (703)',
-  html65.indexOf('วัตถุดิบรับเข้าหลังวันปิดงาน (#65)') >= 0
-  && /วัตถุดิบรับเข้าหลังวันปิดงาน \(#65\)[\s\S]{0,120}?>1</.test(html65), true);
+  html65.indexOf('วัตถุดิบรับเข้าหลังวันปิดงาน</div>') >= 0
+  && /วัตถุดิบรับเข้าหลังวันปิดงาน<\/div>[\s\S]{0,120}?>1</.test(html65), true);
 eq('ปัญหานี้ถูกดันเข้า "ต้องเคลียร์ก่อนเริ่มทดสอบ" ด้วย',
-  html65.indexOf('ความพร้อม stock (#65)') >= 0, true);
+  html65.indexOf('ความพร้อม stock ตามวันรับเข้า — ') >= 0, true);
 
 console.log('\n── SQL จริงที่ยิงออกไป — ล็อกคำตัดสินข้อ 2/3 ของ #65 ไว้ในเทส ไม่ใช่แค่ในคอมเมนต์ ──');
 const sqlWoc = H.sqlOf('วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้');
@@ -546,10 +548,10 @@ eq('ไม่ใช่ query พัง', rd65b.stock_date_completion_failed, fal
 eq('verdict ต่อวัตถุดิบเป็น info ไม่ใช่ ok/bad/unk', T.stockDateVerdict(rd65b, 701).cls, 'info');
 const html65b = T.renderReadyPage(rd65b);
 eq('หน้ามีหัวข้อความพร้อม stock อยู่ (ไม่เงียบ)',
-  html65b.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)') >= 0, true);
+  html65b.indexOf('ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน</h2>') >= 0, true);
 eq('บอกตรง ๆ ว่ายังไม่ปิดงาน', html65b.indexOf('ใบสั่งผลิตนี้ยังไม่ปิดงาน') >= 0, true);
 eq('ไม่ถูกนับเป็นปัญหาใน KPI (ยังไม่ถึงเวลาตรวจ ไม่ใช่ของเสีย)',
-  /วัตถุดิบรับเข้าหลังวันปิดงาน \(#65\)[\s\S]{0,120}?>0</.test(html65b), true);
+  /วัตถุดิบรับเข้าหลังวันปิดงาน<\/div>[\s\S]{0,120}?>0</.test(html65b), true);
 
 console.log('\n── query ล้มตอนอ่านวันปิดงาน (WOC) — ห้ามขึ้นว่าผ่าน (กับดัก fail-open #54 · #29) ──');
 FX = Object.assign({}, BASE, { 'วันปิดงานผลิต (WOC) ของใบสั่งผลิตนี้': 'THROW' });
@@ -561,7 +563,7 @@ eq('ไม่มีช่องไหนขึ้นว่าผ่าน',
 eq('ทุกช่องเป็นตรวจไม่ได้', T.stockDateVerdict(rd65c, 701).cls, 'unk');
 const html65c = T.renderReadyPage(rd65c);
 eq('ขึ้นข้อความอ่านวันปิดงานไม่สำเร็จ',
-  html65c.indexOf('อ่านวันปิดงาน (WOC.trandate) ไม่สำเร็จ') >= 0, true);
+  html65c.indexOf('อ่านวันปิดงานของใบสั่งผลิตไม่สำเร็จ') >= 0, true);
 
 console.log('\n── query ล้มตอนอ่านวันรับเข้า (Item Receipt) — ห้ามขึ้นว่าผ่าน ──');
 FX = Object.assign({}, BASE, { 'วันรับเข้า (Item Receipt) เทียบวันปิดงาน': 'THROW' });

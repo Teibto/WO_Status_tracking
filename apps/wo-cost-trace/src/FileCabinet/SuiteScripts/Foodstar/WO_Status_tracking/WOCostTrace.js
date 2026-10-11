@@ -3461,7 +3461,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   function renderWOHeader(s) {
     const w = s.wo, fg = s.fg || {};
     return `<div class="card"><table class="kv">
-      <tr><td>ใบสั่งผลิต</td><td>${tranLink('workorder', s.wo_id, asStr(w.wo_no))}<span class="tag">id ${esc(s.wo_id)}</span></td>
+      <tr><td>ใบสั่งผลิต</td><td><span title="รหัสภายใน NetSuite: ${esc(s.wo_id)}">${tranLink('workorder', s.wo_id, asStr(w.wo_no))}</span></td>
           <td>วันที่</td><td>${esc(asStr(w.wo_date))}</td></tr>
       <tr><td>สินค้าที่ผลิต</td><td colspan="3">${itemLink(fg.item_id, asStr(fg.item_code) + ' — ' + asStr(fg.item_name))}</td></tr>
       <tr><td>สั่งผลิต</td><td>${esc(fmt(asNum(fg.quantity), 4))} ${esc(asStr(fg.unit_name))}</td>
@@ -3569,7 +3569,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         const scCell = !ia
           ? (asNum(r.fg_qty) !== 0 ? '<span class="bad">ยังไม่ผูก</span>' : '')
           : (d ? tranLink(d.recordtype, ia, asStr(d.doc_no))
-               : '<span class="warn">ผูกเอกสาร id ' + esc(ia) + ' ที่ไม่ใช่ใบ summary cost</span>');
+               : '<span class="warn" title="รหัสภายใน NetSuite: ' + esc(ia) + '">ผูกเอกสารอื่นที่ไม่ใช่ใบ summary cost</span>');
         h += `<tr><td>${tranLink('workordercompletion', r.woc_id, asStr(r.woc_no))}</td>
           <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.batch_id))}</td>
           <td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
@@ -4468,6 +4468,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         rd.helpParams = readyParams;
         // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม (เหมือนชั้นเจาะลึก)
         rd.filters = filters;
+        // ชื่อบริษัทของใบสั่งผลิตในหัวหน้า (QA SB1 #98 — เดิมแสดงแถว "บริษัท (id)" เป็นเลข) · ใช้ query
+        // รายชื่อบริษัทตัวเดียวกับตัวกรองภาพรวม ไม่เพิ่มคอลัมน์ใหม่ใน query ของหน้านี้
+        if (rd.ok && asStr(rd.sub_id)) filters.subRows = qFilterSubsidiaries();
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
         if (wantHelp) {

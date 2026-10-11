@@ -1189,7 +1189,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         </div>
         <div class="act"><button type="submit" class="btn primary">ตรวจความพร้อม</button></div>
       </div>
-      <div class="sub" style="margin:var(--sp-3) 0 0">
+      <div class="sub" style="margin:0">
         ใส่เลขที่ใบสั่งผลิต: จำนวน วันที่ และคลัง มาจากใบนั้น · ใส่รหัสสินค้า (ยังไม่มีใบสั่งผลิต):
         จำนวนใช้ขนาด batch ของ revision · วันที่ = วันนี้ · คลังแรกที่เลือกถูกใช้เป็นคลังผลิต
         <br>เลือกคลังป้อน (เช่น RMRD · WRM-NP) เพิ่มด้วย ถ้าของยังรออยู่ที่คลังป้อนแล้วย้ายเข้าด้วย TO
@@ -1228,13 +1228,18 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     const skipLoc = rd.basis === 'item' && !rd.loc_id;
     const verdict = bad ? 'ยังไม่พร้อม'
       : ((unk || skipLoc) ? 'ตรวจไม่ครบ' : (warn ? 'พร้อมแบบมีข้อสังเกต' : 'พร้อม'));
-    return '<div class="kpi-grid">'
+    // 8 ใบ หรือ 9 ใบเมื่อมีการ์ดความพร้อม stock ตามวันที่ — คลาสบอกจำนวนให้ READY_CSS จัดคอลัมน์
+    // ที่เต็มแถวพอดี (QA SB1 #98: auto-fit ใน embed จอกว้างเป็น 8+1)
+    const nCards = rd.stock_date_shown ? 9 : 8;
+    return '<div class="kpi-grid kpi-n' + nCards + '">'
       + kpi('คำตัดสินรวม', esc(verdict),
         bad ? 'bad' : ((unk || skipLoc) ? 'warn' : (warn ? 'warn' : 'ok')),
         skipLoc ? 'ยังไม่เลือกคลัง — ข้ามการตรวจที่ตัดสินตามคลัง' : '')
       + kpi('รายการที่ต้องแก้', esc(String(bad)), bad ? 'bad' : 'ok')
       + kpi('ข้อสังเกต', esc(String(warn)), warn ? 'warn' : 'ok')
-      + kpi('ตรวจไม่ได้ (query พัง)', esc(String(unk)), unk ? 'warn' : 'ok')
+      // unk รวมทั้งอ่านข้อมูลไม่สำเร็จ และไม่มีข้อมูลให้เทียบ (เช่นวัตถุดิบที่ไม่มีใบรับเข้าเลย) — ป้ายเดิม
+      // "ตรวจไม่ได้ (query พัง)" ทั้งเป็นศัพท์ระบบและแคบกว่าความหมายจริง (QA SB1 #98)
+      + kpi('ตรวจไม่ได้', esc(String(unk)), unk ? 'warn' : 'ok', unk ? 'ข้อมูลไม่พอหรืออ่านไม่สำเร็จ — ไม่ถือว่าผ่าน' : '')
       + kpi('สินค้าในสายการผลิต · ผลิตเอง', esc(String(rd.nodes.length)) + ' · ' + esc(String(madeCount)))
       + kpi('ระดับ BOM ที่ไล่ได้', esc(String(rd.depth_reached)))
       + kpi('วัตถุดิบที่ของไม่พอ', esc(String(shortItems)), shortItems ? 'bad' : 'ok')
@@ -1242,7 +1247,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         ? kpi('ยอดชั้นที่ 1 ไม่ตรงบรรทัดบน WO', esc(String(woBad)), woBad ? 'warn' : 'ok')
         : kpi('ยันยอดกับใบสั่งผลิต', 'ยังไม่มีใบ', 'info'))
       + (rd.stock_date_shown
-        ? kpi('วัตถุดิบรับเข้าหลังวันปิดงาน (#65)', esc(String(stockDateBad)), stockDateBad ? 'bad' : 'ok')
+        ? kpi('วัตถุดิบรับเข้าหลังวันปิดงาน', esc(String(stockDateBad)), stockDateBad ? 'bad' : 'ok')
         : '')
       + '</div>';
   }
@@ -1269,7 +1274,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       rd.need_rows.forEach(r => {
         const v = stockDateVerdict(rd, r.item_id);
         if (v.cls === 'bad' || v.cls === 'unk') {
-          items.push({ cls: v.cls, text: asStr(r.code) + ' · ความพร้อม stock (#65) — ' + v.text
+          items.push({ cls: v.cls, text: asStr(r.code) + ' · ความพร้อม stock ตามวันรับเข้า — ' + v.text
             + (v.cls === 'bad' ? ' (เลขที่ใบรับดูที่ตาราง "ความพร้อม stock" ด้านล่าง)' : '') });
         }
       });
@@ -1354,7 +1359,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
    */
   function renderReadyStockDates(rd) {
     if (!rd.stock_date_shown) return '';
-    let h = '<h2>ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน (#65)</h2>';
+    let h = '<h2>ความพร้อม stock — วันรับเข้าเทียบวันปิดงาน</h2>';
     h += '<p class="sub">ตรวจย้อนหลังว่าวัตถุดิบที่ใช้ไปมาถึงคลังก่อนวันปิดงานหรือไม่ '
       + '— ถ้ามาหลังวันปิดงาน ต้นทุนเฉลี่ยที่คิด ณ วันปิดงานยังไม่รวมของล็อตนี้ '
       + 'ใช้เกณฑ์ "มีอย่างน้อยหนึ่งใบที่ทันเวลา" เพราะที่ระดับใบรับเข้าผูกไม่ได้ว่าล็อตไหนถูกใช้จริง'
@@ -1369,7 +1374,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
       return h;
     }
     if (rd.stock_date_completion_failed) {
-      h += '<div class="err">อ่านวันปิดงาน (WOC.trandate) ไม่สำเร็จ — ตรวจความพร้อม stock ไม่ได้ '
+      h += '<div class="err">อ่านวันปิดงานของใบสั่งผลิตไม่สำเร็จ — ตรวจความพร้อม stock ไม่ได้ '
         + 'ห้ามถือว่าผ่าน ดูรายละเอียดในหน้าคู่มือ (ปุ่ม i)</div>';
       return h;
     }
@@ -1428,6 +1433,22 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     manual: 'กรอกเอง'
   };
 
+  /** รหัสภายในของ NetSuite ไม่ขึ้นบนหน้าจอ (QA SB1 #98) — อยู่ใน tooltip ไว้ไล่ปัญหา */
+  function idTip(id) {
+    return asStr(id) ? 'รหัสภายใน NetSuite: ' + asStr(id) : '';
+  }
+
+  /**
+   * บริษัทของใบสั่งผลิต — ชื่อจากรายชื่อบริษัทที่ entry ส่งมา (`rd.filters.subRows` ของตัวกรองภาพรวม
+   * ถ้ามี) · ไม่เจอชื่อ = บอกว่าใช้บริษัทของใบสั่งผลิต โดยรหัสอยู่ใน tooltip · ไม่เพิ่ม query ใหม่
+   */
+  function subCell(rd) {
+    const rows = (rd.filters && rd.filters.subRows) || [];
+    const hit = rows.filter(r => asStr(r.id) === asStr(rd.sub_id))[0];
+    return '<span title="' + esc(idTip(rd.sub_id)) + '">'
+      + (hit ? esc(asStr(hit.name)) : 'บริษัทของใบสั่งผลิตนี้') + '</span>';
+  }
+
   function renderReadyHeader(rd) {
     const w = rd.wo;
     const byItem = rd.basis === 'item';
@@ -1439,17 +1460,16 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     const first = byItem
       ? `<tr><td>ทางเข้า</td><td>รหัสสินค้า <span class="tag">ยังไม่มีใบสั่งผลิต</span></td>
           <td>คลังที่ใช้เป็นคลังผลิต</td><td>${rd.loc_id
-            ? esc(rd.loc_name) + ' <span class="tag">id ' + esc(rd.loc_id) + '</span>'
+            ? '<span title="' + esc(idTip(rd.loc_id)) + '">' + esc(rd.loc_name) + '</span>'
             : '<span class="miss">ไม่ได้เลือก — ข้ามการตรวจ BOM/routing ตามคลัง</span>'}</td></tr>`
-      : `<tr><td>ใบสั่งผลิต</td><td>${tranLink('workorder', rd.wo_id, asStr(w.wo_no))}
-          <span class="tag">id ${esc(rd.wo_id)}</span></td>
-          <td>คลังที่ผลิต</td><td>${esc(rd.loc_name)} <span class="tag">id ${esc(rd.loc_id)}</span></td></tr>`;
+      : `<tr><td>ใบสั่งผลิต</td><td><span title="${esc(idTip(rd.wo_id))}">${tranLink('workorder', rd.wo_id, asStr(w.wo_no))}</span></td>
+          <td>คลังที่ผลิต</td><td><span title="${esc(idTip(rd.loc_id))}">${esc(rd.loc_name)}</span></td></tr>`;
     return `<div class="card"><table class="kv">
       ${first}
       <tr><td>สินค้าที่ผลิต</td><td>${itemLink(rd.fg.item_id, asStr(rd.fg.item_code) + ' — ' + asStr(rd.fg.item_name))}</td>
           <td>จำนวนที่ใช้คิด</td><td><b>${esc(fmt(rd.root_qty, 4))}</b> ${esc(asStr(rd.fg.unit_name))}${qtyNote}</td></tr>
       <tr><td>วันที่ตรวจ master</td><td>${esc(rd.date_iso)}${dateNote}</td>
-          <td>บริษัท (id)</td><td>${rd.sub_id ? esc(rd.sub_id)
+          <td>บริษัท</td><td>${rd.sub_id ? subCell(rd)
             : '<span class="info">ไม่จำกัด (ไม่มีเอกสารให้อ่าน)</span>'}</td></tr>
     </table></div>`;
   }
@@ -1523,6 +1543,17 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     + 'ol.todo li.bad{color:var(--pj-error)}'
     + 'ol.todo li.unk{color:var(--pj-text-muted)}'
     + '.card.ok{border-color:var(--pj-success);color:var(--pj-success)}'
+    // ระยะแถวของฟอร์ม = --sp-3 (QA SB1 #98: เดิม 32px — .brk สูง 0 เป็นแถวของตัวเองใน flex จึงได้ gap 16 สองครั้ง
+    // margin ติดลบช่วยไม่ได้เพราะความสูงแถว flex ไม่ต่ำกว่า 0) · ระยะแถวมาจาก margin ล่างของช่อง ไม่ใช่ row-gap
+    // แถวที่ตัดเองตอนจอแคบจึงได้ 12 เท่ากัน · ช่องคอลัมน์ยัง 16 · ข้อความใต้ฟอร์มไม่มี margin-top ของตัวเองแล้ว
+    + '.filterbar{row-gap:0}'
+    + '.filterbar>:not(.brk){margin-bottom:var(--sp-3)}'
+    // การ์ดตัวเลข 8/9 ใบ เต็มแถวทุกความกว้าง (QA SB1 #98 — auto-fit ใน embed จอกว้างเป็น 8+1)
+    //   9 ใบ: 3 × 3 · ≤449px 1 คอลัมน์ ·  8 ใบ: 4 × 2 · ≤640px 2 คอลัมน์
+    + '.kpi-grid.kpi-n9{grid-template-columns:repeat(3,minmax(0,1fr))}'
+    + '.kpi-grid.kpi-n8{grid-template-columns:repeat(4,minmax(0,1fr))}'
+    + '@media (max-width:640px){.kpi-grid.kpi-n8{grid-template-columns:repeat(2,minmax(0,1fr))}}'
+    + '@media (max-width:449px){.kpi-grid.kpi-n9{grid-template-columns:minmax(0,1fr)}}'
     + '</style>';
 
   // entry เรียกแค่ 5 ตัวนี้ (READY_TITLE เพิ่มที่ #96 ให้หน้าคู่มือใช้ชื่อเดียวกัน) · เพิ่ม export ใหม่เมื่อ entry ต้องใช้จริงเท่านั้น
