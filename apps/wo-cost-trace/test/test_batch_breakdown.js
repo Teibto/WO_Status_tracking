@@ -244,10 +244,19 @@ console.log('\n── 8. หน้าเจาะลึกมีสารบั�
 const page = T.renderPage(m);
 eq('มีแถบสารบัญ', page.indexOf('<nav class="toc"') >= 0, true);
 ['sec-totals', 'sec-wip', 'sec-wocs', 'sec-materials', 'sec-conv', 'sec-level2',
-  'sec-audit', 'sec-qlog'].forEach((id) => {
+  'sec-audit'].forEach((id) => {
   eq('หัวข้อ ' + id + ' มี id', page.indexOf('<h2 id="' + id + '"') >= 0, true);
   eq('สารบัญลิงก์ถึง ' + id, page.indexOf('href="#' + id + '"') >= 0, true);
 });
+// "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (#96) — สารบัญต้องไม่ชี้ไปหัวข้อที่ไม่มีในหน้านี้
+eq('สารบัญไม่มีลิงก์ sec-qlog (หัวข้อย้ายไปหน้าคู่มือ #96)', page.indexOf('href="#sec-qlog"') >= 0, false);
+eq('หน้าเจาะลึกไม่มีหัวข้อ "เอกสารอ้างอิงทางเทคนิค" (ทั้งแบบมีและไม่มี id)',
+  /<h2[^>]*>เอกสารอ้างอิงทางเทคนิค<\/h2>/.test(page), false);
+const tocHrefs = ((page.match(/<nav class="toc"[^>]*>([\s\S]*?)<\/nav>/) || [])[1] || '')
+  .match(/href="#([^"]+)"/g) || [];
+eq('ทุกลิงก์ในสารบัญมีหัวข้อ id นั้นจริงในหน้า',
+  tocHrefs.every((h) => page.indexOf('<h2 id="' + h.slice(7, -1) + '"') >= 0), true);
+eq('สารบัญมีลิงก์ครบ 7 หัวข้อ', tocHrefs.length, 7);
 eq('ตารางวัตถุดิบห่อ .scroll + มี thead',
   /<div class="scroll"><table><thead>/.test(T.renderMaterials(s, m.ctx, true)), true);
 

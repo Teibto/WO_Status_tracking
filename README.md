@@ -32,8 +32,12 @@ KPI 4 ใบจึงนับเฉพาะหน้าปัจจุบั�
 | ภาพรวม | ไม่ต้องส่งอะไร | ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน · export Excel เอาไป pivot ต่อได้ |
 | เจาะลึก | `&wo=WOFSC00000470` | ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง (20 query) |
 | ความพร้อม master | `&ready=<เลขที่ WO หรือรหัสสินค้า>` | ก่อนเริ่มทดสอบ — master ที่ต้องใช้ตั้งครบหรือยัง |
+| คู่มือของชั้นนั้น | เติม `&view=help` ต่อจากพารามิเตอร์ของชั้น | "อ่านตารางนี้อย่างไร" + "เอกสารอ้างอิงทางเทคนิค" (query log) — เปิดจากปุ่มไอคอน i มุมขวาบนของทุกชั้น (#96) |
 
 ทั้งสองใบรับ `&embed=1` = ไม่วาดแถบหัวเรื่องของตัวเอง สำหรับฝังในหน้าอื่น ·
+WO Cost Trace ชั้นภาพรวมในโหมดนี้ไม่วาด h1 ด้วย เพราะ Costing Custom Report Center แสดงชื่อรายงานเอง ·
+หน้าตาของ WO Cost Trace ยึด token/เมตริกของ CCRC (`CCRC_CSS` ใน `WOCostTrace_Common.js` · #96) ·
+หน้าคู่มือ `&view=help` รันชั้นเดียวกันซ้ำเพื่อให้ได้ query log ของจริง (ชั้นเจาะลึก = 19 query อีกรอบ) ·
 ที่มาของตัวเลขทุกช่องอยู่ใน [`apps/wo-cost-trace/WO_COST_TRACE.md`](./apps/wo-cost-trace/WO_COST_TRACE.md) ·
 กติกาเรื่องหน้าตาและ style อยู่ใน [`shared/REPORT_STYLE.md`](./shared/REPORT_STYLE.md)
 
@@ -57,7 +61,7 @@ WO_Status_tracking/
 │   │   │   ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
 │   │   │   ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
 │   │   │   └── WOCostTrace.js                  entry · ภาพรวม + เจาะลึก + ความพร้อม
-│   │   ├── test/                               13 ไฟล์ — `npm run test:trace`
+│   │   ├── test/                               14 ไฟล์ — `npm run test:trace`
 │   │   ├── scripts/check-prod-staging.js       ตรวจ payload production 8 ข้อ
 │   │   ├── WO_COST_TRACE.md                    ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
 │   │   └── prototype/                          ไฟล์เจาะมือของผู้ใช้ (ต้นเรื่องของรายงานนี้)
@@ -308,7 +312,7 @@ project and is not included in the dependencies list"* · ประกาศไ�
 1. **ก่อนเปิดรายงาน** รัน `&ready=<เลขที่ WO>` ก่อน · ถ้า master ไม่ครบ ตัวเลขต้นทุนจะยัง
    ไม่มีความหมาย และจะเสียเวลาไล่หาสาเหตุผิดจุด
 2. **เปิดชั้นเจาะลึก** `&wo=<เลขที่>` แล้วอ่าน 3 อย่างนี้**ก่อน**อ่านตัวเลข
-   · ท้ายหน้า "เอกสารอ้างอิงทางเทคนิค" — `error:` ต้องเป็น 0 ทุกคำสั่ง
+   · หน้าคู่มือ (ปุ่ม i มุมขวาบน · `&view=help`) หัวข้อ "เอกสารอ้างอิงทางเทคนิค" — `error:` ต้องเป็น 0 ทุกคำสั่ง
    · ตาราง "กระทบยอดงานระหว่างทำ" — ผลต่างต้องเป็นศูนย์
    · หัวข้อ "ตรวจสุขภาพชั้นที่ 3" — รายการที่ยัง "ไม่ตรง" ห้ามเอาตัวเลขไปใช้อ้างอิง
 3. **เทียบกับการเจาะมือ 1 ใบ** ยอดวัตถุดิบ · ต้นทุนแปรสภาพ · ปริมาณผลิตได้ · ต้นทุน/หน่วย ·
@@ -352,6 +356,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_summary_filter_order.js` | ตัวกรองภาพรวม WO Cost Trace (#94) — ลำดับ Subsidiary · Date · RM Location · Production location · Production Line เพี้ยน · เงื่อนไข RM Location/ไลน์ผลิตไม่ถึง SQL หรือไปตัดยอดวัตถุดิบ · ค่าหลุดจากลิงก์เจาะลึก/ความพร้อม/กลับ/json/embed · เดือนค้างทับวันที่ที่ผู้ใช้แก้ · dropdown ต่อเนื่องตามบริษัทไม่ทำงานหรือล้างค่าจากลิงก์ |
 | `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) · ที่พับ "ตัวกรองเพิ่มเติม" ไม่กางเองเมื่อมีตัวกรองข้างในถูกตั้งไว้ · ช่องในที่พับหลุดออกนอกฟอร์ม · **กล่องตัวกรอง `details.filterbox` ไม่กางมาจากเซิร์ฟเวอร์ · `<summary>` ไม่บอกเงื่อนไขที่กรองอยู่ (หรือไม่ถูก escape) · `.act` หลุดเข้าไปอยู่ในกล่องจนหุบแล้วกดปุ่มไม่ได้ · ปุ่ม export ไม่ได้อยู่หลังปุ่ม "ดูภาพรวม" / ไม่ใช่ `type="button"` / เคส 0 แถวไม่ disabled** |
 | `test_datefield.js` | ช่องวันที่ของ WO Cost Trace — parse ไม่เป็น DATEFORMAT/ISO · มี `<input type=date>` · ใช้ `showPicker` |
+| `test_help_page.js` | หน้าคู่มือ (#96) — คำอธิบายใต้หัวเรื่องหน้าภาพรวมกลับมา · h1 โผล่ในโหมด embed · "อ่านตารางนี้อย่างไร"/query log กลับมาที่หน้ารายงาน · ปุ่ม i ไม่พา embed/ตัวกรอง/wo/ready · หน้าคู่มือขาดส่วนใดส่วนหนึ่ง · log ไม่ใช่ของรอบที่รันจริง · `mode=json` เพี้ยน · สี literal (hex/rgb/hsl) ใน CSS เฉพาะรายงาน · CSS ชุด CCRC หลุดไป WO Status |
 | `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |
 | `test_wostatus_cp_fixes.js` | CP4/CP6/CP7/CP8 ของ WO Status — ข้อมูลขาดขึ้นเขียว · CP8 ตายเป็น na · `lang` หลุดลง HTML |
 | `test_summary_math.js` · `test_summary_export.js` · `test_ready_master.js` | สูตรและข้อความของแต่ละชั้น |

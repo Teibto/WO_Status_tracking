@@ -106,7 +106,9 @@ eq('KPI ใช้คลาสของ template', page.indexOf('class="kpi-grid"
 eq('การ์ด KPI ใช้คลาสของ template', page.indexOf('class="kpi-card accent-') > 0, true);
 eq('ไม่เหลือคลาส KPI ชุดเก่า', page.indexOf('class="kpis"') > 0, false);
 eq('มีแถบหัวเรื่องแบบ report-builder', page.indexOf('class="topbar"') > 0, true);
-eq('มี breadcrumbs', page.indexOf('class="breadcrumbs"') > 0, true);
+// #96 QA ข้อ 14 — topbar ของ cost trace เป็นแบบ CCRC: ชื่อหน้าเป็น h1.viewtitle ในแถบ ไม่มี breadcrumb ซ้ำ
+eq('ชื่อหน้าเป็น h1.viewtitle ในแถบหัวเรื่อง (แบบ CCRC)', page.indexOf('<h1 class="viewtitle">') > 0, true);
+eq('ไม่มี breadcrumbs ซ้ำกับชื่อหน้า', page.indexOf('class="breadcrumbs"') >= 0, false);
 eq('เนื้อหาอยู่ใน .content', page.indexOf('<div class="content">') > 0, true);
 eq('ปุ่มค้นหาใช้คลาสปุ่มของ template', page.indexOf('class="btn primary"') > 0, true);
 

@@ -86,6 +86,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   const selfUrl = C.selfUrl;
   const filterParams = C.filterParams;
   const renderQLog = C.renderQLog;
+  // หน้าคู่มือ + ปุ่ม i (#96)
+  const pageHead = C.pageHead;
+  const renderErrors = C.renderErrors;
+  const HELP_VIEW = C.HELP_VIEW;
   const kpi = C.kpi;
   const KPI_ACCENT = C.KPI_ACCENT;
   const todayIso = C.todayIso;
@@ -987,7 +991,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ — จับคู่ Cost ref ไม่ได้เลย '
         + '(ไม่มีแถวที่ตรงทั้งสินค้า บริษัท และช่วงวันที่)' };
     }
-    return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ (อ่าน Cost ref ไม่สำเร็จ — ดูท้ายหน้า)' };
+    return { cls: 'warn', text: 'ยังไม่ปันส่วนต้นทุนแปรสภาพ (อ่าน Cost ref ไม่สำเร็จ — ดูหน้าคู่มือ ปุ่ม i)' };
   }
 
   // ═══ model ═════════════════════════════════════════════════════════════════
@@ -2283,6 +2287,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return `<form method="get">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       ${hidden}
       <div class="filterbar">
         <div class="fld" style="flex:0 0 220px">
@@ -2437,7 +2442,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
       ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       <details class="filterbox" open>
-      <summary>${esc(boxLabel)}</summary>
+      ${C.accSummary(esc(boxLabel))}
       <div class="filterbar">
         <div class="fld" style="flex:0 0 200px">
           <label>Subsidiary</label>
@@ -2465,7 +2470,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         </div>
       </div>
       <details class="morefld"${advOpen ? ' open' : ''}>
-        <summary>${esc(advLabel)}</summary>
+        ${C.accSummary(esc(advLabel))}
         <div class="filterbar">
           <div class="fld" style="flex:0 0 190px">
             <label>เดือน (เติมช่วงวันที่ให้)</label>
@@ -2499,7 +2504,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           </div>
         </div>
       </details>
-      <div class="sub" style="margin:var(--sp-3) 0 0">
+      <div class="sub" style="margin-top:var(--sp-3)">
         เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง"
         · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
         · RM Location = คลัง/ถังที่เบิกวัตถุดิบเข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ)
@@ -3324,11 +3329,12 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   function renderSummaryExportBtn(sm) {
     if (!sm) return '';
     if (!sm.rows || !sm.rows.length) {
-      return '<button type="button" class="btn" disabled>⬇ Export Excel</button>'
+      return '<button type="button" class="btn" disabled>' + C.ICONS.download + 'Export Excel</button>'
         + '<span class="xnote">ไม่มีรายการให้ export ตามเงื่อนไขนี้</span>';
     }
+    // ไอคอน svg จาก LOCAL_ICONS ของ cost trace (#96) ไม่ใช่ตัวอักษร ⬇
     return '<button type="button" class="btn" id="btnXlsx" title="' + esc(XLSX_HINT) + '">'
-      + '⬇ Export Excel</button>'
+      + C.ICONS.download + 'Export Excel</button>'
       + '<span class="xnote">' + esc(summaryExportNote(sm)) + '</span>';
   }
 
@@ -3385,11 +3391,36 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + '})();<\/script>';
   }
 
+  const SUMMARY_TITLE = 'ภาพรวมต้นทุนใบสั่งผลิต';
+
+  /** เนื้อหา "อ่านตารางนี้อย่างไร" ของชั้นภาพรวม — ย้ายจากท้ายหน้ารายงานมาหน้าคู่มือ (#96) ไม่แก้ถ้อยคำ */
+  function renderSummaryGuide() {
+    return '<div class="card"><table class="kv">'
+      + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
+      + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
+      + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
+      + 'เพื่อให้ตัวเลขเท่ากับหน้าเจาะลึกเสมอ · ใบที่ปิดงานคร่อมช่วงจะขึ้นหมายเหตุไว้</td></tr>'
+      + '<tr><td>วัตถุดิบ</td><td>ผลรวมมูลค่าบนบรรทัดใบเบิก (Inventory Adjustment ประเภทเบิกวัตถุดิบ/บรรจุ) '
+      + 'ที่ผูกใบสั่งผลิตนี้ · ตัดบรรทัด summary cost item ออกแล้ว</td></tr>'
+      + '<tr><td>แปรสภาพ (DL+OH)</td><td>ผลรวม <code>standardcost</code> จากเอกสารปันส่วนต้นทุน '
+      + 'ตัด classification 1 (WIP) ออกเพราะเป็นยอดรวมไม่ใช่องค์ประกอบ</td></tr>'
+      + '<tr><td>ต้นทุน/หน่วย</td><td>(วัตถุดิบ + แปรสภาพ) ÷ ปริมาณที่ผลิตได้จริงจาก WOC '
+      + '<b>ไม่ใช่</b>จำนวนที่สั่งผลิต · ใบที่ยังไม่มี WOC จึงยังคิดไม่ได้</td></tr>'
+      + '<tr><td>ต้นทุน/ลัง</td><td>ตัวหารตัดสินโดยธง <b>คิดต้นทุนต่อลัง</b> ที่ประเภทย่อยสินค้า '
+      + '(<code>customrecord_cseg_subitemtype</code>) — ตั้งไว้จึงหารด้วย '
+      + '<code>custitem_item_basepercarton</code> ตามเดิม · ไม่ตั้งจึง conversion = 1 '
+      + '(ต้นทุน/ลัง = ต้นทุน/หน่วย) · อ่านธงนี้ไม่ได้หรือสินค้าไม่ได้ตั้งประเภทย่อยไว้ '
+      + 'คิดตามเดิมและขึ้นหมายเหตุในหน้าเจาะลึก</td></tr>'
+      + '<tr><td>ผลต่าง</td><td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ) · ต้องเป็นศูนย์ '
+      + 'ส่วนต่างเท่าไหร่ค้างอยู่ในบัญชีงานระหว่างทำเท่านั้น กดเจาะลึกเพื่อดูว่าเกิดที่เอกสารใบไหน</td></tr>'
+      + '</table></div>';
+  }
+
   function renderSummaryPage(sm) {
     const f = sm.filters;
-    let h = '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>'
-      + '<div class="sub">ดูหลายสินค้าหลายใบสั่งผลิตพร้อมกัน แล้วกดเลขที่ใบสั่งผลิตเพื่อเจาะที่มาของทุกตัวเลข '
-      + 'จนถึงเอกสารต้นทาง · ยอดในหน้านี้ใช้แหล่งข้อมูลเดียวกับหน้าเจาะลึกทุกช่อง</div>'
+    // #96 — ย่อหน้าคำอธิบายใต้หัวเรื่องถูกลบตามคำสั่งผู้ใช้ · โหมด embed ไม่วาด h1 (CCRC แสดงชื่อเอง)
+    // "อ่านตารางนี้อย่างไร" + "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (ปุ่ม i)
+    let h = pageHead(SUMMARY_TITLE, filterParams(f), true)
       + renderSummaryForm(f, sm);
 
     h += renderErrors();
@@ -3425,28 +3456,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     h += renderSummaryExport(sm);
     h += renderSummaryGrid(sm);
 
-    h += '<h2>อ่านตารางนี้อย่างไร</h2><div class="card"><table class="kv">'
-      + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
-      + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
-      + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
-      + 'เพื่อให้ตัวเลขเท่ากับหน้าเจาะลึกเสมอ · ใบที่ปิดงานคร่อมช่วงจะขึ้นหมายเหตุไว้</td></tr>'
-      + '<tr><td>วัตถุดิบ</td><td>ผลรวมมูลค่าบนบรรทัดใบเบิก (Inventory Adjustment ประเภทเบิกวัตถุดิบ/บรรจุ) '
-      + 'ที่ผูกใบสั่งผลิตนี้ · ตัดบรรทัด summary cost item ออกแล้ว</td></tr>'
-      + '<tr><td>แปรสภาพ (DL+OH)</td><td>ผลรวม <code>standardcost</code> จากเอกสารปันส่วนต้นทุน '
-      + 'ตัด classification 1 (WIP) ออกเพราะเป็นยอดรวมไม่ใช่องค์ประกอบ</td></tr>'
-      + '<tr><td>ต้นทุน/หน่วย</td><td>(วัตถุดิบ + แปรสภาพ) ÷ ปริมาณที่ผลิตได้จริงจาก WOC '
-      + '<b>ไม่ใช่</b>จำนวนที่สั่งผลิต · ใบที่ยังไม่มี WOC จึงยังคิดไม่ได้</td></tr>'
-      + '<tr><td>ต้นทุน/ลัง</td><td>ตัวหารตัดสินโดยธง <b>คิดต้นทุนต่อลัง</b> ที่ประเภทย่อยสินค้า '
-      + '(<code>customrecord_cseg_subitemtype</code>) — ตั้งไว้จึงหารด้วย '
-      + '<code>custitem_item_basepercarton</code> ตามเดิม · ไม่ตั้งจึง conversion = 1 '
-      + '(ต้นทุน/ลัง = ต้นทุน/หน่วย) · อ่านธงนี้ไม่ได้หรือสินค้าไม่ได้ตั้งประเภทย่อยไว้ '
-      + 'คิดตามเดิมและขึ้นหมายเหตุในหน้าเจาะลึก</td></tr>'
-      + '<tr><td>ผลต่าง</td><td>Summary Cost Item − (วัตถุดิบ + แปรสภาพ) · ต้องเป็นศูนย์ '
-      + 'ส่วนต่างเท่าไหร่ค้างอยู่ในบัญชีงานระหว่างทำเท่านั้น กดเจาะลึกเพื่อดูว่าเกิดที่เอกสารใบไหน</td></tr>'
-      + '</table></div>';
-
-    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
-    return shell('ภาพรวมต้นทุนใบสั่งผลิต', h);
+    return shell(SUMMARY_TITLE, h, '', filterParams(f));
   }
 
   function renderWOHeader(s) {
@@ -3641,7 +3651,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + esc(asStr(r.cr_id)) + '</a>';
     const links = (cr.rows || []).map(link).join(' · ');
     if (cr.verdict === 'unknown') {
-      return '<p class="warn">อ่าน Cost ref ไม่สำเร็จ — ดูสาเหตุที่ท้ายหน้า</p>';
+      return '<p class="warn">อ่าน Cost ref ไม่สำเร็จ — ดูสาเหตุในหน้าคู่มือ (ปุ่ม i)</p>';
     }
     if (cr.verdict === 'nomatch') {
       return '<p class="warn">จับคู่ Cost ref ของสินค้านี้ไม่ได้เลย '
@@ -3906,6 +3916,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return h;
   }
 
+  /**
+   * ป้ายบอกชั้นของข้อมูล BOM ที่หน้าหัวพับ (QA รอบสอง ข้อ D) — หน้าเจาะลึกแบนแบบ CCRC แล้ว ไม่มีแถบสีซ้าย
+   * 3px + เยื้องซ้อนบอกชั้นอีก · ชั้นที่ 2 = กึ่งสำเร็จรูป/วัตถุดิบที่เบิกเข้า WO นี้ · ชั้นที่ 3 = ledger
+   * ที่มาของ average cost (ชื่อเดียวกับหัว "ชั้นที่ 2 และ 3" และ "ตรวจสุขภาพชั้นที่ 3")
+   */
+  function lvlTag(n) {
+    return '<span class="tag lvltag">ชั้นที่ ' + n + '</span>';
+  }
+
   /** ชั้นที่ 2 — ไล่ย้อนกึ่งสำเร็จรูปกลับไปหา WO ที่ผลิตมัน */
   function renderLevel2(m) {
     const ctx = m.ctx;
@@ -3926,16 +3945,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const it = ctx.itemById[asStr(r.item_id)] || {};
 
       if (!producers.length && !roll) {
-        h += `<details><summary>${esc(r.item_code)} — ${esc(r.item_name)}
+        h += `<details>${C.accSummary(`${lvlTag(2)}${esc(r.item_code)} — ${esc(r.item_name)}
           <span class="tag">ซื้อมาใช้ตรง</span> ต้นทุน/หน่วยที่คิดเข้า WO
-          <b>${esc(fmt(r.unit_cost, 8))}</b></summary>
+          <b>${esc(fmt(r.unit_cost, 8))}</b>`)}
           <div class="lvl3">${renderLedger(ctx, r.item_id, r.item_code + ' — ' + r.item_name)}</div></details>`;
         return;
       }
 
       const rollTxt = roll ? ' · BOM มาตรฐาน × average cost ได้ <b>' + esc(fmt(roll.unit_cost, 8)) + '</b>' : '';
-      h += `<details open><summary>${esc(r.item_code)} — ${esc(r.item_name)}
-        · ต้นทุน/หน่วยที่คิดเข้า WO นี้ <b>${esc(fmt(r.unit_cost, 8))}</b>${rollTxt}</summary><div class="lvl2">`;
+      h += `<details open>${C.accSummary(`${lvlTag(2)}${esc(r.item_code)} — ${esc(r.item_name)}
+        · ต้นทุน/หน่วยที่คิดเข้า WO นี้ <b>${esc(fmt(r.unit_cost, 8))}</b>${rollTxt}`)}<div class="lvl2">`;
 
       // ต้นทุน/หน่วยที่คิดเข้า WO คือ average cost ของตัวกึ่งสำเร็จรูปเอง ณ เวลาเบิก
       // ต้องกาง ledger ของมันให้เห็น ไม่งั้นตัวเลขนี้ไม่มีหลักฐานรองรับ
@@ -4058,21 +4077,21 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const it = ctx.itemById[asStr(itemId)] || {};
     const stored = asNum(it.avg_cost);
     if (!rows.length) {
-      return `<details><summary>${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
-        · average cost ในระบบ ${esc(fmt(stored, 8))}</summary></details>`;
+      return `<details>${C.accSummary(`${lvlTag(3)}${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
+        · average cost ในระบบ ${esc(fmt(stored, 8))}`)}</details>`;
     }
     const last = rows[rows.length - 1];
     const gap = stored - asNum(last.run_avg);
     const trusted = closeEnough(asNum(last.run_avg), stored);
     const cls = trusted ? 'ok' : 'bad';
     const asof = avgAsOf(rows, ctx.asOf);
-    let h = `<details><summary>${esc(label)} — ${rows.length} รายการ ·
+    let h = `<details>${C.accSummary(`${lvlTag(3)}${esc(label)} — ${rows.length} รายการ ·
       ค่าเฉลี่ยที่คำนวณได้ <b>${esc(fmt(asNum(last.run_avg), 8))}</b> ·
       average cost ในระบบ <b>${esc(fmt(stored, 8))}</b>
       <span class="${cls}">ผลต่าง ${esc(fmt(gap, 8))}</span>
       ${asof ? ' · ณ ' + esc(ctx.asOf) + ' <b>' + esc(fmt(asof.avg, 8)) + '</b>'
              : ' · ณ ' + esc(ctx.asOf) + ' <span class="warn">ยังไม่มีความเคลื่อนไหว</span>'}
-      ${trusted ? '' : ' <span class="bad">— ยังนับไม่ครบ ห้ามใช้อ้างอิง</span>'}</summary>`;
+      ${trusted ? '' : ' <span class="bad">— ยังนับไม่ครบ ห้ามใช้อ้างอิง</span>'}`)}`;
     if (asof) {
       h += '<p class="sub">average cost ณ ' + esc(ctx.asOf) + ' = <b>' + esc(fmt(asof.avg, 10)) + '</b>'
         + ' (คงเหลือ ' + esc(fmt(asof.qty, 6)) + ' มูลค่า ' + esc(fmt(asof.val, 2))
@@ -4210,10 +4229,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     bad.forEach(id => {
       const a = ctx.auditByItem[id];
       const it = ctx.itemById[id] || {};
-      h += `<details><summary><span class="bad">ยังไม่ตรง</span>
+      h += `<details>${C.accSummary(`<span class="bad">ยังไม่ตรง</span>
         ${esc(asStr(it.item_code))} — ${esc(asStr(it.item_name))} ·
         คำนวณได้ <b>${esc(fmt(a.baseAvg, 8))}</b> · ระบบเก็บ <b>${esc(fmt(a.stored, 8))}</b> ·
-        ผลต่าง <b>${esc(fmt(a.stored - a.baseAvg, 8))}</b></summary>
+        ผลต่าง <b>${esc(fmt(a.stored - a.baseAvg, 8))}</b>`)}
         <table><tr><th>ประเภทเอกสาร</th><th>บรรทัด</th><th class="n">บรรทัด</th>
         <th>ลงบัญชีสินทรัพย์</th><th class="n">รวมปริมาณ</th><th class="n">รวมยอดบัญชี (สกุลฐาน)</th>
         <th class="n">ยอดสกุลเอกสาร</th><th>นับใน ledger?</th><th class="n">ถ้านับเพิ่ม avg จะเป็น</th></tr>`;
@@ -4271,28 +4290,25 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return h;
   }
 
-  function renderErrors() {
-    const bad = QLOG.filter(q => !!q.error);
-    if (!bad.length) return '';
-    return '<div class="err"><b>ดึงข้อมูลไม่สำเร็จ ' + bad.length + ' ชุด — ตัวเลขบางส่วนอาจไม่ครบ</b><br>'
-      + bad.map(q => esc(q.label) + ': ' + esc(q.error)).join('<br>') + '</div>';
-  }
+  const DRILL_TITLE = 'ที่มาของต้นทุนใบสั่งผลิต';
 
   /**
    * id ของหัวข้อในหน้าเจาะลึก (issue #77 ข้อ 2.4) — แหล่งเดียวที่ทั้งสารบัญและ `<h2>` อ่าน
    * แยกเป็นค่าคงที่เพื่อไม่ให้ลิงก์กับหัวข้อหลุดจากกันเวลาใครแก้ข้างใดข้างหนึ่ง
    * เป็น ASCII ล้วนโดยตั้งใจ — id ภาษาไทยใน URL fragment ต้องถูก encode แล้วอ่านยากตอน debug
+   *
+   * ไม่มี `qlog` แล้ว — "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (`&view=help`, #96) ·
+   * คงไว้ในสารบัญ = ลิงก์ไปหัวข้อที่ไม่มีอยู่ในหน้านี้
    */
   const SEC = {
     totals: 'sec-totals', wip: 'sec-wip', wocs: 'sec-wocs', materials: 'sec-materials',
-    conv: 'sec-conv', level2: 'sec-level2', audit: 'sec-audit', qlog: 'sec-qlog'
+    conv: 'sec-conv', level2: 'sec-level2', audit: 'sec-audit'
   };
 
   const SEC_LABELS = [
     [SEC.totals, 'สรุปต้นทุน'], [SEC.wip, 'กระทบยอด WIP'], [SEC.wocs, 'ใบปิดงานผลิต'],
     [SEC.materials, 'ชั้นที่ 1 วัตถุดิบ'], [SEC.conv, 'ต้นทุนแปรสภาพ'],
-    [SEC.level2, 'ชั้นที่ 2 และ 3'], [SEC.audit, 'ตรวจสุขภาพชั้นที่ 3'],
-    [SEC.qlog, 'เอกสารอ้างอิงทางเทคนิค']
+    [SEC.level2, 'ชั้นที่ 2 และ 3'], [SEC.audit, 'ตรวจสุขภาพชั้นที่ 3']
   ];
 
   /** แถบสารบัญของหน้าเจาะลึก — ลิงก์ในหน้าเดียวกัน ไม่ผ่าน selfUrl จึงไม่ต้องพา embed ไปด้วย */
@@ -4303,18 +4319,22 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   }
 
   function renderPage(m) {
+    // ปุ่ม i: เปิดเดี่ยวอยู่ใน topbar (ส่งให้ shell) · embed อยู่ใน pagehead — พารามิเตอร์ชุดเดียวกัน
+    const helpParams = Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam });
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
-      + '">← ภาพรวมหลายใบสั่งผลิต</a>'
-      + (m.woKey ? ' · <a href="' + selfUrl({ ready: m.woKey })
+      + '">' + C.ICONS.arrowLeft + 'ภาพรวมหลายใบสั่งผลิต</a>'
+      // ลิงก์ข้ามไปหน้าความพร้อมพาตัวกรองของภาพรวมไปด้วย (QA รอบสอง ข้อ E) — ไม่งั้นกด "กลับภาพรวม"
+      // จากหน้าความพร้อมแล้วตัวกรองหาย · embed ติดไปเองที่ selfUrl
+      + (m.woKey ? ' · <a href="' + selfUrl(Object.assign(filterParams(m.filters), { ready: m.woKey }))
         + '">ตรวจความพร้อม master ของใบนี้</a>' : '')
       + '</div>'
-      + '<h1>ที่มาของต้นทุนใบสั่งผลิต</h1>'
+      + pageHead(DRILL_TITLE, helpParams, false)
       + '<div class="sub">ไล่ที่มาของทุกตัวเลขจนถึงเอกสารต้นทาง — วัตถุดิบที่เบิก '
       + '→ ใบสั่งผลิตที่ทำกึ่งสำเร็จรูป → เอกสารรับเข้าที่ทำให้ average cost เป็นค่านั้น</div>'
       + renderForm(m.woKey, (m.ctx && m.ctx.asOf) || '', m.filters);
 
-    const page = (body) => shell('ที่มาของต้นทุนใบสั่งผลิต', body);
-    if (m.notFound) return page(h + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>' + renderQLog());
+    const page = (body) => shell(DRILL_TITLE, body, '', helpParams);
+    if (m.notFound) return page(h + renderErrors() + '<div class="err">ไม่พบใบสั่งผลิต "' + esc(m.woKey) + '"</div>');
     if (!m.ok) return page(h + '<p>กรอกเลขที่ใบสั่งผลิตเพื่อเริ่ม</p>');
 
     const s = m.root;
@@ -4328,8 +4348,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
     }
     h += renderWOHeader(s);
-    // สารบัญ (issue #77 ข้อ 2.4) — หน้านี้ยาว 8 หัวข้อ ของเดิมไม่มี anchor เลย จะดู
-    // "ตรวจสุขภาพชั้นที่ 3" หรือ log ท้ายหน้าต้องเลื่อนทั้งหน้า · id ทุกตัวเป็น ASCII
+    // สารบัญ (issue #77 ข้อ 2.4) — หน้านี้ยาว 7 หัวข้อ (log ย้ายไปหน้าคู่มือ #96) ของเดิมไม่มี anchor เลย จะดู
+    // "ตรวจสุขภาพชั้นที่ 3" ท้ายหน้าต้องเลื่อนทั้งหน้า · id ทุกตัวเป็น ASCII
     // และต้องตรงกับ id ที่ <h2> ข้างล่างประกาศไว้ (ลิงก์ในหน้าเดียวกัน ไม่ผ่าน selfUrl)
     h += renderToc();
     h += '<h2 id="' + SEC.totals + '">สรุปต้นทุนของใบสั่งผลิตนี้</h2>' + renderTotals(s, m.ctx);
@@ -4355,17 +4375,61 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + 'แปลว่ายังนับความเคลื่อนไหวไม่ครบ ส่วนนี้ชี้ว่าขาดกลุ่มไหนและถ้านับเพิ่มแล้วจะตรงหรือไม่ '
       + 'ตัวเลขชั้นที่ 3 ของรายการที่ยังไม่ตรง อย่าใช้อ้างอิงจนกว่าจะแก้</div>'
       + renderAudit(m);
-    h += '<h2 id="' + SEC.qlog + '">เอกสารอ้างอิงทางเทคนิค</h2>' + renderQLog();
+    // "เอกสารอ้างอิงทางเทคนิค" ย้ายไปหน้าคู่มือ (ปุ่ม i ที่หัวหน้า) — #96
     return page(h);
   }
 
   // ═══ ชั้นความพร้อม master ย้ายไป WOCostTrace_Ready.js แล้ว (issue #14) ═════
   //
-  // entry เรียกผ่าน interface 4 ตัวนี้เท่านั้น — ผูกชื่อไว้ให้ onRequest เรียกเหมือนเดิม
+  // entry เรียกผ่าน interface 5 ตัวนี้เท่านั้น — ผูกชื่อไว้ให้ onRequest เรียกเหมือนเดิม
   const readReadyParams = R.readReadyParams;
   const buildReady = R.buildReady;
   const renderReadyPage = R.renderReadyPage;
   const READY_CSS = R.READY_CSS;
+  const READY_TITLE = R.READY_TITLE;
+
+  // ═══ หน้าคู่มือ (`&view=help`) — issue #96 ══════════════════════════════════
+  //
+  // "อ่านตารางนี้อย่างไร" และ "เอกสารอ้างอิงทางเทคนิค" ย้ายออกจากหน้ารายงานมาไว้ที่นี่ ·
+  // query log เป็นของ request ไม่ใช่ข้อความคงที่ — หน้านี้จึง**รันชั้นเดียวกันซ้ำด้วยพารามิเตอร์ชุดเดียวกัน**
+  // (ปุ่ม i พามาครบ) แล้วแสดง log ของรอบนั้น · ราคาคือ query ชุดเดียวกับหน้ารายงานอีกรอบ
+  // (เจาะลึก 19 ชุด ~15 วินาที) เฉพาะตอนที่ผู้ใช้กดเปิดคู่มือ
+
+  /**
+   * @param {Object} o
+   * @param {string} o.layerTitle ชื่อชั้นที่คู่มือนี้อธิบาย
+   * @param {Object} o.back       พารามิเตอร์ของหน้ารายงาน (ลิงก์กลับ)
+   * @param {string} [o.guide]    HTML ของ "อ่านตารางนี้อย่างไร" (ชั้นที่มี)
+   * @param {Error}  [o.error]    error ตอนรันชั้นนั้นซ้ำ (แสดงพร้อม log ที่ได้ถึงจุดนั้น)
+   * @param {string} [o.extraCss]
+   */
+  function renderHelpPage(o) {
+    const title = 'คู่มือรายงาน — ' + o.layerTitle;
+    // เปิดเดี่ยว: ชื่อหน้าอยู่ใน topbar (h1.viewtitle) ไม่วาด h1 ซ้ำ · embed: h1 ขนาดเท่าหัว .sec ของ CCRC
+    let h = '<div class="crumb"><a href="' + esc(selfUrl(o.back)) + '">' + C.ICONS.arrowLeft
+      + 'กลับไปหน้ารายงาน</a></div>'
+      + (C.isEmbed() ? '<h1>' + esc(title) + '</h1>' : '');
+    if (o.guide) h += '<h2>อ่านตารางนี้อย่างไร</h2>' + o.guide;
+    h += '<h2>เอกสารอ้างอิงทางเทคนิค</h2>'
+      + '<div class="sub">คำสั่งดึงข้อมูลชุดเดียวกับหน้ารายงาน รันใหม่ด้วยตัวกรองเดียวกันตอนเปิดหน้านี้ '
+      + '· ช่อง <code>error</code> ต้องว่างทุกคำสั่ง ตัวเลขบนหน้ารายงานถึงจะครบ</div>'
+      + renderErrors()
+      + (o.error ? '<div class="err">' + esc(o.error.message) + '</div>' : '')
+      + renderQLog();
+    return shell(title, h, o.extraCss);
+  }
+
+  /** ชั้นภาพรวม: รายการใน dropdown + ยอดรวม — หน้ารายงานและหน้าคู่มือเรียกตัวเดียวกัน log จึงเท่ากัน */
+  function loadSummary(filters) {
+    // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
+    // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
+    filters.subRows = qFilterSubsidiaries();
+    filters.locRows = qFilterProductionPlants();
+    // issue #94 — RM Location / Production Line (พังแล้วคืน [] ผ่าน runSQL หน้าไม่ล่ม)
+    filters.rmLocRows = qFilterRmLocations();
+    filters.lineRows = qFilterProductionLines();
+    return buildSummary(filters);
+  }
 
   // ═══ entry ═════════════════════════════════════════════════════════════════
 
@@ -4374,6 +4438,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    *   ไม่ส่งพารามิเตอร์ → ชั้นภาพรวม หลายสินค้าหลายใบสั่งผลิต (4 คำสั่งรวมยอด)
    *   ส่ง wo มา         → ชั้นเจาะลึกใบเดียว ของเดิมทั้งหมดไม่เปลี่ยน (20 คำสั่ง ~15 วินาที)
    *   ส่ง ready มา      → ชั้นความพร้อม master ก่อน UAT (ไล่ BOM ทุกระดับ)
+   * บวก `&view=help` = หน้าคู่มือของชั้นนั้น (#96) · `mode=json` ชนะ view เสมอ (json ไม่เปลี่ยน)
    * ลิงก์เดิมที่มี &wo= และ &mode=json ยังทำงานเหมือนเดิม
    */
   function onRequest(ctx) {
@@ -4385,29 +4450,45 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const woKey = asStr(p.wo).trim();
     const filters = readFilters(p);
     const wantJson = asStr(p.mode) === 'json';
+    const wantHelp = !wantJson && asStr(p.view) === HELP_VIEW;
 
     // ─── ชั้นความพร้อม master ────────────────────────────────────────────
     // มาก่อนสองชั้นเดิมเพราะเป็นคำถามคนละข้อ และไม่ต้องคิดต้นทุนเลย
     if (asStr(p.ready).trim()) {
       const rp = readReadyParams(p);
+      // พารามิเตอร์ของหน้านี้ตามที่มา (ไม่ใช่ค่าที่ parse แล้ว) — ปุ่ม i และลิงก์กลับใช้ชุดนี้
+      const readyParams = Object.assign(filterParams(filters), {
+        ready: asStr(p.ready).trim(), rqty: asStr(p.rqty).trim(),
+        rloc: asStr(p.rloc).trim(), rdate: asStr(p.rdate).trim()
+      });
       let rd;
       try {
         rd = buildReady(rp);
         rd.woKey = rp.woKey;
         rd.params = rp;
+        rd.helpParams = readyParams;
         // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม (เหมือนชั้นเจาะลึก)
         rd.filters = filters;
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(shell('ความพร้อม master ก่อนเริ่มทดสอบ',
-          '<h1>ความพร้อม master ก่อนเริ่มทดสอบ</h1>'
+        if (wantHelp) {
+          ctx.response.write(renderHelpPage({ layerTitle: READY_TITLE, back: readyParams, error: e,
+            extraCss: READY_CSS }));
+          return;
+        }
+        ctx.response.write(shell(READY_TITLE,
+          pageHead(READY_TITLE, readyParams, false)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog(), READY_CSS));
+          + renderErrors(), READY_CSS, readyParams));
         return;
       }
       if (wantJson) {
         ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
         ctx.response.write(JSON.stringify({ ready: rd, qlog: QLOG }));
+        return;
+      }
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: READY_TITLE, back: readyParams, extraCss: READY_CSS }));
         return;
       }
       ctx.response.write(renderReadyPage(rd));
@@ -4416,27 +4497,30 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นภาพรวม ───────────────────────────────────────────────────────
     if (!woKey) {
-      // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ผูกเข้ากับ filters ตัวเดียวกับที่ buildSummary
-      // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
-      filters.subRows = qFilterSubsidiaries();
-      filters.locRows = qFilterProductionPlants();
-      // issue #94 — RM Location / Production Line (พังแล้วคืน [] ผ่าน runSQL หน้าไม่ล่ม)
-      filters.rmLocRows = qFilterRmLocations();
-      filters.lineRows = qFilterProductionLines();
       let sm;
       try {
-        sm = buildSummary(filters);
+        sm = loadSummary(filters);
       } catch (e) {
         log.error({ title: 'buildSummary', details: e.message + '\n' + (e.stack || '') });
-        ctx.response.write(shell('ภาพรวมต้นทุนใบสั่งผลิต',
-          '<h1>ภาพรวมต้นทุนใบสั่งผลิต</h1>' + renderSummaryForm(filters)
+        if (wantHelp) {
+          ctx.response.write(renderHelpPage({ layerTitle: SUMMARY_TITLE, back: filterParams(filters),
+            guide: renderSummaryGuide(), error: e }));
+          return;
+        }
+        ctx.response.write(shell(SUMMARY_TITLE,
+          pageHead(SUMMARY_TITLE, filterParams(filters), true) + renderSummaryForm(filters)
           + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-          + renderQLog()));
+          + renderErrors(), '', filterParams(filters)));
         return;
       }
       if (wantJson) {
         ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
         ctx.response.write(JSON.stringify({ summary: sm, qlog: QLOG }));
+        return;
+      }
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: SUMMARY_TITLE, back: filterParams(filters),
+          guide: renderSummaryGuide() }));
         return;
       }
       ctx.response.write(renderSummaryPage(sm));
@@ -4445,6 +4529,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
 
     // ─── ชั้นเจาะลึก ──────────────────────────────────────────────────────
     let m = { woKey: woKey, ok: false };
+    const drillParams = Object.assign(filterParams(filters), { wo: woKey, asof: asStr(p.asof).trim() });
 
     try {
       // asof ในฟอร์มเป็นวันที่ตาม DATEFORMAT ของบัญชี (หรือ ISO) — แปลงเป็น ISO ก่อนใช้
@@ -4452,18 +4537,28 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       m.woKey = woKey;
     } catch (e) {
       log.error({ title: 'buildModel', details: e.message + '\n' + (e.stack || '') });
-      ctx.response.write(shell('ที่มาของต้นทุนใบสั่งผลิต',
-        renderForm(woKey, '', filters)
+      if (wantHelp) {
+        ctx.response.write(renderHelpPage({ layerTitle: DRILL_TITLE, back: drillParams, error: e }));
+        return;
+      }
+      ctx.response.write(shell(DRILL_TITLE,
+        pageHead(DRILL_TITLE, drillParams, false)
+        + renderForm(woKey, '', filters)
         + '<div class="err">' + esc(e.message) + '<pre>' + esc(asStr(e.stack)) + '</pre></div>'
-        + renderQLog()));
+        + renderErrors(), '', drillParams));
       return;
     }
     // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม
     m.filters = filters;
+    m.asofParam = drillParams.asof;
 
     if (wantJson) {
       ctx.response.setHeader({ name: 'Content-Type', value: 'application/json' });
       ctx.response.write(JSON.stringify({ model: m, qlog: QLOG }));
+      return;
+    }
+    if (wantHelp) {
+      ctx.response.write(renderHelpPage({ layerTitle: DRILL_TITLE, back: drillParams }));
       return;
     }
 
