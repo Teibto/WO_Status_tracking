@@ -463,6 +463,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     return {
       month: k.month, from: k.from, to: k.to, basis: k.basis,
       item: k.item, wono: k.wono, sub: k.sub, loc: k.loc,
+      // issue #94 — RM Location / Production Line ต้องติดไปกับลิงก์เจาะลึก · ความพร้อม · กลับภาพรวม
+      rmloc: k.rmloc, line: k.line,
       sort: k.sort, max: k.max ? String(k.max) : ''
     };
   }
@@ -1170,6 +1172,11 @@ ${costCols}
     EMBED = !!v;
   }
 
+  /** อยู่ในโหมดฝังหรือไม่ — ฟอร์มที่ submit แบบ GET ต้องพา embed=1 ไปเอง (selfUrl ครอบแค่ลิงก์) */
+  function isEmbed() {
+    return EMBED;
+  }
+
   return {
     // helper
     asStr: asStr,
@@ -1202,6 +1209,7 @@ ${costCols}
     pageTop: pageTop,
     shell: shell,
     setEmbed: setEmbed,
+    isEmbed: isEmbed,
     selfUrl: selfUrl,
     filterParams: filterParams,
     // date field (date-field.md)

@@ -238,7 +238,10 @@ function summary() {
     'Cost ref ของสินค้าที่ผลิต': [],
     // dropdown ของช่องกรองบริษัท/อาคารผลิต (#50) — ไม่ผูกกับยอดต้นทุน แค่ให้ onRequest ยิงได้ไม่พัง
     'ตัวกรอง — บริษัท': [{ id: 2, name: 'Foodstar' }],
-    'ตัวกรอง — อาคารผลิต': [{ id: 10, name: 'PD_B1' }],
+    'ตัวกรอง — อาคารผลิต': [{ id: 10, name: 'PD_B1', sub_id: 2 }],
+    // issue #94 — dropdown RM Location / Production Line (sub_id/loc_id ใช้ทำ dropdown ต่อเนื่อง)
+    'ตัวกรอง — RM Location': [{ id: 10, name: 'PD_B1', sub_id: 2 }, { id: 35, name: 'TANK-A', sub_id: 2 }],
+    'ตัวกรอง — Production Line': [{ id: 3, name: 'LINE1', sub_id: 2, loc_id: 10 }],
     // flag = 'T' — สินค้านี้คิดต้นทุนต่อลังตามเดิม (÷ EXPECT.base_per_carton) เหมือนก่อนมี issue #54
     'ต้นทุนต่อลังตามประเภทย่อยสินค้า': [{ item_id: fg.item_id, cost_per_carton_flag: 'T' }]
   };

@@ -41,7 +41,8 @@ eq('ไม่มีช่อง input ให้พิมพ์ id เองอ�
   /<input[^>]*name="sub"/.test(htmlDefault), false);
 eq('ไม่มีช่อง input ให้พิมพ์ id เองอีกแล้ว (loc)',
   /<input[^>]*name="loc"/.test(htmlDefault), false);
-eq('ป้ายเปลี่ยนเป็น "อาคารผลิต"', htmlDefault.indexOf('อาคารผลิต') > 0, true);
+// ป้ายเปลี่ยนอีกรอบเป็น "Production location" ตามที่ผู้ใช้สั่งใน #94 (param ยังเป็น loc เหมือนเดิม)
+eq('ป้ายเป็น "Production location" (#94)', htmlDefault.indexOf('<label>Production location</label>') > 0, true);
 eq('ไม่เหลือป้ายเดิม "คลัง (id)"', htmlDefault.indexOf('คลัง (id)') >= 0, false);
 eq('รายชื่ออาคารผลิตมีตัวเลือกจริง (PD_B1)', htmlDefault.indexOf('PD_B1') > 0, true);
 eq('รายชื่อบริษัทมีตัวเลือกจริง (Foodstar)', htmlDefault.indexOf('Foodstar') > 0, true);
@@ -54,8 +55,11 @@ console.log('\n── ค่าที่ส่งออกยังเป็น 
 const htmlSel = formWith({ sub: '2', loc: '10' });
 eq('option ของบริษัทที่เลือกใช้ id เป็น value', /<option value="2" selected>Foodstar<\/option>/.test(htmlSel), true);
 eq('option ของอาคารผลิตที่เลือกใช้ id เป็น value', /<option value="10" selected>PD_B1<\/option>/.test(htmlSel), true);
-eq('"ทั้งหมด" ไม่ถูกเลือกเมื่อระบุค่าจริง',
-  /<option value=""\s+selected>/.test(htmlSel), false);
+// เฉพาะสองช่องที่ระบุค่า — ช่อง RM Location / Production Line (#94) ไม่ได้ระบุจึงยังเป็น "ทั้งหมด"
+eq('"ทั้งหมด" ไม่ถูกเลือกเมื่อระบุค่าจริง (บริษัท)',
+  /<option value=""\s+selected>— ทุกบริษัท —/.test(htmlSel), false);
+eq('"ทั้งหมด" ไม่ถูกเลือกเมื่อระบุค่าจริง (อาคารผลิต)',
+  /<option value=""\s+selected>— ทุกสถานที่ —/.test(htmlSel), false);
 
 console.log('\n── ลิงก์เก่า &sub=2&loc=10 ต้องยังใช้ได้และถูกเลือกค้างไว้ ──');
 const fOld = T.readFilters({ from: '2026-07-01', to: '2026-07-31', sub: '2', loc: '10' });
@@ -98,7 +102,9 @@ mod.onRequest(ctx1);
 const page1 = ctx1.body();
 eq('หน้าไม่ล่ม มี select ของบริษัท', page1.indexOf('<select name="sub">') > 0, true);
 eq('ค่าจาก query string ยังถูกเลือกไว้ในหน้าเต็ม', /<option value="2" selected>Foodstar<\/option>/.test(page1), true);
-eq('ค่าจาก query string ยังถูกเลือกไว้ในหน้าเต็ม (loc)', /<option value="10" selected>PD_B1<\/option>/.test(page1), true);
+// option มี data-sub ต่อท้าย value แล้ว (#94 — ใช้กรองตามบริษัท) จึงยอมให้มี attribute คั่น
+eq('ค่าจาก query string ยังถูกเลือกไว้ในหน้าเต็ม (loc)',
+  /<select name="loc">[\s\S]*?<option value="10"[^>]* selected>PD_B1<\/option>/.test(page1), true);
 
 console.log('\n── query ที่เพิ่มมาไม่ทำให้ตัวเลขของรายงานเปลี่ยน ──');
 // เทียบ shown/total ระหว่างมี sub/loc ตรงกับ fixture กับไม่ระบุเลย ทั้งคู่ต้องได้ผลลัพธ์เดิม

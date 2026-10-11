@@ -57,7 +57,7 @@ WO_Status_tracking/
 │   │   │   ├── WOCostTrace_Common.js           lib · helper · SQL runner · query log · โครงหน้า
 │   │   │   ├── WOCostTrace_Ready.js            lib · ชั้นความพร้อม master
 │   │   │   └── WOCostTrace.js                  entry · ภาพรวม + เจาะลึก + ความพร้อม
-│   │   ├── test/                               12 ไฟล์ — `npm run test:trace`
+│   │   ├── test/                               13 ไฟล์ — `npm run test:trace`
 │   │   ├── scripts/check-prod-staging.js       ตรวจ payload production 8 ข้อ
 │   │   ├── WO_COST_TRACE.md                    ที่มาของทุกตัวเลขที่ verify กับบัญชีแล้ว
 │   │   └── prototype/                          ไฟล์เจาะมือของผู้ใช้ (ต้นเรื่องของรายงานนี้)
@@ -349,6 +349,7 @@ npm run check:prod    # ตรวจ payload production (อ่านอย่�
 | `test_qlog_scope.js` | query log สะสมข้าม request |
 | `test_query_contract.js` | clause ที่แบกน้ำหนักหลุดจาก SQL · alias ของ fixture ไม่ครบ |
 | `test_trace_parity.js` | ชั้นภาพรวมกับชั้นเจาะลึกได้ยอดไม่เท่ากัน |
+| `test_summary_filter_order.js` | ตัวกรองภาพรวม WO Cost Trace (#94) — ลำดับ Subsidiary · Date · RM Location · Production location · Production Line เพี้ยน · เงื่อนไข RM Location/ไลน์ผลิตไม่ถึง SQL หรือไปตัดยอดวัตถุดิบ · ค่าหลุดจากลิงก์เจาะลึก/ความพร้อม/กลับ/json/embed · เดือนค้างทับวันที่ที่ผู้ใช้แก้ · dropdown ต่อเนื่องตามบริษัทไม่ทำงานหรือล้างค่าจากลิงก์ |
 | `test_filterbar_layout.js` | แถบตัวกรองของ WO Cost Trace กลับไปเป็น inline flow (ไม่มี `.filterbar`/`.fld`) · ที่พับ "ตัวกรองเพิ่มเติม" ไม่กางเองเมื่อมีตัวกรองข้างในถูกตั้งไว้ · ช่องในที่พับหลุดออกนอกฟอร์ม · **กล่องตัวกรอง `details.filterbox` ไม่กางมาจากเซิร์ฟเวอร์ · `<summary>` ไม่บอกเงื่อนไขที่กรองอยู่ (หรือไม่ถูก escape) · `.act` หลุดเข้าไปอยู่ในกล่องจนหุบแล้วกดปุ่มไม่ได้ · ปุ่ม export ไม่ได้อยู่หลังปุ่ม "ดูภาพรวม" / ไม่ใช่ `type="button"` / เคส 0 แถวไม่ disabled** |
 | `test_datefield.js` | ช่องวันที่ของ WO Cost Trace — parse ไม่เป็น DATEFORMAT/ISO · มี `<input type=date>` · ใช้ `showPicker` |
 | `test_audit_fixes.js` | embed ไม่ติดไปกับลิงก์ภายใน · lot ไม่ escape · JOIN accountingline ไม่กรอง posting/book |

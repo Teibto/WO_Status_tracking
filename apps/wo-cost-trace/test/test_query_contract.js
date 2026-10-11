@@ -70,7 +70,11 @@ const ALIASES = {
   // ธง 'T'/'F' — ข้อความ ไม่ใช่ตัวเลข (issue #54) จึงไม่มี `numeric`
   'ต้นทุนต่อลังตามประเภทย่อยสินค้า': {
     required: ['item_id', 'cost_per_carton_flag']
-  }
+  },
+  // dropdown ตัวกรอง (#94) — sub_id/loc_id หายแล้ว dropdown ต่อเนื่องจะไม่กรองอะไรเงียบ ๆ
+  'ตัวกรอง — อาคารผลิต': { required: ['id', 'name', 'sub_id'] },
+  'ตัวกรอง — RM Location': { required: ['id', 'name', 'sub_id'] },
+  'ตัวกรอง — Production Line': { required: ['id', 'name', 'sub_id', 'loc_id'] }
 };
 
 console.log('\n── fixture ที่ใช้จริงต้องมี alias ครบทุก label ──');

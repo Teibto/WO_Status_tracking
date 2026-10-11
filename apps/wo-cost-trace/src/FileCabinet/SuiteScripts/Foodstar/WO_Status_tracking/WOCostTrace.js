@@ -658,7 +658,33 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     if (f.item) { w.push(`UPPER(I.itemid) LIKE ?`); p.push('%' + f.item.toUpperCase() + '%'); }
     // subsidiary / location เป็น NOT_EXPOSED บนหัวเอกสาร ต้องกรองที่บรรทัด
     if (f.sub) { w.push(`TL.subsidiary = ?`); p.push(f.sub); }
+    // Production location = location บนบรรทัด mainline ของ WO (ที่ผลิต) — เงื่อนไขเดิมของ #50
     if (f.loc) { w.push(`TL.location = ?`); p.push(f.loc); }
+    // Production Line (issue #94) — ฟิลด์เดียวกับคอลัมน์ "ไลน์ผลิต" ที่ SELECT ด้านล่างอ่าน
+    // และเดียวกับตัวกรองไลน์ผลิตของ WO Status (#90)
+    if (f.line) { w.push(`WO.custbody_mfg_production_line = ?`); p.push(f.line); }
+    // RM Location (issue #94) — คลัง/ถังที่วัตถุดิบถูกเบิกออกมาเข้า WO
+    // บรรทัดวัตถุดิบบนตัว WO ใช้ location เดียวกับ mainline ทุกใบ (วัดบน SB1 2026-10-10)
+    // จึงแยกไม่ได้ ต้องดูที่บรรทัดใบเบิก (inventoryadjustment ที่อ้าง WO) ซึ่งอยู่คนละที่ได้จริง
+    // เช่นถัง LS/FT Tank ขณะที่ WO อยู่ PD_* · เงื่อนไขตัดบรรทัด summary cost ชุดเดียวกับ qSummaryRM
+    // ⚠ ใช้คัดว่า "ใบไหนเข้า" เท่านั้น ยอดวัตถุดิบยังนับทุกบรรทัดของใบนั้น (qSummaryRM ไม่กรอง
+    //   location) ไม่งั้นยอดชั้นภาพรวมจะไม่เท่าชั้นเจาะลึก — หลักเดียวกับช่วงวันที่ WOC ด้านบน
+    if (f.rmloc) {
+      w.push(`EXISTS (
+        SELECT 1
+        FROM transaction RMT
+        JOIN transactionline RML ON RML.transaction = RMT.id
+        LEFT JOIN item RMI ON RMI.id = RML.item
+        LEFT JOIN customrecord_thl_adjustmenttype RMA ON RMA.id = RMT.custbody_thl_adjustmenttype
+        WHERE RMT.recordtype = 'inventoryadjustment'
+          AND RML.mainline = 'F' AND RML.iscogs = 'F' AND RML.taxline = 'F'
+          AND RML.custcol_mfg2_ref_workorder = WO.id
+          AND RML.location = ?
+          AND NVL(RMA.custrecord_adjt_mfgsummarycost, 'F') = 'F'
+          AND NVL(RMI.custitem_mfg_summarycostitem, 'F') = 'F'
+      )`);
+      p.push(f.rmloc);
+    }
 
     return runSQL('ภาพรวม — รายการใบสั่งผลิต', `
       SELECT WO.id                                       AS wo_id,
@@ -1711,7 +1737,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * เมื่อไหร่ ที่พับจะเริ่มโกหกทันทีที่ใครแก้ค่าเริ่มต้นข้างเดียว แล้วผู้ใช้จะอ่านตารางที่ถูกกรอง
    * ไปแล้วโดยไม่เห็นว่าอะไรกรองอยู่ — อาการเดียวกับ "ตารางว่างที่อธิบายไม่ได้" ของ #77
    */
-  const SUMMARY_DEFAULTS = { basis: 'woc', item: '', sort: SORT_OPTIONS[0], max: MAX_ROWS_DEFAULT };
+  const SUMMARY_DEFAULTS = { basis: 'woc', item: '', wono: '', sort: SORT_OPTIONS[0], max: MAX_ROWS_DEFAULT };
 
   /** วันสุดท้ายของเดือน YYYY-MM */
   function endOfMonth(ym) {
@@ -1737,11 +1763,20 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const toIso = C.parseDateInput(p.to);
     const monthRaw = asStr(p.month).trim();
     const custom = monthRaw === 'custom';
-    const month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw
+    let month = /^\d{4}-\d{2}$/.test(monthRaw) ? monthRaw
       : (custom || fromIso || toIso ? '' : today.substring(0, 7));
+    // issue #94: ช่องวันที่ขึ้นมาอยู่ลำดับ 2 ส่วนช่องเดือนลงไปอยู่แถวล่าง — ถ้าผู้ใช้แก้วันที่เอง
+    // แต่ช่องเดือนยังค้างค่าเดือนอยู่ (เช่นปิด JS หรือพิมพ์ URL เอง) วันที่ที่ส่งมาต้องชนะ
+    // ไม่งั้นช่วงที่พิมพ์ถูกทิ้งเงียบ ๆ · ลิงก์ที่ระบบสร้างเอง (filterParams) ส่ง from/to = ขอบเดือน
+    // ตรงกับ month เสมอ จึงยังได้เดือนเดิม
+    if (month && ((fromIso && fromIso !== month + '-01') || (toIso && toIso !== endOfMonth(month)))) {
+      month = '';
+    }
 
     const subParam = idParam('sub', 'บริษัท', p.sub);
+    const rmlocParam = idParam('rmloc', 'RM Location', p.rmloc);
     const locParam = idParam('loc', 'สถานที่ผลิต', p.loc);
+    const lineParam = idParam('line', 'Production Line', p.line);
 
     let from, to;
     if (month) { from = month + '-01'; to = endOfMonth(month); }
@@ -1763,9 +1798,16 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       // กลายเป็น sub=1 แล้วหน้ารายงานกรองด้วย "บริษัท FS Group" เงียบ ๆ โดยผู้ใช้ไม่ได้เลือก
       // — ปลอดภัย (ทุกช่องผ่าน esc) แต่เป็น "ตารางที่อธิบายไม่ได้" ซึ่งเป็นโจทย์ของ #77 เอง
       sub: subParam.value,
+      // RM Location (issue #94) — location ของบรรทัดเบิกวัตถุดิบ (ดู qSummaryWOs)
+      rmloc: rmlocParam.value,
+      // Production location — ชื่อ param `loc` คงเดิมเพื่อให้ลิงก์เก่า &loc= ยังใช้ได้ (#50)
       loc: locParam.value,
+      // Production Line (issue #94) — custbody_mfg_production_line บนหัว WO
+      line: lineParam.value,
       // คำเตือนของค่าที่ทิ้งไป — ปลายทางเป็นคนวาด (renderSummaryPage) ที่นี่แค่บอกว่าเกิดอะไรขึ้น
-      badParams: [subParam, locParam].filter(x => x.bad)
+      // rmloc/line ของ #94 ผ่าน idParam ด้วยเหตุผลเดียวกับ sub/loc — ขัดเหลือแต่ตัวเลขคือกรองด้วย id
+      // ที่ผู้ใช้ไม่ได้เลือก (`35' OR 1=1` เคยกลายเป็น 3511)
+      badParams: [subParam, rmlocParam, locParam, lineParam].filter(x => x.bad)
         .map(x => ({ name: x.name, label: x.label, raw: x.raw })),
       sort: SORT_OPTIONS.indexOf(asStr(p.sort)) >= 0 ? asStr(p.sort) : SUMMARY_DEFAULTS.sort,
       max: Math.min(MAX_ROWS_HARD, Math.max(1, asNum(p.max) || SUMMARY_DEFAULTS.max))
@@ -1779,12 +1821,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
    * `?sort=อะไรก็ไม่รู้` หรือ `?max=abc` ถูกปัดกลับเป็นค่าเริ่มต้นไปแล้ว จึงต้องไม่ทำให้ที่พับ
    * กางโดยที่ผู้ใช้มองไม่เห็นว่าช่องไหนถูกตั้ง (หลักเดียวกับ `idParam` ของ #77)
    *
-   * ช่อง "เดือน" ไม่นับที่นี่ เพราะมันอยู่แถวหลักที่มองเห็นตลอดอยู่แล้ว นับด้วยก็เป็นการรายงานซ้ำ ·
-   * แต่ "เดือน = กำหนดวันที่เอง" (`!f.month`) เป็น **เงื่อนไขกางแยกต่างหาก** ที่ `renderSummaryForm`
-   * ดูเอง เพราะช่องวันที่ที่ผู้ใช้ต้องกรอกอยู่ข้างในที่พับ
+   * ช่องในแถวหลัก (Subsidiary · Date from–to · RM Location · Production location · Production Line
+   * — ลำดับของ #94) ไม่นับที่นี่ เพราะมองเห็นตลอดอยู่แล้ว นับด้วยก็เป็นการรายงานซ้ำ ·
+   * ช่อง "เดือน" อยู่ในที่พับแต่ **ไม่นับ** — มันเป็นแค่ทางลัดเติมช่วงวันที่ ผลของมันคือ from/to
+   * ที่อยู่แถวหลักซึ่งเห็นอยู่แล้ว (เลือก "กำหนดวันที่เอง" ก็ไม่ต้องกาง ช่องวันที่ไม่ได้อยู่ในที่พับแล้ว) ·
+   * เลขที่ใบสั่งผลิต **นับ** — มันข้ามช่วงวันที่ ถ้าซ่อนไว้ผู้ใช้จะงงว่าทำไมช่วงวันที่ไม่มีผล
    */
   function advancedFiltersOn(f) {
     const on = [];
+    if (asStr(f.wono) !== SUMMARY_DEFAULTS.wono) on.push('เลขที่ใบสั่งผลิต');
     if (asStr(f.item) !== SUMMARY_DEFAULTS.item) on.push('รหัสสินค้า');
     if (f.basis !== SUMMARY_DEFAULTS.basis) on.push('จับจาก');
     if (f.sort !== SUMMARY_DEFAULTS.sort) on.push('เรียงตาม');
@@ -1793,7 +1838,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   }
 
   /**
-   * ค่าตัวกรองที่เป็น internal id (`sub` · `loc`) — ตัวเลขล้วนเท่านั้นจึงใช้กรองได้ (issue #77)
+   * ค่าตัวกรองที่เป็น internal id (`sub` · `rmloc` · `loc` · `line`) — ตัวเลขล้วนเท่านั้นจึงใช้กรองได้ (issue #77)
    *
    * แยกสามสภาพออกจากกันให้ชัด ไม่ยุบรวม
    *   ว่าง              → ไม่กรอง (ปกติ)
@@ -2269,13 +2314,50 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   }
 
   /**
-   * ตัวเลือก dropdown ของช่องกรอง "อาคารผลิต" — เฉพาะ location ที่ตั้งเป็นอาคารผลิตจริง
+   * ตัวเลือก dropdown ของช่องกรอง "Production location" — เฉพาะ location ที่ตั้งเป็นอาคารผลิตจริง
    * เงื่อนไขเดียวกับ WO Status Tracking (WOStatusTracking.js:279)
-   * ป้ายเปลี่ยนจาก "คลัง (id)" เป็น "อาคารผลิต" เพราะของจริงกรองแคบกว่าคลังทั้งหมด (issue #50)
+   * ป้ายเปลี่ยนจาก "คลัง (id)" เป็น "อาคารผลิต" (issue #50) แล้วเป็น "Production location" (#94)
+   * `sub_id` (location.subsidiary) ใช้ทำ dropdown ต่อเนื่องตามบริษัทที่เลือกฝั่งเบราว์เซอร์ (#94)
    */
   function qFilterProductionPlants() {
     return runSQL('ตัวกรอง — อาคารผลิต',
-      `SELECT id, name FROM location WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`);
+      `SELECT id, name, subsidiary AS sub_id FROM location
+       WHERE custrecord_mfg_productionplant = 'T' ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "RM Location" (issue #94)
+   *
+   * location ที่บรรทัดเบิกวัตถุดิบเข้า WO ใช้จริงบน SB1 (2026-10-10) มีสองกลุ่มเท่านั้น
+   * — อาคารผลิต (`custrecord_mfg_productionplant`) และถังเก็บวัตถุดิบ (`custrecord_fs_istankstock`
+   * แหล่งเดียวกับช่อง "RM Location (Tank)" ของ FeedMaterialAdjustment) · ทั้ง 19 location ที่พบ
+   * อยู่ในสองกลุ่มนี้ครบ · เลือกวิธีนี้แทน DISTINCT จากบรรทัดใบเบิกทั้งบัญชี เพราะอันนั้นใช้ ~1.9 วินาที
+   * ทุกครั้งที่เปิดหน้า เทียบกับ ~0.07 วินาที
+   * พังเมื่อไหร่ runSQL คืน [] — dropdown เหลือ "ทุก location" หน้าไม่ล่ม และ error ขึ้นใน qlog
+   */
+  function qFilterRmLocations() {
+    return runSQL('ตัวกรอง — RM Location',
+      `SELECT id, name, subsidiary AS sub_id FROM location
+       WHERE custrecord_fs_istankstock = 'T' OR custrecord_mfg_productionplant = 'T'
+       ORDER BY name`);
+  }
+
+  /**
+   * ตัวเลือก dropdown ของช่องกรอง "Production Line" (issue #94)
+   * รายการเดียวกับ getProductionLines ของ WO Status (#90) — เฉพาะไลน์ที่มี WO อ้างถึงจริง ·
+   * TRIM เพราะชื่อบางแถวมีช่องว่างท้าย · เพิ่ม subsidiary/location ของไลน์ไว้ทำ dropdown ต่อเนื่อง
+   */
+  function qFilterProductionLines() {
+    return runSQL('ตัวกรอง — Production Line', `
+      SELECT DISTINCT PL.id AS id, TRIM(PL.name) AS name,
+             PL.custrecord_mfg_productionline_subsidiary AS sub_id,
+             PL.custrecord_mfg_productionline_location AS loc_id
+      FROM customrecord_mfg_productionline PL
+      WHERE PL.id IN (
+        SELECT DISTINCT W.custbody_mfg_production_line FROM transaction W
+        WHERE W.recordtype = 'workorder' AND W.custbody_mfg_production_line IS NOT NULL
+      )
+      ORDER BY 2`);
   }
 
   /**
@@ -2292,7 +2374,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const opts = (rows || []).map(r => {
       const id = asStr(r.id);
       if (id === sel) found = true;
-      return `<option value="${esc(id)}"${id === sel ? ' selected' : ''}>${esc(asStr(r.name))}</option>`;
+      // data-sub / data-loc ใช้กรองตัวเลือกตามบริษัท/สถานที่ผลิตที่เลือกฝั่งเบราว์เซอร์ (#94)
+      // ใส่เฉพาะเมื่อแถวมีค่า — แถวที่ไม่รู้บริษัทต้องไม่ถูกซ่อนเพราะข้อมูลขาด
+      const attrs = (asStr(r.sub_id) ? ` data-sub="${esc(asStr(r.sub_id))}"` : '')
+        + (asStr(r.loc_id) ? ` data-loc="${esc(asStr(r.loc_id))}"` : '');
+      return `<option value="${esc(id)}"${attrs}${id === sel ? ' selected' : ''}>${esc(asStr(r.name))}</option>`;
     });
     if (sel && !found) {
       opts.push(`<option value="${esc(sel)}" selected>${esc(missingHint + ' (id: ' + sel + ')')}</option>`);
@@ -2324,15 +2410,17 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   function renderSummaryForm(f, sm) {
     const s = runtime.getCurrentScript();
     const sortOpt = (v, label) => `<option value="${v}"${f.sort === v ? ' selected' : ''}>${label}</option>`;
+    // data-from/data-to = ขอบเดือนในรูปแบบวันที่ของบัญชี ให้สคริปต์เติมช่องวันที่เมื่อเลือกเดือน (#94)
     const monthOpts = monthChoices().map(ym =>
-      `<option value="${ym}"${f.month === ym ? ' selected' : ''}>${esc(monthLabel(ym))}</option>`).join('');
+      `<option value="${ym}" data-from="${esc(C.fmtDateDisp(ym + '-01'))}" data-to="${esc(C.fmtDateDisp(endOfMonth(ym)))}"`
+      + `${f.month === ym ? ' selected' : ''}>${esc(monthLabel(ym))}</option>`).join('');
     // ที่พับ "ตัวกรองเพิ่มเติม" (issue #86) — **เซิร์ฟเวอร์เป็นคนตัดสินว่ากางหรือพับ ห้ามพึ่ง JS**
     // JS พังเมื่อไหร่ ตัวกรองที่ตั้งค้างไว้ก็ต้องยังมองเห็น ไม่ใช่ซ่อนอยู่ในที่พับแล้วผู้ใช้
     // อ่านตารางที่ถูกกรองไปแล้วเป็นตารางเต็ม (อาการเดียวกับ #77)
+    // กางเมื่อมีช่องในที่พับถูกตั้งเท่านั้น — "กำหนดวันที่เอง" ไม่ใช่เงื่อนไขกางอีกแล้ว เพราะ #94 ย้าย
+    // ช่องวันที่ขึ้นแถวหลัก (ดูคอมเมนต์ของ advancedFiltersOn)
     const advOn = advancedFiltersOn(f);
-    // `!f.month` = เลือก "— กำหนดวันที่เอง —" (นิพจน์เดียวกับที่ทำ selected ให้ option นั้น
-    // ด้านล่าง) — ช่องวันที่ที่ต้องกรอกอยู่ในที่พับ จึงกางเสมอ ไม่ว่าจะนับช่องอื่นได้กี่ช่อง
-    const advOpen = advOn.length > 0 || !f.month;
+    const advOpen = advOn.length > 0;
     const advLabel = 'ตัวกรองเพิ่มเติม'
       + (advOn.length ? ' · ตั้งไว้ ' + advOn.length + ' ช่อง' : '');
     // ป้ายของกล่องต้องครอบ **ทุกช่องที่ถูกตั้ง** — `activeFilterText` ไม่ได้พูดถึง sort/max
@@ -2340,42 +2428,51 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ทุกตัวอักษร (รีวิว #86: `?sort=gap&max=10` เคยได้ป้ายเดียวกับค่าเริ่มต้น)
     const boxLabel = 'ตัวกรอง · ' + activeFilterText(f)
       + (advOn.length ? ' · ตัวกรองเพิ่มเติม ' + advOn.length + ' ช่อง' : '');
-    return `<form method="get">
+    // แถวหลักเรียงตามที่ผู้ใช้สั่ง (issue #94) — ห้ามสลับ เทส test_summary_filter_order.js ล็อกไว้
+    //   1 Subsidiary · 2 Date from–to · 3 RM Location · 4 Production location · 5 Production Line
+    // ช่องที่เหลือ (เดือน · จับจาก · รหัสสินค้า · เลขที่ใบสั่งผลิต · เรียงตาม · ไม่เกิน) อยู่ในที่พับของ #86
+    // ไม่ตัดทิ้ง · embed ต้องติดไปกับการกดค้นหาด้วย ไม่งั้นหน้าที่ฝังเรา (CCRC) ได้หัวเรื่องซ้อนสองชั้น
+    return `<form method="get" id="wct-summary-form">
       <input type="hidden" name="script" value="${esc(s.id)}">
       <input type="hidden" name="deploy" value="${esc(s.deploymentId)}">
+      ${C.isEmbed() ? '<input type="hidden" name="embed" value="1">' : ''}
       <details class="filterbox" open>
       <summary>${esc(boxLabel)}</summary>
       <div class="filterbar">
-        <div class="fld" style="flex:0 0 190px">
-          <label>เดือน</label>
-          <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
-        </div>
         <div class="fld" style="flex:0 0 200px">
-          <label>บริษัท</label>
+          <label>Subsidiary</label>
           <select name="sub">${selectOptions(f.subRows, f.sub, '— ทุกบริษัท —', 'รหัสนี้ไม่อยู่ในรายชื่อบริษัท')}</select>
         </div>
+        <div class="fld" style="flex:0 0 330px">
+          <label>Date from – to</label>
+          <div class="range">
+            ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
+            <span class="sep">ถึง</span>
+            ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
+          </div>
+        </div>
         <div class="fld" style="flex:0 0 200px">
-          <label>อาคารผลิต</label>
+          <label>RM Location</label>
+          <select name="rmloc">${selectOptions(f.rmLocRows, f.rmloc, '— ทุก location —', 'รหัสนี้ไม่อยู่ในรายชื่อ RM Location')}</select>
+        </div>
+        <div class="fld" style="flex:0 0 200px">
+          <label>Production location</label>
           <select name="loc">${selectOptions(f.locRows, f.loc, '— ทุกสถานที่ —', 'รหัสนี้ไม่อยู่ในรายชื่ออาคารผลิต')}</select>
         </div>
-        <div class="fld" style="flex:0 0 185px">
-          <label>เลขที่ใบสั่งผลิต</label>
-          <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
+        <div class="fld" style="flex:0 0 200px">
+          <label>Production Line</label>
+          <select name="line">${selectOptions(f.lineRows, f.line, '— ทุกไลน์ —', 'รหัสนี้ไม่อยู่ในรายชื่อไลน์ผลิต')}</select>
         </div>
       </div>
       <details class="morefld"${advOpen ? ' open' : ''}>
         <summary>${esc(advLabel)}</summary>
         <div class="filterbar">
-          <div class="fld" style="flex:0 0 330px">
-            <label>ช่วงวันที่เอง</label>
-            <div class="range">
-              ${C.dateInput({ id: 'from', name: 'from', value: f.from })}
-              <span class="sep">ถึง</span>
-              ${C.dateInput({ id: 'to', name: 'to', value: f.to })}
-            </div>
+          <div class="fld" style="flex:0 0 190px">
+            <label>เดือน (เติมช่วงวันที่ให้)</label>
+            <select name="month" class="rw-select">${monthOpts}<option value="custom"${f.month ? '' : ' selected'}>— กำหนดวันที่เอง —</option></select>
           </div>
           <div class="fld" style="flex:0 0 215px">
-            <label>จับจาก</label>
+            <label>จับวันที่จาก</label>
             <select name="basis" class="rw-select">
               <option value="woc"${f.basis === 'woc' ? ' selected' : ''}>วันที่ปิดงานผลิต (WOC)</option>
               <option value="wo"${f.basis === 'wo' ? ' selected' : ''}>วันที่ใบสั่งผลิต (WO)</option>
@@ -2384,6 +2481,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           <div class="fld" style="flex:0 0 165px">
             <label>รหัสสินค้า</label>
             <input type="text" name="item" value="${esc(f.item)}" placeholder="บางส่วนก็ได้">
+          </div>
+          <div class="fld" style="flex:0 0 185px">
+            <label>เลขที่ใบสั่งผลิต</label>
+            <input type="text" name="wono" value="${esc(f.wono)}" placeholder="ข้ามช่วงวันที่">
           </div>
           <div class="fld" style="flex:0 0 245px">
             <label>เรียงตาม</label>
@@ -2399,40 +2500,91 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         </div>
       </details>
       <div class="sub" style="margin:var(--sp-3) 0 0">
-        เลือกเดือนแล้วช่องวันที่จะถูกคิดจากเดือนนั้นทั้งเดือน · จะระบุช่วงเองให้เลือก "กำหนดวันที่เอง" ในช่องเดือน
-        แล้วกรอกวันที่ใน "ตัวกรองเพิ่มเติม" · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
+        เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง"
+        · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
+        · RM Location = คลัง/ถังที่เบิกวัตถุดิบเข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ)
+        · รายการ location และไลน์ผลิตแสดงเฉพาะของบริษัทที่เลือก
       </div>
       </details>
       <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button>${renderSummaryExportBtn(sm)}</div>
-    </form>${renderListFieldScript()}${renderMoreFiltersScript()}`;
+    </form>${renderListFieldScript()}${renderFilterCascadeScript()}`;
   }
 
   /**
-   * เลือก "— กำหนดวันที่เอง —" → กางที่พับแล้วพาไปที่ช่องวันที่ (issue #86)
+   * dropdown ต่อเนื่อง + ช่องเดือน ↔ ช่วงวันที่ (issue #94) — แยกจาก renderListFieldScript โดยตั้งใจ
+   * เพราะเอนจิน combobox ถูกล็อกให้เหมือน WO Status ทุกตัวอักษร (test/test_listfield_sync.js)
    *
-   * **progressive enhancement ล้วน — ฝั่งเซิร์ฟเวอร์ไม่ได้พึ่งสคริปต์นี้เลย**
-   * `renderSummaryForm` ยังใส่ `open` เองเมื่อ `!f.month` หรือมีช่องในที่พับถูกตั้ง ต้องถูกแม้ JS พัง ·
-   * สคริปต์นี้ปิดช่องว่างเฉพาะ "จังหวะก่อน submit" — ผู้ใช้เพิ่งเลือก "กำหนดวันที่เอง" แต่ช่องวันที่
-   * ที่ต้องกรอกยังอยู่ในที่พับที่เซิร์ฟเวอร์ปิดมา — เจอทางตันโดยไม่มีอะไรบอกว่าต้องไปต่ออย่างไร
-   *
-   * เปลี่ยนกลับเป็นเดือนปกติ **ไม่ปิดที่พับให้เอง** — ผู้ใช้อาจเปิดค้างไว้หรือมีช่องอื่นตั้งค้างอยู่
-   * การปิดให้เองคือ "ตัวกรองซ่อนหาย" อีกแบบหนึ่ง ซึ่งเป็นสิ่งที่ #86 ตั้งใจกันตั้งแต่ต้น
-   *
-   * ทุก element ต้อง guard null — สคริปต์นี้ออกเฉพาะชั้นภาพรวม แต่ถ้าวันหนึ่งมีคนย้ายไปชั้นอื่น
-   * ที่ไม่มี `.morefld` มันต้องเงียบๆ ไม่ใช่ TypeError ที่หยุด JS ทั้งหน้า (รวมถึงคอมโบบ็อกซ์ด้วย)
+   *   · เปลี่ยน Subsidiary → RM Location / Production location / Production Line เหลือเฉพาะตัวเลือก
+   *     ที่ data-sub ตรง · เปลี่ยน Production location → Production Line เหลือเฉพาะไลน์ของที่นั้น
+   *   · ตัวเลือกที่ไม่มี data-sub/data-loc (ข้อมูลไม่รู้ที่มา หรือตัวเลือกชั่วคราวของค่าที่ไม่อยู่ในลิสต์
+   *     จาก selectOptions) **ไม่ถูกซ่อน** และค่าที่ถูกเลือกค้างมาจากลิงก์ไม่ถูกล้างตอนโหลดหน้า —
+   *     ลิงก์เก่าต้องได้ตัวเลขเดิม (สัญญาของ #50) · ล้างเฉพาะเมื่อผู้ใช้เปลี่ยนเองแล้วค่าเดิมไม่อยู่ในชุดใหม่
+   *   · ตัวเลือกถูกสร้างใหม่จากสำเนาที่เก็บไว้ตอนโหลด แล้วเรียก window.__rwSyncCombobox ที่เอนจิน
+   *     combobox เปิดไว้ให้ (ช่องค้นหาอ่าน select.options ใหม่ทุกครั้งที่เปิด)
+   *   · เลือกเดือน → เติม from/to จาก data-from/data-to · พิมพ์/เลือกวันที่เอง (ปฏิทินยิง input)
+   *     → ช่องเดือนเป็น "custom" เพื่อไม่ให้เดือนที่ค้างอยู่ทับช่วงที่ผู้ใช้ตั้ง
    */
-  function renderMoreFiltersScript() {
+  function renderFilterCascadeScript() {
     return `<script>
-(function(){
-  var box = document.querySelector('details.morefld');
-  var sel = document.querySelector('select[name="month"]');
-  if (!box || !sel) return;
-  sel.addEventListener('change', function(){
-    if (sel.value !== 'custom') return;
-    box.open = true;
-    var first = box.querySelector('input.dateinput');
-    if (first && first.focus) first.focus();
+(function() {
+  var form = document.getElementById('wct-summary-form');
+  if (!form) return;
+  function sel(name) { return form.querySelector('select[name="' + name + '"]'); }
+  var subSel = sel('sub'), locSel = sel('loc');
+  var KEEP = {};
+  ['rmloc', 'loc', 'line'].forEach(function(name) {
+    var s = sel(name);
+    if (!s) return;
+    var all = [];
+    for (var i = 0; i < s.options.length; i++) {
+      var o = s.options[i];
+      all.push({ value: o.value, text: o.text, sub: o.getAttribute('data-sub') || '', loc: o.getAttribute('data-loc') || '' });
+    }
+    KEEP[name] = all;
   });
+  function rebuild(name, keepSelected) {
+    var s = sel(name), all = KEEP[name];
+    if (!s || !all) return;
+    var sub = subSel ? subSel.value : '';
+    var loc = (name === 'line' && locSel) ? locSel.value : '';
+    var cur = s.value, found = false;
+    while (s.options.length) s.remove(0);
+    all.forEach(function(o) {
+      var match = !o.value
+        || ((!sub || !o.sub || o.sub === sub) && (!loc || !o.loc || o.loc === loc));
+      if (!match && !(keepSelected && o.value === cur)) return;
+      var opt = document.createElement('option');
+      opt.value = o.value;
+      opt.text = o.text;
+      if (o.sub) opt.setAttribute('data-sub', o.sub);
+      if (o.loc) opt.setAttribute('data-loc', o.loc);
+      if (o.value === cur) { opt.selected = true; found = true; }
+      s.add(opt);
+    });
+    if (!found) s.value = '';
+    if (window.__rwSyncCombobox) window.__rwSyncCombobox(s);
+  }
+  function rebuildAll(keepSelected) { ['rmloc', 'loc', 'line'].forEach(function(n) { rebuild(n, keepSelected); }); }
+  rebuildAll(true);
+  if (subSel) subSel.addEventListener('change', function() { rebuildAll(false); });
+  if (locSel) locSel.addEventListener('change', function() { rebuild('line', false); });
+
+  var monthSel = form.querySelector('select[name="month"]');
+  var fromIn = form.querySelector('input[name="from"]'), toIn = form.querySelector('input[name="to"]');
+  var filling = false;
+  if (monthSel && fromIn && toIn) {
+    monthSel.addEventListener('change', function() {
+      var o = monthSel.options[monthSel.selectedIndex];
+      if (!o || o.value === 'custom') return;
+      filling = true;
+      fromIn.value = o.getAttribute('data-from') || fromIn.value;
+      toIn.value = o.getAttribute('data-to') || toIn.value;
+      filling = false;
+    });
+    [fromIn, toIn].forEach(function(inp) {
+      inp.addEventListener('input', function() { if (!filling) monthSel.value = 'custom'; });
+    });
+  }
 })();
 <\/script>`;
   }
@@ -2784,7 +2936,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     }
   });
 
-  ['sub', 'loc'].forEach(function(name) {
+  ['sub', 'rmloc', 'loc', 'line'].forEach(function(name) {
     var select = document.querySelector('select[name="' + name + '"]');
     if (select) enhanceRwSelect(select);
   });
@@ -2909,8 +3061,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     if (k.item) parts.push('รหัสสินค้ามีคำว่า "' + asStr(k.item) + '"');
     const sub = pickedName(k.subRows, k.sub);
     if (sub) parts.push('บริษัท ' + sub);
+    // rmloc/line ของ #94 ต้องอยู่ที่นี่ด้วย — ฟังก์ชันนี้คือป้ายของกล่องตัวกรองที่หุบ และข้อความของ
+    // ตารางว่าง ขาดไปเมื่อไหร่ หุบกล่องแล้วผู้ใช้มองไม่เห็นว่าตารางถูกกรองด้วยอะไร (อาการของ #77)
+    const rmloc = pickedName(k.rmLocRows, k.rmloc);
+    if (rmloc) parts.push('RM Location ' + rmloc);
     const loc = pickedName(k.locRows, k.loc);
     if (loc) parts.push('สถานที่ผลิต ' + loc);
+    const line = pickedName(k.lineRows, k.line);
+    if (line) parts.push('ไลน์ผลิต ' + line);
     if (!k.wono) {
       parts.push('ช่วง ' + (k.month ? monthLabel(k.month) : asStr(k.from) + ' ถึง ' + asStr(k.to))
         + ' จับจาก' + (k.basis === 'woc' ? 'วันที่ปิดงานผลิต' : 'วันที่ใบสั่งผลิต'));
@@ -4262,6 +4420,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       // คืนกลับมาเป็น sm.filters ทำให้ renderSummaryForm ทั้งทางสำเร็จและทาง error เห็นค่าเดียวกัน
       filters.subRows = qFilterSubsidiaries();
       filters.locRows = qFilterProductionPlants();
+      // issue #94 — RM Location / Production Line (พังแล้วคืน [] ผ่าน runSQL หน้าไม่ล่ม)
+      filters.rmLocRows = qFilterRmLocations();
+      filters.lineRows = qFilterProductionLines();
       let sm;
       try {
         sm = buildSummary(filters);
