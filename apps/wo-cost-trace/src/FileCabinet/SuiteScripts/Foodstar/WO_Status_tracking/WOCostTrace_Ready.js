@@ -1459,16 +1459,18 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
   function renderReadyPage(rd) {
     // ปุ่ม i พาพารามิเตอร์ของหน้านี้ไปครบ (entry ตั้ง rd.helpParams) — หน้าคู่มือรันชุดเดียวกันซ้ำ
     const helpParams = rd.helpParams || { ready: rd.woKey };
-    let h = pageHead(READY_TITLE, helpParams, false)
-      + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
-      + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
-    h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
+    const head = pageHead(READY_TITLE, helpParams, false);
+    // ลำดับหัวหน้าเดียวกับหน้าเจาะลึก (#98): ลิงก์กลับ → ชื่อ → คำอธิบาย → ฟอร์ม · เดิมลิงก์กลับอยู่ใต้คำอธิบาย
+    let h = '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
       + '">' + C.ICONS.arrowLeft + 'กลับภาพรวมต้นทุน</a>'
       + (rd.ok && rd.basis === 'wo'
         // พาตัวกรองของภาพรวมไปหน้าเจาะลึกด้วย (QA รอบสอง ข้อ E) — กด "กลับภาพรวม" จากที่นั่นแล้วได้รายการเดิม
         ? ' · <a href="' + selfUrl(Object.assign(filterParams(rd.filters), { wo: rd.woKey }))
           + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
       + '</div>';
+    h += head
+      + '<p class="sub">ไล่ BOM ทุกระดับจากสินค้าที่ผลิต แล้วตรวจว่า master ที่ต้องใช้ตั้งครบหรือยัง '
+      + '— ตรงตาม check point M-02 ถึง M-06 และ M-09 ของ UAT</p>';
     h += renderReadyForm(rd);
     const page = (body) => shell(READY_TITLE, body, READY_CSS, helpParams);
     // query ที่พังขึ้นบนหน้าทันที — query log เต็มอยู่หน้าคู่มือ (#96)

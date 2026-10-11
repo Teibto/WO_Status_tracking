@@ -2504,12 +2504,6 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           </div>
         </div>
       </details>
-      <div class="sub" style="margin-top:var(--sp-3)">
-        เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง"
-        · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
-        · RM Location = คลัง/ถังที่เบิกวัตถุดิบเข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ)
-        · รายการ location และไลน์ผลิตแสดงเฉพาะของบริษัทที่เลือก
-      </div>
       </details>
       <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button>${renderSummaryExportBtn(sm)}</div>
     </form>${renderListFieldScript()}${renderFilterCascadeScript()}`;
@@ -2984,10 +2978,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + kpi('รวมวัตถุดิบและบรรจุภัณฑ์', esc(fmt(rm, 2)), null, ofShown)
       + kpi('รวมต้นทุนแปรสภาพ', esc(fmt(dl, 2)), null, ofShown)
       + kpi('รวมต้นทุนการผลิต', esc(fmt(cost, 2)), null, ofShown)
-      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
-        'จาก ' + esc(String(sm.shown)) + ' ใบที่แสดง')
+      // ผลต่างสุทธิเป็นยอดเงิน — อยู่แถวบนกับยอดอื่น · จำนวนใบที่ไม่ปิดขึ้นต้นแถวล่าง (ใบที่มีปัญหา · #98)
       + kpi('ผลต่างสุทธิ', esc(fmt(gap, 0)), gapCount ? 'bad' : 'ok',
         'รวมค่าสัมบูรณ์ ' + esc(fmt(gapAbs, 0)) + ' · ' + ofShown)
+      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
+        'จาก ' + esc(String(sm.shown)) + ' ใบที่แสดง')
       + kpi('ยังไม่เบิกวัตถุดิบ', esc(String(noIssue)), noIssue ? 'warn' : 'ok')
       + kpi('ยังไม่ปิดงานผลิต', esc(String(noWoc)), noWoc ? 'warn' : 'ok')
       + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv)), noConv ? 'warn' : 'ok',
@@ -3396,6 +3391,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   /** เนื้อหา "อ่านตารางนี้อย่างไร" ของชั้นภาพรวม — ย้ายจากท้ายหน้ารายงานมาหน้าคู่มือ (#96) ไม่แก้ถ้อยคำ */
   function renderSummaryGuide() {
     return '<div class="card"><table class="kv">'
+      // ย้ายมาจากย่อหน้าท้ายกล่องตัวกรองของหน้าภาพรวม (#98) — คำอธิบายยาวอยู่หน้าคู่มือ หน้ารายงานเหลือแต่ช่อง
+      + '<tr><td>ตัวกรอง</td><td>เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · '
+      + 'แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง" · <b>RM Location</b> = คลัง/ถังที่เบิกวัตถุดิบ'
+      + 'เข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ) · รายการ location และไลน์ผลิตแสดงเฉพาะของบริษัทที่เลือก</td></tr>'
       + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
       + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
       + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
@@ -4322,7 +4321,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ปุ่ม i: เปิดเดี่ยวอยู่ใน topbar (ส่งให้ shell) · embed อยู่ใน pagehead — พารามิเตอร์ชุดเดียวกัน
     const helpParams = Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam });
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
-      + '">' + C.ICONS.arrowLeft + 'ภาพรวมหลายใบสั่งผลิต</a>'
+      + '">' + C.ICONS.arrowLeft + 'กลับภาพรวมต้นทุน</a>'
       // ลิงก์ข้ามไปหน้าความพร้อมพาตัวกรองของภาพรวมไปด้วย (QA รอบสอง ข้อ E) — ไม่งั้นกด "กลับภาพรวม"
       // จากหน้าความพร้อมแล้วตัวกรองหาย · embed ติดไปเองที่ selfUrl
       + (m.woKey ? ' · <a href="' + selfUrl(Object.assign(filterParams(m.filters), { ready: m.woKey }))
