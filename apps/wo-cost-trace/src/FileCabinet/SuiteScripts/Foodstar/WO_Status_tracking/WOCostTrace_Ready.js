@@ -1465,7 +1465,9 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
     h += '<div class="crumb"><a href="' + selfUrl(filterParams(rd.filters))
       + '">' + C.ICONS.arrowLeft + 'กลับภาพรวมต้นทุน</a>'
       + (rd.ok && rd.basis === 'wo'
-        ? ' · <a href="' + selfUrl({ wo: rd.woKey }) + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
+        // พาตัวกรองของภาพรวมไปหน้าเจาะลึกด้วย (QA รอบสอง ข้อ E) — กด "กลับภาพรวม" จากที่นั่นแล้วได้รายการเดิม
+        ? ' · <a href="' + selfUrl(Object.assign(filterParams(rd.filters), { wo: rd.woKey }))
+          + '">ดูที่มาของต้นทุนใบนี้</a>' : '')
       + '</div>';
     h += renderReadyForm(rd);
     const page = (body) => shell(READY_TITLE, body, READY_CSS, helpParams);

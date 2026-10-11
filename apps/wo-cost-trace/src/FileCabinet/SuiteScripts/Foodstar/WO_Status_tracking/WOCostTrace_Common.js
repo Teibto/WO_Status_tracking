@@ -353,7 +353,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.pagehead .iconbtn{margin-left:auto}'
     // ชั้นภาพรวมใน embed ไม่มี h1 — ปุ่ม i ลอยมุมขวาบน "ในแถวเดียวกับ" กล่องตัวกรอง ไม่กินแถวเปล่าของตัวเอง
     // (QA #96 ข้อ 6) · กล่องตัวกรองเป็น BFC (overflow:hidden ที่ .filterbox) จึงหดหลบ float ไม่ลอดใต้ปุ่ม
-    + '.pagehead.is-float{float:right;margin:0 0 0 var(--sp-2)}';
+    // QA รอบสอง: เปลี่ยนจาก float เป็น absolute มุมขวาบนของ .content — float ทำให้ฟอร์ม (flex = BFC)
+    // หดหลบทั้งก้อน กล่องตัวกรองจึงไม่ชิดขอบขวาของกรอบ · แถวปุ่ม .act ที่อยู่แถวเดียวกันเว้นที่ให้แทน
+    + '.pagehead.is-float{position:absolute;top:var(--sp-2);right:0;margin:0}';
 
   const REPORT_CSS = CCRC_CSS
     + 'body{padding:0}'
@@ -362,7 +364,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // กรอบของ CCRC เป็นพื้น --c-surface · เนื้อหาไม่เยื้องเข้าจากขอบซ้าย/ขวา ให้แนวตรงกับหัว .sec ของ
     // CCRC ที่อยู่เหนือกรอบ (QA #96 ข้อ 6 — เดิมเยื้อง 25px) · h1 ของหน้าย่อยเท่าหัว .sec (--t-md · ข้อ 7)
     + 'body.is-embed{background:var(--c-surface)}'
-    + 'body.is-embed .content{padding:var(--sp-4) 0 var(--sp-6)}'
+    // ระยะบนเหลือ --sp-2 (QA รอบสอง ข้อ A · ผู้ใช้ตัดสิน 2026-10-11) — CCRC เว้นจากหัว .sec ถึงกรอบ
+    // .appframe ไว้แล้ว 36px (นอก iframe แก้จากที่นี่ไม่ได้) · เดิม 16px รวมเป็น 53px · 0 ไม่ได้เพราะ
+    // ปุ่ม/ข้อความแถวแรกจะชนเส้นบนของกรอบเป็นเส้นคู่ · position:relative = ที่ยึดของปุ่ม i (.pagehead.is-float)
+    + 'body.is-embed .content{padding:var(--sp-2) 0 var(--sp-6);position:relative}'
     + 'body.is-embed h1{font-size:var(--t-md)}'
     + '.sub{color:var(--c-text-muted);font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
     + '.crumb{font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
@@ -406,8 +411,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     //                             เพื่อให้หุบกล่องตัวกรองแล้วปุ่มยังกดได้ · ระยะห่างจึงไม่ได้
     //                             มาจาก gap ของ .filterbar อีก ต้องมี margin-top ของตัวเอง
     + '.filterbar .act{display:flex;align-items:center;gap:var(--sp-2)}'
-    + 'form>.act{display:flex;flex-wrap:wrap;align-items:center;gap:var(--sp-3);'
-    + 'margin:var(--sp-3) 0 0}'
+    // หน้าภาพรวม: แถวปุ่ม**ขึ้นไปอยู่เหนือ**กล่องตัวกรอง ชิดขวา (QA รอบสอง ข้อ B · ตำแหน่งเดียวกับปุ่ม
+    // Apply ของ CCRC ที่อยู่ขวาสุดของแถวตัวกรอง) — ใน DOM ยังอยู่หลัง </details> เหมือนเดิม (หุบกล่อง
+    // แล้วปุ่มยังกดได้ · ปุ่ม submit มาก่อน #btnXlsx) ย้ายด้วย `order:-1` ของฟอร์มที่เป็น flex คอลัมน์
+    // เหตุผล: เอนจินคอมโบบ็อกซ์ (ล็อกกับ wo-status ห้ามแก้) และปฏิทินพลิกขึ้น/ย่อเมื่อปุ่มอยู่ "ใต้" ช่อง
+    // (`avoid.top >= rect.bottom`) — แถวปุ่มเดิมอยู่ใต้ช่องแค่ 122px บน SB1 ทุก popup จึงพลิกขึ้นไปทับ
+    // topbar หรือถูกบีบ · ปุ่มอยู่เหนือทุกช่องแล้ว popup ทุกตัวเปิดลงล่างเต็มความสูงแบบ CCRC และไม่ทับปุ่ม
+    + '#wct-summary-form{display:flex;flex-direction:column}'
+    + 'form>.act{order:-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;'
+    + 'gap:var(--sp-3);min-height:var(--tap-min);margin:0 0 var(--sp-3)}'
+    // ข้อความจำนวนแถวอยู่ซ้ายของปุ่ม ปุ่มชิดขวาสุดแบบ Apply ของ CCRC
+    + 'form>.act>.xnote{order:-1}'
+    // embed: ปุ่ม i (.pagehead.is-float) อยู่มุมขวาบนแถวเดียวกัน — เว้นที่ให้ปุ่ม i ไม่ทับปุ่มของแถวนี้
+    + 'body.is-embed form>.act{padding-right:calc(var(--tap-min) + var(--sp-2))}'
     // combobox ที่ client สร้างครอบ <select name=sub/loc> ตอน enhance ต้องกว้างเท่า .fld แม่
     // (ค่าตั้งต้นของมันคือ inline-block + min-width:170px จาก theme กลาง) — .fld สองช่องนั้น
     // จึงตั้ง flex:0 0 200px ไม่ให้หด ถ้าหดต่ำกว่า 170px ตัว input จะล้นกรอบของ .fld ออกมา
@@ -527,16 +543,23 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // wo-status ที่ #64 ขั้น 4 ปิดช่องว่างนี้ไว้แล้ว) — <summary> คือ element โฟกัสได้จริงของ
     // <details> ที่ไม่เคยมีการปิด outline มาก่อนเลยตกหล่นในสองขั้นก่อนหน้า
     + 'summary:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
-    + '.lvl2{margin-left:var(--sp-4);border-left:3px solid var(--pj-info);padding-left:var(--sp-3)}'
-    + '.lvl3{margin-left:var(--sp-4);border-left:3px solid var(--pj-warning);padding-left:var(--sp-3)}'
+    // .lvl2/.lvl3 (หน้าเจาะลึก) ไม่มีกฎหน้าตาแล้ว — แบนแบบ CCRC (QA รอบสอง ข้อ D) · เดิมเป็นแถบสีซ้าย 3px
+    // + เยื้องซ้อน · ชั้นของข้อมูล BOM อ่านจากป้าย .tag "ชั้นที่ 2/3" ในหัว accordion แทน และเนื้อใน
+    // <details> ยังเยื้อง --sp-4 ตามกฎ accordion ข้างบน · คงคลาสไว้เป็นตัวบอกโครงใน markup
     + '.bad{color:var(--pj-error);font-weight:700}'
     + '.warn{color:var(--pj-warning)}'
     + '.ok{color:var(--pj-success)}'
     // info = ข้อเท็จจริงที่ต้องรู้แต่ไม่ใช่ปัญหา เช่น สินค้าที่ตั้งค่าไว้ว่าไม่มีต้นทุนแปรสภาพ
     + '.info{color:var(--pj-text-muted)}'
     // .tag คือ .badge.info ของ template — คงชื่อคลาสเดิมไว้เพราะ markup ใช้อยู่ 19 จุด
-    + '.tag{display:inline-block;padding:1px 8px;border-radius:var(--r-pill);font-size:var(--t-xs);'
-    + 'font-weight:600;background:var(--pj-info-bg);color:var(--pj-info);margin-left:var(--sp-1)}'
+    // หน้าตา = .badge.badge--info ของ CCRC (42-controls.css:15-28) — สูง 20px · padding 0 6px · inline-flex
+    // (QA รอบสอง ข้อ C) · vertical-align:middle เพราะ inline-flex อยู่กลางบรรทัดข้อความ
+    + '.tag{display:inline-flex;align-items:center;justify-content:center;min-width:20px;height:20px;'
+    + 'padding:0 6px;border-radius:var(--r-pill);background:var(--c-info-soft);color:var(--c-info);'
+    + 'font-size:var(--t-xs);font-weight:var(--w-semibold);font-variant-numeric:tabular-nums;'
+    + 'line-height:1;white-space:nowrap;vertical-align:middle;margin-left:var(--sp-1)}'
+    // ป้ายชั้นข้อมูล BOM หน้าหัวพับของหน้าเจาะลึก (`lvlTag` · ข้อ D) — อยู่หน้าสุดของหัว ไม่ต้องเว้นซ้าย
+    + '.lvltag{margin:0 var(--sp-2) 0 0}'
     // กล่องผิดพลาด = .alert.alert--danger ของ CCRC (44-feedback.css:192-212) — เส้นซ้ายหนา 3px สีอันตราย
     // พื้นอ่อน ข้อความสีหมึก (ไม่ใช่ตัวแดงทั้งก้อนในกรอบแดงรอบด้านแบบเดิม)
     + '.err{display:block;background:var(--c-danger-soft);border:1px solid var(--c-border);'
@@ -604,6 +627,23 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.rw-select:focus,.rw-select:focus-visible,'
     + '.rw-combobox .rw-combobox-input:focus,.rw-combobox .rw-combobox-input:focus-visible{'
     + 'box-shadow:var(--focus-ring) !important}'
+    // ── embed: กล่องชั้นบนสุดไม่มีเส้นซ้าย/ขวาและมุมโค้ง (QA รอบสอง ข้อ A · ผู้ใช้ตัดสิน 2026-10-11) ──
+    // เนื้อหาใน embed ชิดขอบ iframe ซ้ายขวาเพื่อให้แนวตรงกับหัว .sec ของ CCRC — กล่องที่กว้างเต็มแถวจึงวาด
+    // เส้นข้างซ้อนกับเส้นของ .appframe เป็นเส้นคู่ · ตัดเฉพาะเส้นข้าง+มุม เส้นบน/ล่างยังแบ่งกล่องตามเดิม
+    // ครอบทุกชนิดที่วางชั้นบนสุดได้ในสี่หน้า (ภาพรวม · เจาะลึก · ความพร้อม · คู่มือ) · กล่องที่ซ้อนอยู่ใน
+    // กล่องอื่นไม่โดน (ไม่ได้ชิดกรอบ) · .err คงแถบสีซ้าย 3px ของ .alert ไว้ (ความหมาย ไม่ใช่เส้นกรอบ)
+    + 'body.is-embed .content>details,body.is-embed .content>form>details,body.is-embed .content>.card,'
+    + 'body.is-embed .content>.toc,body.is-embed .content>.rw-tablewrap,body.is-embed .content>.scroll{'
+    + 'border-left-width:0;border-right-width:0;border-radius:0}'
+    + 'body.is-embed .content>.err{border-right-width:0;border-radius:0}'
+    + 'body.is-embed .content>details>summary,body.is-embed .content>form>details>summary{border-radius:0}'
+    // การ์ดตัวเลข (.kpi-grid auto-fit) — ใบไหนชิดขอบรู้ได้ตอน runtime เท่านั้น สคริปต์ embed ติดคลาส
+    // is-edge-l/is-edge-r ให้ใบที่แตะขอบ iframe (`renderEmbedEdgeScript`) · ไม่มี JS = เส้นคงอยู่ ไม่พัง
+    + 'body.is-embed .kpi-card.is-edge-l{border-left-width:0;border-top-left-radius:0;border-bottom-left-radius:0}'
+    + 'body.is-embed .kpi-card.is-edge-r{border-right-width:0;border-top-right-radius:0;border-bottom-right-radius:0}'
+    // ── วง focus ของหัวพับ = มุม --r-md เสมอ (QA รอบสอง ข้อ F) — `details[open]>summary` (0,1,2) และกฎ embed
+    // ข้างบนชนะ `summary:focus-visible` (0,1,1) แล้ววงกลายเป็นมุม 6px/0 · !important แบบเดียวกับกฎ focus อื่น
+    + 'details>summary:focus-visible,details[open]>summary:focus-visible{border-radius:var(--r-md) !important}'
     // ── จอแคบ ≤1023px (QA #96 ข้อ 3-4) — ต้องอยู่ท้ายสุดของ CSS เพื่อชนะกฎความสูง 32px ข้างบน ──
     // ใน CCRC ค่านี้วัดกับความกว้างของ iframe ไม่ใช่ของจอ — กรอบที่ฝังเรากว้าง ~847px ก็เข้าเงื่อนไขนี้
     //   ตัวควบคุมสูง --tap-min (90-forms.css:42-43 · 47-combobox.css:177-180)
@@ -612,7 +652,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '@media (max-width:1023px){'
     + '.topbar{padding:0 var(--sp-4)}'
     + '.content{padding:var(--sp-4)}'
-    + 'body.is-embed .content{padding:var(--sp-4) 0}'
+    + 'body.is-embed .content{padding:var(--sp-2) 0 var(--sp-4)}'
     + '.btn,input[type=text],input[type=date],select:not([multiple]),.rw-select,'
     + '.rw-combobox .rw-combobox-input,.datewrap{height:var(--tap-min);min-height:var(--tap-min)}'
     + '.rw-combobox-option{min-height:var(--tap-min)}'
@@ -664,7 +704,25 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
       + CSS + (extraCss || '') + '</head>'
       + '<body' + (EMBED ? ' class="is-embed"' : '') + '>'
       + pageTop(title, helpParams) + '<div class="content">' + wrapTables(body) + '</div>'
-      + renderDateFieldScript() + '</body></html>';
+      + renderDateFieldScript() + renderEmbedEdgeScript() + '</body></html>';
+  }
+
+  /**
+   * โหมด embed: ติดคลาส `is-edge-l` / `is-edge-r` ให้การ์ดตัวเลข (.kpi-card) ที่แตะขอบซ้าย/ขวาของ iframe
+   * (QA รอบสอง ข้อ A) — `.kpi-grid` เป็น auto-fit จำนวนคอลัมน์เปลี่ยนตามความกว้าง CSS ล้วนบอกไม่ได้ว่า
+   * ใบไหนอยู่ริม · วัดเทียบ documentElement.clientWidth (ไม่ใช่ innerWidth ที่รวม scrollbar) ·
+   * เปิดเดี่ยวคืนค่าว่าง (มี padding ข้าง การ์ดไม่ชิดขอบ)
+   */
+  function renderEmbedEdgeScript() {
+    if (!EMBED) return '';
+    return '<script>(function(){'
+      + 'function mark(){var cw=document.documentElement.clientWidth;'
+      + 'var cs=document.querySelectorAll(".kpi-card");'
+      + 'for(var i=0;i<cs.length;i++){var r=cs[i].getBoundingClientRect();'
+      + 'cs[i].classList.toggle("is-edge-l",r.width>0&&r.left<=1);'
+      + 'cs[i].classList.toggle("is-edge-r",r.width>0&&r.right>=cw-1);}}'
+      + 'mark();window.addEventListener("resize",mark);'
+      + '})();</script>';
   }
 
 
@@ -675,7 +733,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
       + '&deploy=' + encodeURIComponent(s.deploymentId);
     // โหมด embed ต้องติดไปกับทุกลิงก์ภายใน (เจาะลึก · ความพร้อม · กลับภาพรวม) ไม่งั้นกดแล้ว
     // หลุดโหมด หน้าที่ฝังเราไว้จะได้หัวเรื่องซ้อนสองชั้น · วางที่จุดเดียวแทนการเติม embed
-    // ใน filterParams เพราะมีลิงก์ที่ไม่ผ่าน filterParams (เช่นลิงก์ความพร้อมจากชั้นเจาะลึก)
+    // ใน filterParams เพราะ embed ไม่ใช่ตัวกรอง (ลิงก์ที่ไม่มีตัวกรองให้พา เช่นหน้าคู่มือจากหน้าที่เปิดตรง
+    // ก็ยังต้องได้ embed) · ลิงก์ข้ามหน้าทุกตัว — รวมเจาะลึก↔ความพร้อม (QA รอบสอง ข้อ E) — พาตัวกรอง
+    // ผ่าน filterParams ด้วย กด "กลับภาพรวม" จากหน้าไหนก็ได้รายการเดิม
     if (EMBED) q += '&embed=1';
     Object.keys(params || {}).forEach(k => {
       const v = asStr(params[k]);
@@ -891,6 +951,19 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // (ดูภาพรวม + Export Excel) การหลบเฉพาะปุ่มแรกยังทิ้งปุ่มที่สองให้ถูกทับได้
     var avoid = openCal.avoid && openCal.avoid.getBoundingClientRect
       ? openCal.avoid.getBoundingClientRect() : null;
+    // หลบ "ตัวปุ่มจริง" ในแถว ไม่ใช่กรอบของทั้งแถว (QA รอบสอง ข้อ B) — .act เป็น flex ระดับ block กว้าง
+    // เต็มฟอร์ม กรอบแถวจึงคร่อมทุกช่องในแนวนอนเสมอแม้ปุ่มจะชิดขวา · ใช้กรอบรวมของปุ่มทุกตัว (export ด้วย)
+    // แถวที่ไม่มีปุ่มให้วัด / ตัวจำลองในเทสที่มีแค่ getBoundingClientRect → ใช้กรอบของ element ตามเดิม
+    var abtn = openCal.avoid && openCal.avoid.querySelectorAll
+      ? openCal.avoid.querySelectorAll('button,.btn') : [];
+    for (var ai = 0, au = null; ai < abtn.length; ai++) {
+      var ar = abtn[ai].getBoundingClientRect();
+      if (!ar || !(ar.width || ar.height)) continue;
+      au = au ? { top: Math.min(au.top, ar.top), bottom: Math.max(au.bottom, ar.bottom),
+        left: Math.min(au.left, ar.left), right: Math.max(au.right, ar.right) }
+        : { top: ar.top, bottom: ar.bottom, left: ar.left, right: ar.right };
+      avoid = au;
+    }
     var hitsBtn = !!(avoid && avoid.top >= rect.bottom
       && !(avoid.right < left || avoid.left > left + width));
 

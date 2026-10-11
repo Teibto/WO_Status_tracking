@@ -3916,6 +3916,15 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     return h;
   }
 
+  /**
+   * ป้ายบอกชั้นของข้อมูล BOM ที่หน้าหัวพับ (QA รอบสอง ข้อ D) — หน้าเจาะลึกแบนแบบ CCRC แล้ว ไม่มีแถบสีซ้าย
+   * 3px + เยื้องซ้อนบอกชั้นอีก · ชั้นที่ 2 = กึ่งสำเร็จรูป/วัตถุดิบที่เบิกเข้า WO นี้ · ชั้นที่ 3 = ledger
+   * ที่มาของ average cost (ชื่อเดียวกับหัว "ชั้นที่ 2 และ 3" และ "ตรวจสุขภาพชั้นที่ 3")
+   */
+  function lvlTag(n) {
+    return '<span class="tag lvltag">ชั้นที่ ' + n + '</span>';
+  }
+
   /** ชั้นที่ 2 — ไล่ย้อนกึ่งสำเร็จรูปกลับไปหา WO ที่ผลิตมัน */
   function renderLevel2(m) {
     const ctx = m.ctx;
@@ -3936,7 +3945,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       const it = ctx.itemById[asStr(r.item_id)] || {};
 
       if (!producers.length && !roll) {
-        h += `<details>${C.accSummary(`${esc(r.item_code)} — ${esc(r.item_name)}
+        h += `<details>${C.accSummary(`${lvlTag(2)}${esc(r.item_code)} — ${esc(r.item_name)}
           <span class="tag">ซื้อมาใช้ตรง</span> ต้นทุน/หน่วยที่คิดเข้า WO
           <b>${esc(fmt(r.unit_cost, 8))}</b>`)}
           <div class="lvl3">${renderLedger(ctx, r.item_id, r.item_code + ' — ' + r.item_name)}</div></details>`;
@@ -3944,7 +3953,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       }
 
       const rollTxt = roll ? ' · BOM มาตรฐาน × average cost ได้ <b>' + esc(fmt(roll.unit_cost, 8)) + '</b>' : '';
-      h += `<details open>${C.accSummary(`${esc(r.item_code)} — ${esc(r.item_name)}
+      h += `<details open>${C.accSummary(`${lvlTag(2)}${esc(r.item_code)} — ${esc(r.item_name)}
         · ต้นทุน/หน่วยที่คิดเข้า WO นี้ <b>${esc(fmt(r.unit_cost, 8))}</b>${rollTxt}`)}<div class="lvl2">`;
 
       // ต้นทุน/หน่วยที่คิดเข้า WO คือ average cost ของตัวกึ่งสำเร็จรูปเอง ณ เวลาเบิก
@@ -4068,7 +4077,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const it = ctx.itemById[asStr(itemId)] || {};
     const stored = asNum(it.avg_cost);
     if (!rows.length) {
-      return `<details>${C.accSummary(`${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
+      return `<details>${C.accSummary(`${lvlTag(3)}${esc(label)} — <span class="warn">ไม่พบความเคลื่อนไหว</span>
         · average cost ในระบบ ${esc(fmt(stored, 8))}`)}</details>`;
     }
     const last = rows[rows.length - 1];
@@ -4076,7 +4085,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const trusted = closeEnough(asNum(last.run_avg), stored);
     const cls = trusted ? 'ok' : 'bad';
     const asof = avgAsOf(rows, ctx.asOf);
-    let h = `<details>${C.accSummary(`${esc(label)} — ${rows.length} รายการ ·
+    let h = `<details>${C.accSummary(`${lvlTag(3)}${esc(label)} — ${rows.length} รายการ ·
       ค่าเฉลี่ยที่คำนวณได้ <b>${esc(fmt(asNum(last.run_avg), 8))}</b> ·
       average cost ในระบบ <b>${esc(fmt(stored, 8))}</b>
       <span class="${cls}">ผลต่าง ${esc(fmt(gap, 8))}</span>
@@ -4314,7 +4323,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     const helpParams = Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam });
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
       + '">' + C.ICONS.arrowLeft + 'ภาพรวมหลายใบสั่งผลิต</a>'
-      + (m.woKey ? ' · <a href="' + selfUrl({ ready: m.woKey })
+      // ลิงก์ข้ามไปหน้าความพร้อมพาตัวกรองของภาพรวมไปด้วย (QA รอบสอง ข้อ E) — ไม่งั้นกด "กลับภาพรวม"
+      // จากหน้าความพร้อมแล้วตัวกรองหาย · embed ติดไปเองที่ selfUrl
+      + (m.woKey ? ' · <a href="' + selfUrl(Object.assign(filterParams(m.filters), { ready: m.woKey }))
         + '">ตรวจความพร้อม master ของใบนี้</a>' : '')
       + '</div>'
       + pageHead(DRILL_TITLE, helpParams, false)

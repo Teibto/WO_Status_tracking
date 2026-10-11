@@ -148,10 +148,11 @@ PAGES.forEach((p) => {
   }
 });
 const ovEmb = PAGES.find((p) => p.layer === 'ภาพรวม' && p.embed).html;
-eq('ภาพรวม (embed) → ปุ่ม i ลอยขวา ไม่กินแถวเปล่า (pagehead.is-float)',
+eq('ภาพรวม (embed) → ปุ่ม i มุมขวาบน ไม่กินแถวเปล่า (pagehead.is-float)',
   /<div class="pagehead is-float"><a class="iconbtn"/.test(ovEmb), true);
 eq('embed: h1 ของหน้าย่อย = --t-md', css.indexOf('body.is-embed h1{font-size:var(--t-md)}') >= 0, true);
-eq('embed: เนื้อหาไม่เยื้องซ้ายขวา', css.indexOf('body.is-embed .content{padding:var(--sp-4) 0 var(--sp-6)}') >= 0, true);
+// ระยะบนลดจาก --sp-4 เหลือ --sp-2 ที่ QA รอบสอง ข้อ A (ล็อกรายละเอียดอยู่ที่ test_ccrc_style_qa2.js)
+eq('embed: เนื้อหาไม่เยื้องซ้ายขวา', css.indexOf('body.is-embed .content{padding:var(--sp-2) 0 var(--sp-6);position:relative}') >= 0, true);
 eq('embed: พื้นเท่า .appframe (--c-surface)', css.indexOf('body.is-embed{background:var(--c-surface)}') >= 0, true);
 
 const srcCode = ['WOCostTrace.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js']
