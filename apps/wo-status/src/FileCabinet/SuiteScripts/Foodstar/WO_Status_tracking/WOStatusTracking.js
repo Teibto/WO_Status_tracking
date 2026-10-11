@@ -15,7 +15,7 @@
  * QUERY CONTRACT — shapes expected from WOStatusTracking_Queries.js
  * ─────────────────────────────────────────────────────────────────
  *
- * getCP1_Approve(params) → [{
+ * getCP1_Approve(params, paging?) → { total: number, rows: [{
  *   woid: number,        // internalid of Work Order
  *   woNumber: string,    // WO document number, e.g. "WO-26-00148"
  *   itemName: string,    // manufactured item name
@@ -27,7 +27,9 @@
  *   lineId: number|null, // custbody production line internal id
  *   lineName: string,    // custbody production line display name
  *   approvalStatus: number, // 1=pending, 2=approved
- * }]
+ * }] }
+ *   paging = {page, pageSize} → total คือจำนวน WO ทั้งช่วง (COUNT(*) OVER ()), rows เฉพาะหน้านั้น
+ *   ไม่ส่ง paging → total = rows.length (ทุกแถว) — พฤติกรรมเดิมก่อน #78
  *
  * getCP2_Release(woids) → [{
  *   woid: string,
@@ -120,6 +122,24 @@ define(
 
     // ─── Constants ────────────────────────────────────────────────
     const PAGE_SIZE = 100;
+
+    /**
+     * เพดานช่วงวันที่ของตัวกรอง (issue #78)
+     *
+     * เดิมเพดานคือ 7 วัน เพราะงานหนักผูกกับ "จำนวน WO ทั้งช่วง" — CP1 คืน WO ทุกใบใน
+     * ช่วง แล้วยิง CP2–CP9 ให้ทุกใบก่อนจะเพิ่ง slice เอา 100 แถวมาแสดง
+     *
+     * ตอนนี้ CP1 แบ่งหน้าด้วย window function และ CP2–CP9 รับเฉพาะ woids ของหน้าปัจจุบัน
+     * งานหนักจึงผูกกับขนาดหน้า ⇒ เพดานเดิมไม่จำเป็นต้องตื้นอีก
+     * ค่า 92 วัน (= 1 ไตรมาส) เป็นเพดานกันพิมพ์ผิด/เผลอลากปี ไม่ใช่ข้อจำกัดเชิงสมรรถนะ
+     */
+    const MAX_RANGE_DAYS = 92;
+
+    /**
+     * แสดงคำเตือน (ไม่บล็อก) เมื่อช่วงกว้างกว่าเท่านี้ — บอกให้รู้ว่ากำลังสแกนข้อมูลมาก
+     * และผลรวมต่อหน้าถูกคิดเฉพาะหน้า
+     */
+    const WIDE_RANGE_DAYS = 31;
 
     /** ไอคอนปฏิทินของปุ่มเปิด date picker (issue #45)
      *  วาดด้วย currentColor ทั้งตัว — สีจึงมาจาก CSS token ไม่ใช่ hex ในไฟล์นี้ */
@@ -279,15 +299,37 @@ define(
       + '.kpi.err{border-left-color:var(--pj-error)}.kpi.err .n{color:var(--pj-error)}'
       + '.kpi.wait{border-left-color:var(--pj-warning)}.kpi.wait .n{color:var(--pj-warning)}'
       + '.kpi.ok{border-left-color:var(--pj-success)}.kpi.ok .n{color:var(--pj-success)}'
+      // บรรทัดกำกับขอบเขตของ KPI (issue #78) — ตัวเลข 4 ใบข้างบนเป็นของหน้าปัจจุบัน
+      // บรรทัดนี้บอกจำนวน WO ทั้งช่วงไม่ให้อ่านตัวเลขการ์ดเป็นยอดรวม
+      + '.kpiscope{font-size:11px;color:var(--pj-text-muted);padding:0 var(--sp-5) var(--sp-3)}'
+      + '.kpiscope b{color:var(--pj-text);font-weight:700}'
       + '.wrap{padding:0 var(--sp-5) 40px}'
       + '.tscroll{overflow-x:auto}'
       // ตารางหลักไม่ใช้เส้นรอบทุกช่องแบบ template เพราะกว้างเกิน 1,240px
       // เส้นแนวตั้งทุกคอลัมน์จะกลายเป็นลายทาง - คงเส้นล่างเส้นเดียวเหมือนของเดิม
-      + 'table{margin-top:6px;min-width:1240px}'
+      // min-width ลดจาก 1240 (#80) — คอลัมน์ checkpoint แคบลงมากพอที่จะพอดีจอ 1366 ได้จริง
+      + 'table{margin-top:6px;min-width:960px}'
       + 'th,td{border:0;border-bottom:1px solid var(--pj-border);padding:9px 10px;'
       + 'white-space:nowrap;vertical-align:middle}'
       + 'th{position:sticky;top:0;z-index:2;background:var(--pj-surface-alt)}'
-      + 'th.cp,td.cp{text-align:center;width:74px}'
+      // #80 — checkpoint แคบลง + **หัวคอลัมน์ตัดบรรทัดได้** (ชื่อไทยยาวกว่า 46px มาก
+      // ถ้าปล่อย nowrap หัวจะเป็นตัวกำหนดความกว้างทั้งตาราง) ชื่อเต็มยังอยู่ใน data-tip
+      + 'th.cp{white-space:normal;line-height:1.15;vertical-align:bottom;'
+      + 'text-align:center;width:48px;padding-left:3px;padding-right:3px}'
+      + 'td.cp{text-align:center;width:48px;padding-left:4px;padding-right:4px}'
+      // ชื่อสินค้า/ไลน์ผลิตยาวได้ — ตัดด้วย ellipsis ไม่ให้เป็นตัวกวาดความกว้างทั้งตาราง
+      + '.ell{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:200px}'
+      + '.ell-inline{display:inline-block;overflow:hidden;text-overflow:ellipsis;'
+      + 'white-space:nowrap;max-width:130px;vertical-align:middle}'
+      // แถบเครื่องมือเหนือตาราง (ปุ่มขยาย/ย่อทั้งหมด) — #80
+      + '.gridbar{display:flex;justify-content:flex-end;align-items:center;'
+      + 'padding:var(--sp-2) var(--sp-5) 0}'
+      + '.gtoggle{box-sizing:border-box;display:inline-flex;align-items:center;justify-content:center;'
+      + 'height:32px;padding:0 var(--sp-3);border:1px solid var(--pj-border-strong);'
+      + 'border-radius:var(--radius-sm);background:var(--pj-surface);color:var(--pj-primary);'
+      + 'font-family:inherit;font-size:var(--fs-sm);font-weight:600;cursor:pointer;white-space:nowrap}'
+      + '.gtoggle:hover{background:var(--pj-surface-alt)}'
+      + '.gtoggle:focus-visible{outline:2px solid var(--pj-primary) !important;outline-offset:2px}'
       + 'tr.wo{cursor:pointer}'
       + 'tr.wo:hover{background:var(--pj-surface-alt)}'
       + 'tr.wo>td:first-child{font-weight:600}'
@@ -311,6 +353,21 @@ define(
       + 'cursor:default;line-height:1}'
       + '.note-icon.err{background:var(--pj-error-bg);color:var(--pj-error)}'
       + '.note-icon.wait{background:var(--pj-warning-bg);color:var(--pj-warning)}'
+      // note cell แบบเห็นข้อความ (Job B) — โครงเดียวกับ drilldown: .note-line หนึ่งบรรทัดต่อ
+      // checkpoint ที่มีปัญหา.err/wait และเก็บข้อความทุกบรรทัดรวมกันไว้ใน data-tip
+      + 'td.note-cell{white-space:normal;min-width:220px;max-width:320px;text-align:left;vertical-align:top}'
+      + '.note-line{display:flex;gap:6px;align-items:flex-start;font-size:var(--fs-sm);line-height:1.35;color:var(--pj-text)}'
+      + '.note-line + .note-line{margin-top:4px}'
+      + '.note-line.err svg{color:var(--pj-error)}'
+      + '.note-line.wait svg{color:var(--pj-warning)}'
+      + '.note-line svg{flex:0 0 auto;width:14px;height:14px;margin-top:1px}'
+      + '.note-cp{font-weight:600;white-space:nowrap}'
+      // ลิงก์ในแถว drilldown (Job A) — ต้องไม่ถูกสไตล์ของลิงก์ทั่วไปกลืน และคลิกแล้วไม่ toggle แถว
+      + '.task-links{font-size:11px;margin-top:2px}'
+      + '.task-links a{color:var(--pj-primary)}'
+      // ลิงก์เลขที่ WO — ใช้สีเดียวกับข้อความ (ไม่ให้กลายเป็นลิงก์น้ำเงินกลางตาราง)
+      + 'a.wo-link{color:inherit;text-decoration:none}'
+      + 'a.wo-link:hover{text-decoration:underline}'
       + '.legend{display:flex;gap:var(--sp-5);flex-wrap:wrap;'
       + 'padding:var(--sp-3) var(--sp-5);color:var(--pj-text-muted);font-size:var(--fs-sm);'
       + 'border-top:1px solid var(--pj-border);margin-top:var(--sp-2)}'
@@ -499,26 +556,29 @@ define(
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
-      // Sub item type options (issue #27)
-      const sitRows = Q.getSubItemTypes();
+      // Production line options (issue #90)
+      const lineRows = Q.getProductionLines();
 
-      // Default date range: today-6 → today (≤7 days)
-      const today = new Date();
-      const todayStr = formatDate(today);
-      const fromDate = new Date(today);
-      fromDate.setDate(fromDate.getDate() - 6);
-      const fromStr = formatDate(fromDate);
+      // Default date range = เดือนปัจจุบัน ตามเวลาของ server (issue #92) — วันที่ 1 ถึงวันสุดท้าย
+      // ความหมายเดียวกับรายงาน BOM: new Date(y, m, 1) → new Date(y, m+1, 0)
+      // ใช้เฉพาะหน้าแรกที่ยังไม่มีวันที่ส่งมา · ผู้ใช้เปลี่ยนได้ถึง MAX_RANGE_DAYS
+      // เดือนยาวสุด 31 วัน (นับหัวท้าย) = WIDE_RANGE_DAYS พอดี จึงไม่ขึ้นคำเตือนช่วงกว้าง
+      // formatDate ประกอบ y-m-d จากค่า local ตรง ๆ — ไม่ใช้ toISOString() ที่ทำให้วันเลื่อนตาม timezone
+      const now = new Date();
+      const fromStr = formatDate(new Date(now.getFullYear(), now.getMonth(), 1));
+      const toStr   = formatDate(new Date(now.getFullYear(), now.getMonth() + 1, 0));
 
       const html = buildPageShell({
         lang,
         subRows,
         locRows,
-        sitRows,
+        lineRows,
         selectedSub: '',
         selectedLoc: '',
-        selectedSit: '',
+        selectedLine: '',
+        selectedItem: '',
         selectedFrom: fromStr,
-        selectedTo: todayStr,
+        selectedTo: toStr,
         scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
         kpiHtml: '',
         gridHtml: '',
@@ -536,6 +596,101 @@ define(
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
       context.response.write(html);
+    }
+
+    // ══════════════════════════════════════════════════════════════
+    // Date-range guard + page-scoped checkpoint loading (issue #78)
+    // ══════════════════════════════════════════════════════════════
+
+    /** จำนวนวันแบบนับหัวท้าย (01/09→07/09 = 7) — ใช้กำหนดเพดานช่วงวันที่ */
+    function rangeDays(dateFrom, dateTo) {
+      return Math.round((new Date(dateTo) - new Date(dateFrom)) / 86400000) + 1;
+    }
+
+    /** ข้อความเพดานช่วงวันที่ — ที่เดียว ใช้ทั้ง renderResults และ renderFragment */
+    function dateRangeErrorMsg(lang) {
+      return lang === 'en'
+        ? `Date range must be ${MAX_RANGE_DAYS} days or less. Please go back and refine your filter.`
+        : `กรุณาเลือกช่วงวันที่ไม่เกิน ${MAX_RANGE_DAYS} วัน — กรุณากลับไปแก้ไขตัวกรอง`;
+    }
+
+    /** คำเตือน (ไม่บล็อก) เมื่อช่วงกว้าง — คืน '' ถ้าไม่ต้องเตือน */
+    function wideRangeNotice(dateFrom, dateTo, lang) {
+      if (!dateFrom || !dateTo) return '';
+      const days = rangeDays(dateFrom, dateTo);
+      if (days <= WIDE_RANGE_DAYS) return '';
+      return lang === 'en'
+        ? `Wide range (${days} days) — the grid shows ${PAGE_SIZE} WOs per page and the summary counts only WOs on the current page.`
+        : `ช่วงกว้าง (${days} วัน) — ตารางแสดงหน้าละ ${PAGE_SIZE} ใบ และสรุปนับเฉพาะใบสั่งผลิตในหน้านี้`;
+    }
+
+    /**
+     * โหลดสถานะของ "หน้าเดียว" (issue #78)
+     *
+     * ลำดับ: CP1 แบบมี paging → ได้ WO เฉพาะหน้า + จำนวนทั้งช่วง → ยิง CP2–CP9 เฉพาะ woids ของหน้านั้น
+     * ⇒ งานหนักสุด (CP2–CP9) ผูกกับขนาดหน้า ไม่ใช่จำนวน WO ทั้งช่วง จึงยกเพดาน 7 วันได้โดยไม่ทำให้
+     *   งานต่อการเปิดหนึ่งครั้งโตตามช่วงวันที่
+     *
+     * หน้าที่เกินหน้าสุดท้ายจะได้ 0 แถวและไม่รู้จำนวนทั้งช่วง (COUNT(*) OVER () มากับแถว) —
+     * ถอยไปหน้า 1 เพื่อเอาจำนวนจริงมาแสดงแทนการโชว์หน้าว่างที่ไม่มีเลขกำกับ
+     *
+     * @returns {{matrix: Array, totalWO: number, page: number}}
+     */
+    function loadCheckpointMatrix(searchParams, requestedPage) {
+      let page = Math.max(1, requestedPage || 1);
+
+      const fetchPage = (p) => {
+        try {
+          const res = Q.getCP1_Approve(searchParams, { page: p, pageSize: PAGE_SIZE });
+          return res || { rows: [], total: 0 };
+        } catch (e) {
+          log.error({ title: 'CP1 query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
+          return { rows: [], total: 0, failed: true };
+        }
+      };
+
+      let res = fetchPage(page);
+      if (page > 1 && (res.rows || []).length === 0) {
+        page = 1;
+        res = fetchPage(1);
+      }
+      const cp1Rows = res.rows || [];
+      const totalWO = res.total || cp1Rows.length;
+      const allWoids = cp1Rows.map(r => r.woid);
+
+      // ── CP2–CP9 — เฉพาะ WO ในหน้านี้เท่านั้น ─────────────────────
+      let cp2Data = [], cp3aData = [], cp3bData = [],
+          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
+          cp9Data = [];
+
+      if (allWoids.length > 0) {
+        try { cp2Data  = Q.getCP2_Release(allWoids);        } catch (e) { log.error({ title: 'CP2 failed',  details: String(e) }); }
+        try { cp3aData = Q.getCP3a_BomComponents(allWoids); } catch (e) { log.error({ title: 'CP3a failed', details: String(e) }); }
+        try { cp3bData = Q.getCP3b_FedItems(allWoids);      } catch (e) { log.error({ title: 'CP3b failed', details: String(e) }); }
+        try { cp4Data  = Q.getCP4_Machine(allWoids);        } catch (e) { log.error({ title: 'CP4 failed',  details: String(e) }); }
+        try { cp5Data  = Q.getCP5_Labor(allWoids);          } catch (e) { log.error({ title: 'CP5 failed',  details: String(e) }); }
+        try { cp6Data  = Q.getCP6_Time(allWoids);           } catch (e) { log.error({ title: 'CP6 failed',  details: String(e) }); }
+        try { cp7Data  = Q.getCP7_WOC(allWoids);            } catch (e) { log.error({ title: 'CP7 failed',  details: String(e) }); }
+        try { cp8Data  = Q.getCP8_CostGen(allWoids);        } catch (e) { log.error({ title: 'CP8 failed',  details: String(e) }); }
+        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);   } catch (e) { log.error({ title: 'CP9 failed',  details: String(e) }); }
+      }
+
+      const matrix = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
+                                       cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
+                                       cp9Data);
+      return { matrix, totalWO, page };
+    }
+
+    /** นับ KPI จาก matrix ของหน้าเดียว */
+    function computeKpis(matrix) {
+      let ok = 0, wait = 0, err = 0;
+      matrix.forEach(wo => {
+        const bucket = woKpiBucket(wo.cpStatus);
+        if (bucket === 'ok')        ok++;
+        else if (bucket === 'err')  err++;
+        else                        wait++;
+      });
+      return { pageCount: matrix.length, ok, wait, err };
     }
 
     // ══════════════════════════════════════════════════════════════
@@ -557,7 +712,8 @@ define(
       const batchNumber  = (p.batchNumber  || '').trim().toUpperCase();
       const osNumber     = (p.osNumber     || '').trim().toUpperCase();
       const embed        = p.embed === '1';
-      const subItemTypeId = p.subItemTypeId || '';
+      const lineId       = p.lineId || '';
+      const itemCode     = (p.itemCode || '').trim();
       const hasEntityFilter = !!(woNumber || batchNumber || osNumber);
 
       // ── Server-side date format guard ───────────────────────────
@@ -601,76 +757,39 @@ define(
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
 
-      const sitRows = Q.getSubItemTypes();
+      const lineRows = Q.getProductionLines();
 
-      // ── Server-side date range guard (≤7 days) ──────────────────
+      // ── Server-side date range guard (issue #78) ─────────────────
       // Skip when a specific-entity filter (WO/Batch/OS) is provided
       if (!hasEntityFilter && dateFrom && dateTo) {
-        const d1 = new Date(dateFrom), d2 = new Date(dateTo);
-        const diffDays = (d2 - d1) / (1000 * 60 * 60 * 24);
-        if (diffDays > 7 || diffDays < 0) {
-          const errMsg = lang === 'en'
-            ? 'Date range must be ≤ 7 days. Please go back and refine your filter.'
-            : 'กรุณาเลือกช่วงวันที่ไม่เกิน 7 วัน — กรุณากลับไปแก้ไขตัวกรอง';
+        const days = rangeDays(dateFrom, dateTo);
+        if (days > MAX_RANGE_DAYS || days < 1) {
           context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
-          context.response.write(buildErrorPage(errMsg));
+          context.response.write(buildErrorPage(dateRangeErrorMsg(lang)));
           return;
         }
       }
+      const wideNote = hasEntityFilter ? '' : wideRangeNotice(dateFrom, dateTo, lang);
+      if (wideNote) scopeNoticeLines.push(wideNote);
 
-      // ── Step 1: CP1 — get canonical WO list ──────────────────────
-      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
-      let cp1Rows = [];
-      try {
-        cp1Rows = Q.getCP1_Approve(searchParams);
-      } catch (e) {
-        log.error({ title: 'CP1 query failed', details: (e && e.message) ? e.message + '\n' + (e.stack || '') : String(e) });
-      }
+      // ── Step 1–3: CP1 (หน้าเดียว) → CP2–CP9 เฉพาะหน้า → matrix ───
+      const searchParams = { subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const loaded   = loadCheckpointMatrix(searchParams, page);
+      const matrix   = loaded.matrix;
+      const totalWO  = loaded.totalWO;
+      const livePage = loaded.page;
 
-      const allWoids = cp1Rows.map(r => r.woid);
+      // ── Step 4: Compute KPIs (ของหน้าปัจจุบัน) ──────────────────
+      const kpi = computeKpis(matrix);
 
-      // ── Step 2: CP2–CP9 — run all checkpoint queries ──────────────
-      let cp2Data = [], cp3aData = [], cp3bData = [],
-          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
-          cp9Data = [];
-
-      if (allWoids.length > 0) {
-        try { cp2Data  = Q.getCP2_Release(allWoids);          } catch (e) { log.error({ title: 'CP2 failed',  details: String(e) }); }
-        try { cp3aData = Q.getCP3a_BomComponents(allWoids);   } catch (e) { log.error({ title: 'CP3a failed', details: String(e) }); }
-        try { cp3bData = Q.getCP3b_FedItems(allWoids);        } catch (e) { log.error({ title: 'CP3b failed', details: String(e) }); }
-        try { cp4Data  = Q.getCP4_Machine(allWoids);          } catch (e) { log.error({ title: 'CP4 failed',  details: String(e) }); }
-        try { cp5Data  = Q.getCP5_Labor(allWoids);            } catch (e) { log.error({ title: 'CP5 failed',  details: String(e) }); }
-        try { cp6Data  = Q.getCP6_Time(allWoids);             } catch (e) { log.error({ title: 'CP6 failed',  details: String(e) }); }
-        try { cp7Data  = Q.getCP7_WOC(allWoids);              } catch (e) { log.error({ title: 'CP7 failed',  details: String(e) }); }
-        try { cp8Data  = Q.getCP8_CostGen(allWoids);          } catch (e) { log.error({ title: 'CP8 failed',  details: String(e) }); }
-        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);     } catch (e) { log.error({ title: 'CP9 failed',  details: String(e) }); }
-      }
-
-      // ── Step 3: Build status matrix ────────────────────────────
-      const matrix = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
-                                       cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
-                                       cp9Data);
-
-      // ── Step 4: Compute KPIs ────────────────────────────────────
-      let kpiTotal = matrix.length, kpiOk = 0, kpiWait = 0, kpiErr = 0;
-      matrix.forEach(wo => {
-        const bucket = woKpiBucket(wo.cpStatus);
-        if (bucket === 'ok')        kpiOk++;
-        else if (bucket === 'err')  kpiErr++;
-        else                        kpiWait++;
-      });
-
-      // ── Step 5: Paginate ────────────────────────────────────────
-      const totalPages = Math.max(1, Math.ceil(kpiTotal / PAGE_SIZE));
-      const pageStart  = (page - 1) * PAGE_SIZE;
-      const pageEnd    = Math.min(pageStart + PAGE_SIZE, kpiTotal);
-      const pageRows   = matrix.slice(pageStart, pageEnd);
+      // ── Step 5: Pagination (จำนวนหน้าจาก WO ทั้งช่วง) ────────────
+      const totalPages = Math.max(1, Math.ceil(totalWO / PAGE_SIZE));
 
       // ── Step 6: Build HTML sections ────────────────────────────
-      const kpiHtml       = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
-      const gridHtml      = buildGridHtml(pageRows, lang);
+      const kpiHtml       = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
+      const gridHtml      = buildGridHtml(matrix, lang);
       const paginationHtml = buildPaginationHtml({
-        page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang,
+        page: livePage, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang,
         woNumber, batchNumber, osNumber, embed
       });
 
@@ -678,19 +797,20 @@ define(
         lang,
         subRows,
         locRows,
-        sitRows,
+        lineRows,
         selectedSub: subsidiaryId,
         selectedLoc: locationId,
-        selectedSit: subItemTypeId,
+        selectedLine: lineId,
+        selectedItem: itemCode,
         selectedFrom: dateFrom,
         selectedTo: dateTo,
         scopeNoticeHtml: buildScopeNoticeHtml(scopeNoticeLines),
         kpiHtml,
         gridHtml,
         paginationHtml,
-        page,
+        page: livePage,
         totalPages,
-        totalWO: kpiTotal,
+        totalWO,
         scriptId,
         deployId,
         embed,
@@ -721,7 +841,8 @@ define(
       const batchNumber  = (p.batchNumber || '').trim().toUpperCase();
       const osNumber     = (p.osNumber    || '').trim().toUpperCase();
       const embed        = p.embed === '1';
-      const subItemTypeId = p.subItemTypeId || '';
+      const lineId       = p.lineId || '';
+      const itemCode     = (p.itemCode || '').trim();
 
       // ชั้น fragment ไม่มี shell ให้แสดงหน้า error จึงตอบเป็นแถบแจ้งใน results-zone
       if (!woNumber && !batchNumber && !osNumber
@@ -731,6 +852,15 @@ define(
           : 'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026';
         context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
         context.response.write('<div class="schema-notice">' + escapeHtml(fmtErr) + '</div>');
+        return;
+      }
+
+      // ด่านเพดานช่วงวันที่ — path นี้คือทางที่ปุ่ม "ค้นหา" ยิงจริง จึงต้องมีด่านเดียวกับ
+      // renderResults ไม่ใช่พึ่งด่านฝั่งเบราว์เซอร์อย่างเดียว (issue #78)
+      const fragHasEntity = !!(woNumber || batchNumber || osNumber);
+      if (!fragHasEntity && dateFrom && dateTo && rangeDays(dateFrom, dateTo) > MAX_RANGE_DAYS) {
+        context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
+        context.response.write('<div class="schema-notice">' + escapeHtml(dateRangeErrorMsg(lang)) + '</div>');
         return;
       }
 
@@ -756,48 +886,24 @@ define(
       if (locScope.failed) scopeNoticeLines.push(lang === 'en'
         ? 'Failed to load the production plant list — the location filter may be incomplete.'
         : 'ดึงรายชื่ออาคารผลิตไม่สำเร็จ — ตัวกรองสถานที่ผลิตอาจไม่ครบ');
+      if (!fragHasEntity) {
+        const wide = wideRangeNotice(dateFrom, dateTo, lang);
+        if (wide) scopeNoticeLines.push(wide);
+      }
       const scopeNoticeHtml = buildScopeNoticeHtml(scopeNoticeLines);
 
-      const searchParams = { subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, woNumber, batchNumber, osNumber };
-      let cp1Rows = [];
-      try { cp1Rows = Q.getCP1_Approve(searchParams); } catch (e) { log.error({ title: 'Fragment CP1 failed', details: String(e) }); }
+      const searchParams = { subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, woNumber, batchNumber, osNumber };
+      const loaded   = loadCheckpointMatrix(searchParams, page);
+      const matrix   = loaded.matrix;
+      const totalWO  = loaded.totalWO;
+      const livePage = loaded.page;
 
-      const allWoids = cp1Rows.map(r => r.woid);
-      let cp2Data = [], cp3aData = [], cp3bData = [],
-          cp4Data = [], cp5Data = [], cp6Data = [], cp7Data = [], cp8Data = [],
-          cp9Data = [];
+      const kpi        = computeKpis(matrix);
+      const totalPages = Math.max(1, Math.ceil(totalWO / PAGE_SIZE));
 
-      if (allWoids.length > 0) {
-        try { cp2Data  = Q.getCP2_Release(allWoids);        } catch (e) { log.error({ title: 'Fragment CP2 failed',  details: String(e) }); }
-        try { cp3aData = Q.getCP3a_BomComponents(allWoids); } catch (e) { log.error({ title: 'Fragment CP3a failed', details: String(e) }); }
-        try { cp3bData = Q.getCP3b_FedItems(allWoids);      } catch (e) { log.error({ title: 'Fragment CP3b failed', details: String(e) }); }
-        try { cp4Data  = Q.getCP4_Machine(allWoids);        } catch (e) { log.error({ title: 'Fragment CP4 failed',  details: String(e) }); }
-        try { cp5Data  = Q.getCP5_Labor(allWoids);          } catch (e) { log.error({ title: 'Fragment CP5 failed',  details: String(e) }); }
-        try { cp6Data  = Q.getCP6_Time(allWoids);           } catch (e) { log.error({ title: 'Fragment CP6 failed',  details: String(e) }); }
-        try { cp7Data  = Q.getCP7_WOC(allWoids);            } catch (e) { log.error({ title: 'Fragment CP7 failed',  details: String(e) }); }
-        try { cp8Data  = Q.getCP8_CostGen(allWoids);        } catch (e) { log.error({ title: 'Fragment CP8 failed',  details: String(e) }); }
-        try { cp9Data  = Q.getCP9_StdCostSetup(allWoids);   } catch (e) { log.error({ title: 'Fragment CP9 failed',  details: String(e) }); }
-      }
-
-      const matrix   = buildStatusMatrix(cp1Rows, cp2Data, cp3aData, cp3bData,
-                                         cp4Data, cp5Data, cp6Data, cp7Data, cp8Data,
-                                         cp9Data);
-      let kpiTotal = matrix.length, kpiOk = 0, kpiWait = 0, kpiErr = 0;
-      matrix.forEach(wo => {
-        const bucket = woKpiBucket(wo.cpStatus);
-        if (bucket === 'ok')       kpiOk++;
-        else if (bucket === 'err') kpiErr++;
-        else                       kpiWait++;
-      });
-
-      const totalPages = Math.max(1, Math.ceil(kpiTotal / PAGE_SIZE));
-      const pageStart  = (page - 1) * PAGE_SIZE;
-      const pageEnd    = Math.min(pageStart + PAGE_SIZE, kpiTotal);
-      const pageRows   = matrix.slice(pageStart, pageEnd);
-
-      const kpiHtml        = buildKpiHtml(kpiTotal, kpiOk, kpiWait, kpiErr, lang);
-      const gridHtml       = buildGridHtml(pageRows, lang);
-      const paginationHtml = buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
+      const kpiHtml        = buildKpiHtml(kpi.pageCount, kpi.ok, kpi.wait, kpi.err, totalWO, lang);
+      const gridHtml       = buildGridHtml(matrix, lang);
+      const paginationHtml = buildPaginationHtml({ page: livePage, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed });
       const legendHtml     = buildLegendHtml(lang);
 
       context.response.setHeader({ name: 'Content-Type', value: 'text/html; charset=utf-8' });
@@ -848,9 +954,10 @@ define(
                                cp9Data) {
       // ── Index all data by woid for fast lookup ─────────────────
       const idx2  = indexBy(cp2Data,  'woid', true);   // woid → [{batchId, released, ...}]
-      // CP3: WO-grain item sets — {woid → Set<itemName>}
-      const idx3a = indexByWoidItems(cp3aData);   // woid → Set<itemName> (BOM)
-      const idx3b = indexByWoidItems(cp3bData);   // woid → Set<itemName> (fed)
+      // CP3: WO-grain item sets — {woid → Set<itemId>}
+      const idx3a = indexByWoidItems(cp3aData);   // woid → Set<itemId> (BOM)
+      const idx3b = indexByWoidItems(cp3bData);   // woid → Set<itemId> (fed)
+      const idx3aDisplay = indexByWoidItemDisplay(cp3aData); // woid → {itemId → display}
       const idx4  = indexBy(cp4Data,  'woid', true);
       const idx5  = indexBy(cp5Data,  'woid', true);
       const idx6  = indexBy(cp6Data,  'woid', true);
@@ -884,7 +991,7 @@ define(
 
         // ── CP2–CP9: WO-level ─────────────────────────────────────
         const cp2 = computeCP2(woid, batchRowsForWo);
-        const cp3 = computeCP3(woid, idx3a[woid] || new Set(), idx3b[woid] || new Set());
+        const cp3 = computeCP3(woid, idx3a[woid] || new Set(), idx3b[woid] || new Set(), idx3aDisplay[woid] || {});
         const cp4      = computeCP4(woid, idx4[woid] || []);
         const cp5      = computeCP5(woid, idx5[woid] || []);
         const cp6      = computeCP6(woid, idx6[woid] || []);
@@ -949,17 +1056,38 @@ define(
     }
 
     /**
-     * Index CP3 item rows by woid → Set<itemName>.
-     * Used for WO-grain CP3 computation: each WO maps to a flat set of item names.
-     * @param {Array} arr — [{woid, itemId, itemName}]
-     * @returns {Object} woid → Set<itemName>
+     * Index CP3 item rows by woid → Set<itemId>.
+     * Used for WO-grain CP3 computation: each WO maps to a flat set of item ids.
+     * Keying by id (not name) so two ids sharing a display name are not conflated.
+     * @param {Array} arr — [{woid, itemId, itemName, itemCode}]
+     * @returns {Object} woid → Set<itemId>
      */
     function indexByWoidItems(arr) {
       const map = {};
       (arr || []).forEach(item => {
         const w = item.woid;
         if (!map[w]) map[w] = new Set();
-        map[w].add(item.itemName);
+        map[w].add(item.itemId);
+      });
+      return map;
+    }
+
+    /**
+     * Index the display string of BOM component rows by woid → itemId → "code name".
+     * Fallback order: code, then id — same rule as itemDisplay() in the drilldown.
+     * @param {Array} arr — [{woid, itemId, itemName, itemCode}]
+     * @returns {Object} woid → { itemId: displayString }
+     */
+    function indexByWoidItemDisplay(arr) {
+      const map = {};
+      (arr || []).forEach(item => {
+        const w = item.woid;
+        if (!map[w]) map[w] = {};
+        const code = String(item.itemCode || '');
+        const name = String(item.itemName || '');
+        map[w][item.itemId] = code
+          ? (name ? (code + ' ' + name).trim() : code)
+          : String(item.itemId || '');
       });
       return map;
     }
@@ -1031,18 +1159,21 @@ define(
 
     /** CP3: BOM feed
      *  All BOM items fed → ok; any missing → wait
-     *  bomItems = Set<itemName>, fedItems = Set<itemName> (WO-grain, from indexByWoidItems) */
-    function computeCP3(woid, bomItems, fedItems) {
+     *  bomItems = Set<itemId>, fedItems = Set<itemId> (WO-grain, from indexByWoidItems)
+     *  itemDisplay = { itemId → display string } for the missing-material message */
+    function computeCP3(woid, bomItems, fedItems, itemDisplay) {
       if (bomItems.size === 0) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
 
-      const missing = [...bomItems].filter(name => !fedItems.has(name));
+      const missing = [...bomItems].filter(id => !fedItems.has(id));
       if (missing.length === 0) {
         return { status: 'ok', note: { th: '', en: '' } };
       }
 
-      const itemList = missing.slice(0, 5).join(', ') + (missing.length > 5 ? ` (+${missing.length - 5})` : '');
+      const display = itemDisplay || {};
+      const itemList = missing.slice(0, 5).map(id => display[id] || String(id)).join(', ')
+        + (missing.length > 5 ? ` (+${missing.length - 5})` : '');
       return {
         status: 'wait',
         note: {
@@ -1336,12 +1467,16 @@ define(
 </div>`;
     }
 
-    function buildKpiHtml(total, ok, wait, err, lang) {
+    /**
+     * KPI ของ **หน้าปัจจุบัน** (issue #78) — ตัวเลข 4 ใบข้างบนนับเฉพาะ WO ในหน้านี้
+     * จึงต้องมีบรรทัดล่างบอกจำนวน WO ทั้งช่วงเสมอ ไม่ให้อ่านเป็นยอดรวมทั้งช่วงโดยเข้าใจผิด
+     */
+    function buildKpiHtml(pageTotal, ok, wait, err, rangeTotal, lang) {
       const t = getI18nLabels(lang);
       return `
 <div class="kpis">
   <div class="kpi">
-    <div class="n">${total}</div>
+    <div class="n">${pageTotal}</div>
     <div class="l" data-i18n="kTotal">${t.kTotal}</div>
   </div>
   <div class="kpi ok">
@@ -1356,7 +1491,46 @@ define(
     <div class="n">${err}</div>
     <div class="l" data-i18n="kErr">${t.kErr}</div>
   </div>
-</div>`;
+</div>
+<div class="kpiscope" data-i18n="kRange">${escapeHtml(t.kRange)}: <b>${rangeTotal}</b></div>`;
+    }
+
+    /**
+     * เก็บบรรทัด note ของแถว WO ตามสัญญาเดียวกับ WOStatusTracking_Drilldown.noteCell:
+     * เอาเฉพาะ checkpoint ที่ status เป็น 'err'/'wait' และมีข้อความในภาษาของหน้า
+     * เรียง err ทั้งหมดก่อน แล้วค่อย wait — ในกลุ่มเดียวกันคงลำดับ index ของ checkpoint
+     * @returns {Array} [{ status:'err'|'wait', index:number, message:string }]
+     */
+    function gridNoteLines(cpStatusArr, lang) {
+      const statuses = cpStatusArr || [];
+      const lines = [];
+      ['err', 'wait'].forEach(st => {
+        statuses.forEach((cp, i) => {
+          if (!cp || cp.status !== st) return;
+          const msg = (cp.note && cp.note[lang]) ? String(cp.note[lang]).trim() : '';
+          if (!msg) return;
+          lines.push({ status: st, index: i, message: msg });
+        });
+      });
+      return lines;
+    }
+
+    /**
+     * Render note cell ของแถว WO — โครง markup/คลาสเดียวกับ renderNoteCell ของ drilldown
+     * lines: [{ status, index, message }] ที่เรียงมาแล้ว · t = getI18nLabels(lang)
+     */
+    function renderGridNoteCell(lines, t) {
+      if (!lines || !lines.length) return '<td class="note-cell"></td>';
+      const tip = lines.map(l => l.message).join(' · ');
+      let inner = '';
+      lines.forEach(l => {
+        const sym = l.status === 'err'
+          ? theme.iconImg('warn', escapeAttr(t.legend[2]))
+          : theme.iconImg('clock', escapeAttr(t.legend[1]));
+        const cpLabel = (t.cols[l.index] && t.cols[l.index].h) || '';
+        inner += `<div class="note-line ${l.status}">${sym}<span class="note-cp">${escapeHtml(cpLabel)}:</span> ${escapeHtml(l.message)}</div>`;
+      });
+      return `<td class="note-cell" data-tip="${escapeAttr(tip)}">${inner}</td>`;
     }
 
     function buildGridHtml(pageRows, lang) {
@@ -1377,11 +1551,11 @@ define(
       ).join('');
 
       const thead = `<thead><tr>
-  <th style="min-width:230px">${escapeHtml(t.cWO)}</th>
-  <th style="min-width:150px">${escapeHtml(t.cLoc)}</th>
+  <th style="min-width:200px">${escapeHtml(t.cWO)}</th>
+  <th style="min-width:110px">${escapeHtml(t.cLoc)}</th>
   <th>${escapeHtml(t.cLine)}</th>
   ${cpHeaders}
-  <th style="width:50px;text-align:center" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
+  <th style="min-width:220px;text-align:left" data-tip="${escapeAttr(t.cNote)}">${escapeHtml(lang === 'en' ? 'Note' : 'หมายเหตุ')}</th>
 </tr></thead>`;
 
       // Table body — WO rows only (batches loaded lazily via drilldown)
@@ -1407,28 +1581,35 @@ define(
             st = cp.status;
             badgeHtml = '';
           }
-          return `<td class="cp" data-tip="${escapeAttr(t.cols[i].tip)}">
+          // tooltip เฉพาะเจาะจง: มี note ของ checkpoint นี้ในภาษาของหน้าและเป็น err/wait
+          // → ใช้ "หัวคอลัมน์: ข้อความ note" ไม่งั้นคงคำอธิบายคอลัมน์เดิม
+          const cpNote = (cp.note && cp.note[lang]) ? String(cp.note[lang]).trim() : '';
+          const cpTip = ((cp.status === 'err' || cp.status === 'wait') && cpNote)
+            ? t.cols[i].h + ': ' + cpNote
+            : t.cols[i].tip;
+          return `<td class="cp" data-tip="${escapeAttr(cpTip)}">
   <span class="pill ${st}">${S[st]}${badgeHtml}</span>
 </td>`;
         }).join('');
 
-        // Note cell: worst-status note as tooltip icon
-        const noteInfo = pickWorstNote(wo.cpStatus, lang);
-        const noteHtml = noteInfo.note
-          // ไอคอนนี้ไม่มีข้อความอื่นบอกความหมายในเซลล์เลย (ไม่เหมือน legend) — ห่อด้วย iconImg()
-          // ใช้ noteInfo.note (ข้อความเดียวกับที่ขึ้น data-tip) เป็นชื่อ ไม่ hardcode คำใหม่ และ
-          // เป็นข้อความที่ผ่านการเลือกภาษาแล้วจาก pickWorstNote()/Labels.getCheckpointNote (#64 ขั้น 2b)
-          ? `<span class="note-icon ${noteInfo.status}" data-tip="${escapeAttr(noteInfo.note)}">${theme.iconImg(noteInfo.status === 'err' ? 'warn' : 'clock', escapeAttr(noteInfo.note))}</span>`
-          : '';
+        // Note cell: ALL problem notes as visible text (same contract/classes as Job A drilldown)
+        const noteHtml = renderGridNoteCell(gridNoteLines(wo.cpStatus, lang), t);
 
         const qtyDisplay = `${formatNumber(wo.qty)} ${escapeHtml(wo.qtyUnit || '')}`.trim();
+
+        // ลิงก์เลขที่ WO ไปยัง record จริง — ตรวจ parseInt > 0 ก่อนเสมอ กัน id ที่ไม่ใช่ตัวเลขหลุดเป็น href
+        const woNumId = parseInt(wo.woid, 10);
+        const woNumberLabel = `<strong>${escapeHtml(wo.woNumber || '')}</strong>`;
+        const woNumberHtml = woNumId > 0
+          ? `<a class="wo-link" href="/app/accounting/transactions/transaction.nl?id=${woNumId}" target="_blank" rel="noopener">${woNumberLabel}</a>`
+          : woNumberLabel;
 
         tbodyHtml += `<tr class="wo" data-woid="${escapeAttr(String(wo.woid))}" data-lang="${lang}">
   <td>
     <span class="twist">▶</span>
-    <strong>${escapeHtml(wo.woNumber || '')}</strong>
+    ${woNumberHtml}
     <span style="color:var(--muted);font-weight:400;font-size:11px;margin-left:6px">${escapeHtml(fmtDate(wo.woDate))}</span>
-    <div style="padding-left:18px;margin-top:2px">
+    <div style="padding-left:18px;margin-top:2px" class="ell">
       <span style="font-weight:600">${escapeHtml(wo.itemCode || '')}</span>
       <span style="color:var(--muted);font-weight:400"> · ${escapeHtml(wo.itemDisplayName || wo.itemName || '')}</span>
     </div>
@@ -1437,14 +1618,20 @@ define(
     </div>
   </td>
   <td>${escapeHtml(wo.locationName || '')}</td>
-  <td>${escapeHtml(wo.lineName || '')}</td>
+  <td><span class="ell-inline">${escapeHtml(wo.lineName || '')}</span></td>
   ${pillCells}
-  <td style="text-align:center">${noteHtml}</td>
+  ${noteHtml}
 </tr>
 <tr class="drilldown-placeholder hidden" data-woid="${escapeAttr(String(wo.woid))}"></tr>`;
       });
 
-      return `<div class="wrap"><div class="tscroll">
+      // ปุ่มขยาย/ย่อทั้งหมด (issue #80) — โผล่เฉพาะเมื่อมีแถว และโหลด drilldown ของ "หน้านี้" เท่านั้น
+      const hasRows = pageRows.length > 0;
+      const gridBar = hasRows
+        ? `<div class="gridbar"><button type="button" class="gtoggle" id="btnExpandAll" data-i18n="expandAll">${escapeHtml(t.expandAll)}</button></div>`
+        : '';
+
+      return `${gridBar}<div class="wrap"><div class="tscroll">
 <table>
 ${thead}
 <tbody id="rows">${tbodyHtml}</tbody>
@@ -1452,11 +1639,11 @@ ${thead}
 </div></div>`;
     }
 
-    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
+    function buildPaginationHtml({ page, totalPages, subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, woNumber, batchNumber, osNumber, embed }) {
       if (totalPages <= 1) return '';
 
       const makeLink = (p, label, active) => {
-        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, subItemTypeId, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
+        const qs = buildQueryString({ action: 'search', subsidiaryId, locationId, lineId, itemCode, dateFrom, dateTo, lang, page: p, woNumber, batchNumber, osNumber, embed: embed ? '1' : '' });
         return active
           ? `<span class="pgcur">${label}</span>`
           : `<a href="?${qs}" class="pglink">${label}</a>`;
@@ -1482,8 +1669,8 @@ ${thead}
     // Full page shell — HTML, CSS, inline JS
     // ══════════════════════════════════════════════════════════════
     function buildPageShell({
-      lang, subRows, locRows, sitRows,
-      selectedSub, selectedLoc, selectedSit, selectedFrom, selectedTo,
+      lang, subRows, locRows, lineRows,
+      selectedSub, selectedLoc, selectedLine, selectedItem, selectedFrom, selectedTo,
       scopeNoticeHtml,
       kpiHtml, gridHtml, paginationHtml,
       page, totalPages, totalWO,
@@ -1504,9 +1691,9 @@ ${thead}
       // Location options — ไม่ใช่ด่านสิทธิ์ ค่านอกลิสต์เก็บไว้แสดง+เตือนแทนการบีบ (buildLocationOptions)
       const locOptions = buildLocationOptions(locRows, selectedLoc);
 
-      // Sub item type options (issue #27)
-      const sitOptions = (sitRows || []).map(r =>
-        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedSit) ? 'selected' : ''}>
+      // Production line options (issue #90)
+      const lineOptions = (lineRows || []).map(r =>
+        `<option value="${escapeAttr(String(r.id))}" ${String(r.id) === String(selectedLine) ? 'selected' : ''}>
           ${escapeHtml(r.name)}
         </option>`
       ).join('');
@@ -1556,34 +1743,13 @@ ${embed ? '' : theme.topbar({
   <input type="hidden" id="hidWoNumber"    name="woNumber"    value="${escapeHtml(woNumber)}" />
   <input type="hidden" id="hidBatchNumber" name="batchNumber" value="${escapeHtml(batchNumber)}" />
   <input type="hidden" id="hidOsNumber"    name="osNumber"    value="${escapeHtml(osNumber)}" />
+  <!-- ลำดับตัวกรองตามผู้ใช้ (issue #90): บริษัท · วันที่ · สถานที่ผลิต · WO/Batch/Order Sheet · ไลน์ผลิต · สินค้า -->
   <div class="filterbar">
-    <div class="fld" style="flex:1 1 200px;min-width:180px;">
-      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">WO / Batch / Order Sheet</label>
-      <input type="text" id="entityFilter"
-             value="${escapeAttr(woNumber || batchNumber || osNumber)}"
-             placeholder="WOFSC... / WOFSC-B... / OS-..."
-             style="background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;width:100%;"
-             autocomplete="off" spellcheck="false" />
-    </div>
     <div class="fld">
       <label data-i18n="fSub">${escapeHtml(t.fSub)}</label>
       <select name="subsidiaryId">
         <option value="" data-i18n-placeholder="allSub">${escapeHtml(t.allSub)}</option>
         ${subOptions}
-      </select>
-    </div>
-    <div class="fld">
-      <label data-i18n="fLoc">${escapeHtml(t.fLoc)}</label>
-      <select name="locationId">
-        <option value="" data-i18n-placeholder="allLoc">${escapeHtml(t.allLoc)}</option>
-        ${locOptions}
-      </select>
-    </div>
-    <div class="fld">
-      <label data-i18n="fSit">${escapeHtml(t.fSit)}</label>
-      <select name="subItemTypeId">
-        <option value="" data-i18n-placeholder="allSit">${escapeHtml(t.allSit)}</option>
-        ${sitOptions}
       </select>
     </div>
     <div class="fld" id="date-fld-from">
@@ -1610,6 +1776,34 @@ ${embed ? '' : theme.topbar({
                 aria-label="${escapeAttr(t.calOpen)}" aria-haspopup="dialog">${CAL_ICON}</button>
       </div>
     </div>
+    <div class="fld">
+      <label data-i18n="fLoc">${escapeHtml(t.fLoc)}</label>
+      <select name="locationId">
+        <option value="" data-i18n-placeholder="allLoc">${escapeHtml(t.allLoc)}</option>
+        ${locOptions}
+      </select>
+    </div>
+    <div class="fld" style="flex:1 1 200px;min-width:180px;">
+      <label style="font-size:11px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;">WO / Batch / Order Sheet</label>
+      <input type="text" id="entityFilter"
+             value="${escapeAttr(woNumber || batchNumber || osNumber)}"
+             placeholder="WOFSC... / WOFSC-B... / OS-..."
+             style="background:var(--panel);border:1px solid var(--accent);color:var(--txt);padding:7px 9px;border-radius:6px;font-size:13px;width:100%;"
+             autocomplete="off" spellcheck="false" />
+    </div>
+    <div class="fld">
+      <label data-i18n="fLine">${escapeHtml(t.fLine)}</label>
+      <select name="lineId">
+        <option value="" data-i18n-placeholder="allLine">${escapeHtml(t.allLine)}</option>
+        ${lineOptions}
+      </select>
+    </div>
+    <div class="fld" style="flex:1 1 180px;min-width:160px;">
+      <label data-i18n="fItem">${escapeHtml(t.fItem)}</label>
+      <input type="text" name="itemCode" id="itemCode" value="${escapeAttr(selectedItem || '')}"
+             data-i18n-placeholder="phItem" placeholder="${escapeAttr(t.phItem)}"
+             autocomplete="off" spellcheck="false" />
+    </div>
     <button type="button" id="btnSearch" data-i18n="go">${escapeHtml(t.go)}</button>
   </div>
 </form>
@@ -1629,6 +1823,9 @@ ${gridHtml ? legendHtml : ''}
 const I18N = ${i18nJson};
 const STATUS_ICONS = ${statusIconsJson};
 let LANG = ${JSON.stringify(lang)};
+// เพดานช่วงวันที่ (issue #78) — ส่งค่าจากเซิร์ฟเวอร์เพื่อให้ด่านฝั่งเบราว์เซอร์กับฝั่งเซิร์ฟเวอร์
+// ใช้ตัวเลขเดียวกัน ไม่มีทางเพี้ยนออกจากกัน
+const MAX_RANGE_DAYS = ${MAX_RANGE_DAYS};
 // ปุ่มเดือนก่อน/ถัดไปของปฏิทิน (issue #64 ขั้น 4) — svg เดียวกับ theme.ICONS.chevronLeft/Right
 // ฝังเป็นสตริงตอน render (เหมือน I18N/STATUS_ICONS ข้างบน) เพราะ ICONS อยู่ฝั่งเซิร์ฟเวอร์
 const CAL_PREV_SVG = ${JSON.stringify(theme.ICONS.chevronLeft)};
@@ -2042,7 +2239,7 @@ function _isoFromDateInput(el) {
 })();
 
 // ── Redwood searchable combobox (issue #64 ขั้น 3 — list field) ─────────────────
-// ครอบ <select> ที่เป็น "ข้อมูล" (มาจาก SuiteQL — subsidiaryId/locationId/subItemTypeId)
+// ครอบ <select> ที่เป็น "ข้อมูล" (มาจาก SuiteQL — subsidiaryId/locationId/lineId)
 // ด้วยกล่องค้นหา ไม่ทิ้ง <select> เดิม (ยังเป็นตัวเก็บค่าจริง label for= ยังโฟกัสไปหาได้เพราะ
 // ซ่อนด้วย sr-only ไม่ใช่ display:none — ดูเหตุผลที่ shared/WOReportTheme.js .sr-only)
 // เกณฑ์ตัดจำนวนตัวเลือกแบบ ">8" ถูกผู้ใช้ปฏิเสธแล้ว (MRP #500) — ฟังก์ชันนี้จึง**ไม่มี**เงื่อนไข
@@ -2376,7 +2573,7 @@ function _isoFromDateInput(el) {
     }
   });
 
-  ['subsidiaryId', 'locationId', 'subItemTypeId'].forEach(function(name) {
+  ['subsidiaryId', 'locationId', 'lineId'].forEach(function(name) {
     var select = document.querySelector('select[name="' + name + '"]');
     if (select) enhanceRwSelect(select);
   });
@@ -2404,13 +2601,14 @@ document.getElementById('btnSearch').addEventListener('click', function() {
       if (!from || !to) { alert(t.errDateRequired || 'กรุณาเลือกวันที่'); return; }
       var d1 = new Date(from), d2 = new Date(to);
       if (d2 < d1) { alert(t.errDateOrder || '"ถึง" ต้องมาหลัง "ตั้งแต่"'); return; }
-      if ((d2 - d1) / 86400000 > 7) { alert(t.errDateRange || 'ช่วงไม่เกิน 7 วัน'); return; }
+      if ((d2 - d1) / 86400000 + 1 > MAX_RANGE_DAYS) { alert(t.errDateRange || 'ช่วงวันที่กว้างเกินกำหนด'); return; }
     }
     fetchResults({
       lang:         (document.getElementById('hidLang') || {}).value || 'th',
       subsidiaryId: (document.querySelector('[name=subsidiaryId]') || {}).value || '',
       locationId:   (document.querySelector('[name=locationId]')   || {}).value || '',
-      subItemTypeId: (document.querySelector('[name=subItemTypeId]') || {}).value || '',
+      lineId:       (document.querySelector('[name=lineId]')       || {}).value || '',
+      itemCode:     ((document.getElementById('itemCode') || {}).value || '').trim(),
       dateFrom:     from,
       dateTo:       to,
       page:         1,
@@ -2447,7 +2645,7 @@ document.getElementById('btnSearch').addEventListener('click', function() {
 
   // ช่องวันที่เป็น text แล้ว — Enter จะ submit ฟอร์มดิบ ๆ พา dd/mm/yyyy ไปทาง URL
   // ดักให้ไปทางเดียวกับปุ่มค้นหา (เซิร์ฟเวอร์ยังรับสองรูปแบบไว้เป็นตาข่ายอีกชั้น)
-  ['dateFrom', 'dateTo'].forEach(function(id) {
+  ['dateFrom', 'dateTo', 'itemCode'].forEach(function(id) {
     var el = document.getElementById(id);
     if (!el) return;
     el.addEventListener('keydown', function(e) {
@@ -2472,7 +2670,8 @@ function buildFragmentUrl(p) {
   params.set('lang',        p.lang        || 'th');
   params.set('subsidiaryId', p.subsidiaryId || '');
   params.set('locationId',   p.locationId   || '');
-  params.set('subItemTypeId', p.subItemTypeId || '');
+  params.set('lineId',       p.lineId       || '');
+  params.set('itemCode',     p.itemCode     || '');
   params.set('dateFrom',     p.dateFrom     || '');
   params.set('dateTo',       p.dateTo       || '');
   params.set('page',         String(p.page  || 1));
@@ -2545,7 +2744,9 @@ function bindTips() {
 // ── WO row expand / collapse (lazy drilldown) ─────────────────────
 function bindWoRows() {
   document.querySelectorAll('tr.wo').forEach(row => {
-    row.addEventListener('click', () => {
+    row.addEventListener('click', (e) => {
+      // คลิกที่ลิงก์ (เช่น เลขที่ WO หรือลิงก์ในแถว drilldown) ต้องไม่ toggle แถว
+      if (e.target && e.target.closest && e.target.closest('a')) return;
       const woid = row.dataset.woid;
       const isOpen = row.classList.contains('open');
 
@@ -2607,13 +2808,51 @@ function bindWoRows() {
             placeholder.classList.remove('hidden');
           });
       }
+      // อัปเดตป้ายปุ่มขยาย/ย่อทั้งหมดเมื่อสถานะแถวเปลี่ยน (issue #80)
+      if (typeof _syncExpandAllLabel === 'function') _syncExpandAllLabel();
     });
   });
+}
+
+// ── Expand / collapse all WO rows (issue #80) ─────────────────────
+// ขยายทั้งหมด = ยิง drilldown ของทุกแถวในหน้านี้ (สูงสุด 100 ใบ) แล้วเปลี่ยนปุ่มเป็น "ย่อทั้งหมด"
+// ไม่แตะ drilldown ของหน้าอื่น และไม่ cache ข้ามหน้า (โหลดใหม่ทุกครั้งที่กด)
+function _allRowsOpen() {
+  var rows = document.querySelectorAll('tr.wo');
+  if (rows.length === 0) return false;
+  for (var i = 0; i < rows.length; i++) {
+    if (!rows[i].classList.contains('open')) return false;
+  }
+  return true;
+}
+function _syncExpandAllLabel() {
+  var btn = document.getElementById('btnExpandAll');
+  if (!btn) return;
+  var t = I18N[LANG] || {};
+  btn.textContent = _allRowsOpen() ? (t.collapseAll || 'ย่อทั้งหมด') : (t.expandAll || 'ขยายทั้งหมด');
+}
+function toggleAllRows() {
+  var rows = document.querySelectorAll('tr.wo');
+  var anyClosed = false;
+  for (var i = 0; i < rows.length; i++) { if (!rows[i].classList.contains('open')) { anyClosed = true; break; } }
+  for (var j = 0; j < rows.length; j++) {
+    var r = rows[j];
+    var open = r.classList.contains('open');
+    if (anyClosed && !open) r.click();
+    else if (!anyClosed && open) r.click();
+  }
+  _syncExpandAllLabel();
+}
+function bindExpandAll() {
+  var btn = document.getElementById('btnExpandAll');
+  if (btn) btn.addEventListener('click', toggleAllRows);
+  _syncExpandAllLabel();
 }
 
 // ── Init ─────────────────────────────────────────────────────────
 bindTips();
 bindWoRows();
+bindExpandAll();
 fixStickyHeader();
 window.addEventListener('resize', fixStickyHeader);
 </script>
@@ -2634,12 +2873,15 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— ทุกบริษัท —',
           fLoc:  'สถานที่ผลิต',
           allLoc:'— ทุกสถานที่ —',
-          fSit:  'ประเภทย่อยสินค้า',
-          allSit:'— ทุกประเภทย่อย —',
+          fLine: 'ไลน์ผลิต',
+          allLine:'— ทุกไลน์ผลิต —',
+          fItem: 'รหัสสินค้า',
+          phItem:'รหัสหรือชื่อสินค้า',
           fFrom: 'วันที่ผลิต — ตั้งแต่',
           fTo:   'ถึง',
           go:    'ค้นหา',
-          kTotal:'ใบสั่งผลิต',
+          kTotal:'ใบสั่งผลิต (หน้านี้)',
+          kRange:'ใบสั่งผลิตทั้งช่วง',
           kOk:   'ครบทุกขั้น',
           kWait: 'กำลังดำเนินการ',
           kErr:  'พบความผิดปกติ',
@@ -2667,9 +2909,11 @@ window.addEventListener('resize', fixStickyHeader);
             'ยังไม่ถึงขั้นนี้',
           ],
           rollup: 'สถานะ WO = สถานะแย่สุดของ Batch ข้างใน · ตัวเลขมุม = จำนวน Batch ที่มีปัญหา · คลิกแถวเพื่อขยาย',
+          expandAll:   'ขยายทั้งหมด',
+          collapseAll: 'ย่อทั้งหมด',
           errDateRequired: 'กรุณาเลือกวันที่ทั้งคู่ / Please select both dates',
           errDateOrder:    '"ถึง" ต้องมาหลัง "ตั้งแต่" / "To" must be after "From"',
-          errDateRange:    'กรุณาเลือกช่วงไม่เกิน 7 วัน / Date range must be ≤ 7 days',
+          errDateRange:    'กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน / Date range must be ${MAX_RANGE_DAYS} days or less',
           errDateFormat:   'รูปแบบวันที่ไม่ถูกต้อง — ต้องเป็น dd/mm/yyyy เช่น 08/09/2026 / Invalid date format',
           // ปฏิทินของหน้านี้ (issue #45) — ปีเป็น ค.ศ. ให้ตรงกับช่องข้อความ ไม่ใช่ พ.ศ.
           calOpen:   'เปิดปฏิทิน',
@@ -2690,12 +2934,15 @@ window.addEventListener('resize', fixStickyHeader);
           allSub:'— All subsidiaries —',
           fLoc:  'Location',
           allLoc:'— All locations —',
-          fSit:  'Sub Item Type',
-          allSit:'— All sub item types —',
+          fLine: 'Production Line',
+          allLine:'— All production lines —',
+          fItem: 'Item code',
+          phItem:'Code or name',
           fFrom: 'WO Date — From',
           fTo:   'To',
           go:    'Search',
-          kTotal:'Work Orders',
+          kTotal:'Work orders (this page)',
+          kRange:'Work orders in range',
           kOk:   'All steps complete',
           kWait: 'In progress',
           kErr:  'Issues found',
@@ -2723,9 +2970,11 @@ window.addEventListener('resize', fixStickyHeader);
             'Not reached yet',
           ],
           rollup: 'WO status = worst status among its batches · corner number = batches with an issue · click a row to expand',
+          expandAll:   'Expand all',
+          collapseAll: 'Collapse all',
           errDateRequired: 'Please select both dates / กรุณาเลือกวันที่ทั้งคู่',
           errDateOrder:    '"To" must be after "From" / "ถึง" ต้องมาหลัง "ตั้งแต่"',
-          errDateRange:    'Date range must be ≤ 7 days / กรุณาเลือกช่วงไม่เกิน 7 วัน',
+          errDateRange:    'Date range must be ${MAX_RANGE_DAYS} days or less / กรุณาเลือกช่วงไม่เกิน ${MAX_RANGE_DAYS} วัน',
           errDateFormat:   'Invalid date format. Use dd/mm/yyyy — e.g. 08/09/2026 / รูปแบบวันที่ไม่ถูกต้อง',
           calOpen:   'Open calendar',
           calPrev:   'Previous month',
@@ -2780,22 +3029,6 @@ window.addEventListener('resize', fixStickyHeader);
         map[w][t].add(item.itemName);
       });
       return map;
-    }
-
-    /** Pick worst-status note for the note column on a WO row */
-    function pickWorstNote(cpStatusArr, lang) {
-      let worst = 0;
-      let worstNote = '';
-      let worstStatus = 'ok';
-      cpStatusArr.forEach(cp => {
-        const rank = STATUS_RANK[cp.status] || 0;
-        if (rank > worst) {
-          worst = rank;
-          worstStatus = cp.status;
-          worstNote = (cp.note && cp.note[lang]) ? cp.note[lang] : '';
-        }
-      });
-      return { status: worstStatus, note: worstNote };
     }
 
     /** HTML-escape for content */

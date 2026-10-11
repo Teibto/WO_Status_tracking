@@ -120,7 +120,7 @@ const WO_ROWS = [{
 function sqlRows(sql) {
   if (/FROM subsidiary/i.test(sql)) return [{ id: '2', name: 'Foodstar Co., Ltd.' }];
   if (/FROM location WHERE custrecord_mfg_productionplant/i.test(sql)) return [];
-  if (/cseg_subitemtype/.test(sql)) return [];
+  if (/customrecord_mfg_productionline/.test(sql)) return [];
   if (/AS wo_number/.test(sql)) return WO_ROWS; // CP1 — ให้มีแถวจริง กระตุ้น legend/grid ให้ render
   return []; // checkpoint queries อื่น ๆ — ไม่สนใจสถานะที่ได้ (na ทุกตัว) แค่ต้องการให้มีแถว
 }
