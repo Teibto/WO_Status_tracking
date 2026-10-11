@@ -932,3 +932,25 @@ CCRC (repo `ns-foodstar-9751184`) ฝัง WO Cost Trace ด้วย `&embed=1
   `apps/wo-cost-trace/test/test_help_page.js` ตก ถ้า CSS เฉพาะรายงานมี hex / `rgb()` / `hsl()`
 - ชั้นภาพรวมในโหมด embed ไม่วาด h1 (CCRC แสดงชื่อรายงานเอง) · "อ่านตารางนี้อย่างไร" และ
   "เอกสารอ้างอิงทางเทคนิค" อยู่หน้าคู่มือ `&view=help` ที่เปิดจากปุ่มไอคอน i มุมขวาบน
+
+#### โครงหน้าและหน้าตาหลัง QA บน SB1 (#96 · PR #97 · 2026-10-11)
+
+ทุกข้อด้านล่างล็อกไว้ที่ `apps/wo-cost-trace/test/test_ccrc_style_qa.js` (ขับ `onRequest` จริงทั้งสี่ชั้น × เปิดเดี่ยว/embed)
+
+- **เอกสาร HTML เต็ม** — `shell()` เขียน `<!doctype html><html lang="th">` + meta charset/viewport + `<title>`
+  ทุกหน้า (เดิมไม่มี doctype หน้าเป็น quirks mode) · โหมด embed ติดคลาส `is-embed` ที่ `<body>`
+- **หัวหน้า** — เปิดเดี่ยว: topbar แบบ CCRC (`h1.viewtitle` 20px/700 + ป้าย WO Cost Trace หน้าตา `.badge--brand`
+  + ปุ่ม i ชิดขวา) ไม่มี breadcrumb และไม่มี h1 ซ้ำใต้แถบ · embed: ไม่มี topbar · หน้าย่อยมี h1 ขนาด `--t-md`
+  เท่าหัว `.sec` ของ CCRC · ชั้นภาพรวมไม่มี h1 ปุ่ม i ลอยมุมขวาบนข้างกล่องตัวกรอง (`.pagehead.is-float`)
+  · ผู้เรียก `shell(title, body, css, helpParams)` ต้องส่งพารามิเตอร์ปุ่ม i ชุดเดียวกับที่ส่งให้ `pageHead()`
+- **embed** — พื้น `--c-surface` เท่า `.appframe` · เนื้อหาไม่เยื้องซ้ายขวา ให้แนวตรงหัว `.sec` ของ CCRC ·
+  ทุกฟอร์ม (ภาพรวม · เจาะลึก · ความพร้อม) มี hidden `embed=1`
+- **ตาราง** — `shell()` ห่อทุก `<table>` ที่ไม่อยู่ใน `.scroll` ด้วย `.rw-tablewrap` (เลื่อนแนวนอนในกรอบตัวเอง)
+  หน้าจึงไม่ล้นแนวนอน · ตาราง kv ในการ์ดไม่มีกรอบซ้อน · `th` ไม่ตัดบรรทัด
+- **ฟอร์ม** — ไม่มีการ์ด วางบนพื้นหน้าแบบ `.filterbar` ของ CCRC · หัวข้อพับทุกอัน (กล่องตัวกรอง · ตัวกรองเพิ่มเติม ·
+  หัวข้อชั้นที่ 2/3 · query log) เป็น accordion ของ CCRC — `<summary>` ต้องสร้างผ่าน `C.accSummary()` เท่านั้น
+  (marker ถูกซ่อน ไอคอน svg หมุนแทน)
+- **จอแคบ ≤1023px** (ใน CCRC วัดกับความกว้าง iframe) — ปุ่ม/ช่อง/combobox/select/ช่องวันที่สูง 40px ·
+  topbar `0 16px` · เนื้อหา 16px · `.iconbtn` 40×40 ทุกขนาดจอ
+- **ไอคอน** 18px (`--icon`) ทุกตัวรวมไอคอนในแถว (`.rowstat`) และลิงก์ NetSuite (`.nsrec`) · ยกเว้นลูกศร combobox
+  ที่ CCRC เองบีบไว้ 16px (`47-combobox.css:149-151`) · ลิงก์ "กลับ" ใช้ svg `arrowLeft` ไม่ใช่ตัวอักษร ←
