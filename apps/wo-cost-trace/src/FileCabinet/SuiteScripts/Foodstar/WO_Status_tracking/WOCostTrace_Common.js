@@ -569,6 +569,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.err pre{margin-top:var(--sp-2);color:var(--c-text-muted)}'
     + '.miss{color:var(--pj-warning)}'
     + '.note{font-size:var(--fs-xs);line-height:1.35}'
+    // คอลัมน์หมายเหตุของตารางภาพรวมถูก table-layout:auto บีบเหลือ ~67px ที่จอ 1376 แถวจึงสูง 300px+ (QA รอบสาม)
+    // · ตารางอยู่ใน .scroll ที่เลื่อนแนวนอนได้ ความกว้างขั้นต่ำจึงไม่ทำให้หน้าล้น
+    + 'td.note{min-width:240px}'
     // ตัวชี้สถานะของแถวที่คอลัมน์แรก (#77 ข้อ 2.2) — คอลัมน์ "หมายเหตุ" อยู่ขวาสุดของตาราง
     // 16 คอลัมน์ ต้องเลื่อนจอไปสุดถึงจะรู้ว่าแถวไหนมีปัญหา · ตัวชี้นี้ย่อสถานะมาไว้ต้นแถว
     // ไม่ได้แทนคอลัมน์หมายเหตุ (ข้อความเต็มยังอยู่ที่เดิม และ export Excel ยังอ่านจากที่เดิม)
@@ -637,6 +640,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'border-left-width:0;border-right-width:0;border-radius:0}'
     + 'body.is-embed .content>.err{border-right-width:0;border-radius:0}'
     + 'body.is-embed .content>details>summary,body.is-embed .content>form>details>summary{border-radius:0}'
+    // ฟอร์มชั้นบนสุดของหน้าเจาะลึก/ความพร้อม (QA รอบสาม) — ช่องกรอกมีเส้นของตัวเองที่ตัดไม่ได้ ช่องแรกจึง
+    // วาดเส้นซ้ายทับเส้น .appframe เป็นเส้นคู่ · เว้นใน --sp-2 เฉพาะฟอร์มเหล่านี้ (ฟอร์มภาพรวมอยู่ในกล่องพับแล้ว)
+    + 'body.is-embed .content>form:not(#wct-summary-form){padding:0 var(--sp-2)}'
     // การ์ดตัวเลข (.kpi-grid auto-fit) — ใบไหนชิดขอบรู้ได้ตอน runtime เท่านั้น สคริปต์ embed ติดคลาส
     // is-edge-l/is-edge-r ให้ใบที่แตะขอบ iframe (`renderEmbedEdgeScript`) · ไม่มี JS = เส้นคงอยู่ ไม่พัง
     + 'body.is-embed .kpi-card.is-edge-l{border-left-width:0;border-top-left-radius:0;border-bottom-left-radius:0}'

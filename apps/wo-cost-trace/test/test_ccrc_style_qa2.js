@@ -231,5 +231,11 @@ eq('มีกฎมุม --r-md ของ summary:focus-visible ที่ชน
 eq('กฎ focus มาหลังกฎ details[open]>summary และกฎ embed', fIdx > css.indexOf('details[open]>summary{')
   && fIdx > css.indexOf('body.is-embed .content>details>summary'), true);
 
+// ═══ QA รอบสาม ══════════════════════════════════════════════════════════════════════
+console.log('\n── QA รอบสาม: ช่องกรอกในฟอร์มชั้นบนสุด (embed) · คอลัมน์หมายเหตุ ──');
+eq('ฟอร์มชั้นบนสุดของเจาะลึก/ความพร้อมใน embed เว้นใน --sp-2',
+  rule('body.is-embed .content>form:not(#wct-summary-form)'), 'padding:0 var(--sp-2)');
+eq('คอลัมน์หมายเหตุมีความกว้างขั้นต่ำ', rule('td.note'), 'min-width:240px');
+
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);
