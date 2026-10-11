@@ -49,6 +49,14 @@ eq('เปิดเดี่ยว ≤1099px → 2 คอลัมน์ (กร
   has('@media (max-width:1099px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'), true);
 eq('embed ≥1050px ยัง 5 คอลัมน์ (กรอบ CCRC จอ 1366 ที่ sidebar เปิด ~1088)',
   has('@media (min-width:1050px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}'), true);
+eq('embed 970–1049px (จอ laptop ใน CCRC) ยัง 5 คอลัมน์ + ตัวเลข --t-lg',
+  has('@media (min-width:970px) and (max-width:1049px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body.is-embed #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'), true);
+eq('เปิดเดี่ยว 1020–1099px ยัง 5 คอลัมน์ + ตัวเลข --t-lg',
+  has('@media (min-width:1020px) and (max-width:1099px){body:not(.is-embed) #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body:not(.is-embed) #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'), true);
+eq('กฎช่วง laptop มาหลังกฎ 2 คอลัมน์ (ชนะตามลำดับ)',
+  css.indexOf('@media (min-width:970px) and (max-width:1049px)') > css.indexOf('@media (max-width:1099px){#wct'), true);
 eq('≤449px → 1 คอลัมน์', has('@media (max-width:449px){#wct-summary-form~.kpi-grid{grid-template-columns:minmax(0,1fr)}}'), true);
 eq('ไม่มีกฎ 5 คอลัมน์ถึง 641px แบบเดิมแล้ว',
   has('@media (max-width:640px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'), false);

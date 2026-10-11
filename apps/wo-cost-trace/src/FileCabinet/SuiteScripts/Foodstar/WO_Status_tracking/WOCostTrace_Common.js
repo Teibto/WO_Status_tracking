@@ -693,6 +693,14 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // วัดด้วย media ไม่ใช่ container query — container-type ที่ .content เป็นที่ยึดของ popup position:fixed
     + '@media (max-width:1099px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'
     + '@media (min-width:1050px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}'
+    // ช่วงจอ laptop (QA SB1 รอบสอง #98): CCRC จอ 1366 sidebar เปิด กรอบจริง ~1044 (scrollbar ของ CCRC กิน 17px)
+    // ต่ำกว่า 1050 แล้วกลายเป็น 2×5 การ์ดโล่งและดันตารางลง · ช่วงนี้คง 5 คอลัมน์แต่ตัวเลขลดเป็น --t-lg (18px)
+    // ค่า 15 อักขระ ≈ 149px + padding/เส้น 34 ≈ 183px ต่อใบ → 5 ใบ + gap 48 ต้องการกริด ≥963px
+    //   embed กริด = กรอบ → ตั้งแต่ 970px · เปิดเดี่ยว กริด = จอ − 48 → ตั้งแต่ 1020px
+    + '@media (min-width:970px) and (max-width:1049px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body.is-embed #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'
+    + '@media (min-width:1020px) and (max-width:1099px){body:not(.is-embed) #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body:not(.is-embed) #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'
     + '@media (max-width:449px){#wct-summary-form~.kpi-grid{grid-template-columns:minmax(0,1fr)}}';
 
   const CSS = theme.css(REPORT_CSS);
