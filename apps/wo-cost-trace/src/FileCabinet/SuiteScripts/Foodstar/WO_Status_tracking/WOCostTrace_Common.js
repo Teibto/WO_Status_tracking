@@ -252,7 +252,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'h1{font-size:var(--t-xl);font-weight:var(--w-bold);line-height:var(--lh-tight);letter-spacing:normal}'
     + 'h2{font-size:var(--t-md);font-weight:var(--w-bold);margin:var(--sp-6) 0 var(--sp-3);'
     + 'padding-bottom:var(--sp-2);border-bottom:1px solid var(--c-border)}'
-    + 'h3{font-size:var(--t-base);font-weight:var(--w-semibold);color:var(--c-text-subtle)}'
+    + 'h3{font-size:var(--t-base);font-weight:var(--w-semibold);color:var(--c-text-subtle);'
+    + 'margin:var(--sp-4) 0 var(--sp-2)}'
     // ── แถบหัวเรื่องแบบ CCRC (10-shell.css .topbar/.viewtitle) — ชื่อหน้าเป็น h1.viewtitle ในแถบเอง
     // ไม่ใช่ breadcrumb ตัวเล็ก + h1 อีกตัวใต้แถบ (QA #96 ข้อ 14) · `flex-wrap:nowrap` ทับของ theme กลาง
     + '.topbar{min-height:var(--layout-topbar);display:flex;align-items:center;gap:var(--sp-3);'
@@ -314,7 +315,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'th{font-size:var(--t-sm);font-weight:600;color:var(--c-text-muted);white-space:nowrap;'
     + 'background-color:var(--c-surface-3);letter-spacing:normal;text-transform:none}'
     + '.rw-tablewrap{overflow:auto;max-width:100%;border:1px solid var(--c-border);border-radius:var(--r-lg);'
-    + 'background:var(--c-surface);margin:var(--sp-1) 0 var(--sp-3)}'
+    + 'background:var(--c-surface);margin:0 0 var(--sp-3)}'
     + '.rw-tablewrap>table{margin:0}'
     + '.rw-tablewrap tr:last-child>td,.scroll tbody tr:last-child>td{border-bottom:0}'
     // ตาราง kv ในการ์ด — การ์ดมีกรอบอยู่แล้ว wrapper ไม่วาดกรอบซ้ำ (QA #96 ข้อ 11 กรอบซ้อน)
@@ -324,6 +325,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // ── การ์ดตัวเลข (60-view.css .kpi) — ความหมายอยู่ที่สีของค่า ไม่ใช่แถบซ้าย ──
     + '.kpi-grid{gap:var(--sp-3);grid-template-columns:repeat(auto-fit,minmax(190px,1fr));'
     + 'margin-bottom:var(--sp-6)}'
+    // การ์ดตัวเลขหน้าภาพรวม 10 ใบ = สองแถว แถวละ 5 (#98) — บน: จำนวนใบ + ยอดเงิน · ล่าง: ใบที่มีปัญหา
+    // auto-fit เหลือใบกำพร้า (9+1 ที่กรอบ 1810 · 4+4+2 ที่ 904) · เลือกด้วย ~ หลังฟอร์มภาพรวม เพราะ markup
+    // `<div class="kpi-grid">` ถูกเทสอื่นอ้างตรงตัว · กรอบแคบลง 2 → 1 คอลัมน์ (กฎ @media ท้าย CSS — QA SB1 #98)
+    + '#wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
     + '.kpi-card{border:1px solid var(--c-border);border-radius:var(--r-lg);'
     + 'padding:var(--sp-3) var(--sp-4);gap:var(--sp-1)}'
     + '.kpi-card:hover{box-shadow:none}'
@@ -336,7 +341,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // (WOReportTheme.js ห้ามแก้) ข้อความยาวอย่าง "ผลต่าง summary cost" จึงถูกตัดเป็น … (QA #96 ข้อ 20)
     + '.kpi-label,.kpi-meta{white-space:normal;overflow:visible;text-overflow:clip;overflow-wrap:anywhere}'
     + '.kpi-value{font-family:var(--f-mono);font-size:var(--t-xl);font-weight:var(--w-bold);'
-    + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums}'
+    + 'letter-spacing:normal;line-height:var(--lh-tight);font-variant-numeric:tabular-nums;'
+    // ตาข่ายสุดท้าย — ค่าที่ยาวเกินที่ breakpoint ท้าย CSS เผื่อไว้ (15 อักขระ) ตัดบรรทัดในการ์ด ไม่ล้นออกนอกการ์ด
+    + 'overflow-wrap:anywhere}'
     + '.kpi-card.accent-success .kpi-value{color:var(--c-success)}'
     + '.kpi-card.accent-warning .kpi-value{color:var(--c-warning)}'
     + '.kpi-card.accent-error .kpi-value{color:var(--c-danger)}'
@@ -373,7 +380,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.crumb{font-size:var(--t-sm);margin-bottom:var(--sp-3)}'
     + '.crumb a{display:inline-flex;align-items:center;gap:var(--sp-1);vertical-align:middle}'
     // ฟอร์มไม่มีการ์ด — วางบนพื้นหน้าแบบ .filterbar ของ CCRC (45-redwood.css:81 · ผู้ใช้ตัดสิน QA #96 ข้อ 18)
-    + 'form{margin:0 0 var(--sp-4);padding:0}'
+    + 'form{margin:0 0 var(--sp-3);padding:0}'
+    // ── ระยะแนวตั้งเป็นระบบเดียวกับ CCRC (#98) — ภายในส่วน --sp-3 (12px) · ระหว่างส่วน --sp-6 (24px)
+    // แบบ .sec→เนื้อหา 12 และ .kpis/.tieband 24 ของ 60-view.css · ฟอร์มภาพรวม (ส่วนตัวกรอง) ห่างส่วนผลลัพธ์ 24
+    // เดิม ฟอร์ม→บรรทัดช่วงเวลา 16 · บรรทัด→การ์ด 12 · การ์ด→ตาราง 24 (วัดบน SB1 2026-10-11)
+    // (กฎ margin ของฟอร์มภาพรวมอยู่ถัดจาก #wct-summary-form{display:flex} ด้านล่าง)
     // ── แถบตัวกรอง ────────────────────────────────────────────────────────────
     // ใช้คำศัพท์ .filterbar/.fld ชุดเดียวกับ wo-status (WOStatusTracking.js) โดยตั้งใจ —
     // ป้ายอยู่ "เหนือ" ตัวควบคุมเสมอ ไม่ใช่ข้อความไหลต่อกันคั่นด้วย &nbsp; แบบเดิม ซึ่งทำให้
@@ -418,6 +429,8 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // (`avoid.top >= rect.bottom`) — แถวปุ่มเดิมอยู่ใต้ช่องแค่ 122px บน SB1 ทุก popup จึงพลิกขึ้นไปทับ
     // topbar หรือถูกบีบ · ปุ่มอยู่เหนือทุกช่องแล้ว popup ทุกตัวเปิดลงล่างเต็มความสูงแบบ CCRC และไม่ทับปุ่ม
     + '#wct-summary-form{display:flex;flex-direction:column}'
+    // ส่วนตัวกรอง → ส่วนผลลัพธ์ = ระหว่างส่วน 24px (#98) · form#… ชนะ form{} ของทุกหน้า
+    + 'form#wct-summary-form{margin-bottom:var(--sp-6)}'
     + 'form>.act{order:-1;display:flex;flex-wrap:wrap;align-items:center;justify-content:flex-end;'
     + 'gap:var(--sp-3);min-height:var(--tap-min);margin:0 0 var(--sp-3)}'
     // ข้อความจำนวนแถวอยู่ซ้ายของปุ่ม ปุ่มชิดขวาสุดแบบ Apply ของ CCRC
@@ -579,8 +592,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + 'line-height:1.35;margin-bottom:2px}'
     // ไอคอน 18px เท่าทุกไอคอนของหน้า (--icon · ผู้ใช้ตัดสิน 2026-10-11) — เดิมย่อเหลือ 12px
     // สารบัญของหน้าเจาะลึก (#77 ข้อ 2.4) — หน้ายาว 8 หัวข้อ ข้ามหัวข้อโดยไม่ต้องเลื่อนทั้งหน้า
-    + '.toc{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:7px 0;'
-    + 'padding:7px var(--sp-2);border:1px solid var(--pj-border);border-radius:var(--radius-sm);'
+    // ระยะบน scale (#98) — เดิม margin/padding 7px นอก scale · มุม --r-md แบบแผงอื่นของ CCRC
+    + '.toc{display:flex;flex-wrap:wrap;gap:var(--sp-1) var(--sp-3);margin:0 0 var(--sp-3);'
+    + 'padding:var(--sp-2) var(--sp-3);border:1px solid var(--pj-border);border-radius:var(--r-md);'
     + 'background:var(--pj-surface-alt);font-size:var(--fs-sm)}'
     + '.toc a{color:var(--pj-primary);text-decoration:none}'
     + '.toc a:hover{text-decoration:underline}'
@@ -602,6 +616,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     // background ประกาศอยู่ในตัวมันเอง — ถ้าใครมาเติม background ที่นี่ภายหลัง (เช่น
     // background:transparent) เทสข้อ (2) จะแดงทันทีให้มารีวิวว่าตั้งใจหรือเผลอ
     + '.scroll thead th{position:sticky;top:0;z-index:2;box-shadow:inset 0 -1px 0 var(--pj-border)}'
+    // embed (#98): CCRC ปรับกรอบสูงตามเนื้อหา แล้วบอกความสูงของพื้นที่บนจอผ่าน --host-h — 76vh ของ iframe ที่สูง
+    // ตามเนื้อหาจะโตตามกรอบไม่รู้จบ · ไม่มีค่า (CCRC รุ่นก่อน กรอบสูงคงที่) = 100vh ของ iframe = 76vh เท่าเดิม
+    + 'body.is-embed .scroll{max-height:calc(var(--host-h,100vh) * .76)}'
     // เลข WO = ลิงก์หลักไปหน้าเจาะลึก · ลิงก์ไป record ของ NetSuite แยกบรรทัดและทำให้จางลง
     // กันไม่ให้กดผิดปลายทาง (ของเดิมเป็นไอคอน ตัวเดียวติดท้ายเลขที่ตัดบรรทัด)
     + 'a.drill{font-weight:600;white-space:nowrap}'
@@ -656,6 +673,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     //   topbar 0 16px (10-shell.css:201) · เนื้อหา 16px (40-app.css:27-28) — embed ยังไม่เยื้องซ้ายขวา
     // `select:not([multiple])` — ช่องเลือกหลายคลังของชั้นความพร้อมต้องสูงตามจำนวนแถว ไม่ใช่ 40px
     + '@media (max-width:1023px){'
+    // การ์ดตัวเลขขั้นต่ำ 150px ที่จอแคบ = .kpis ของ CCRC (60-view.css @media 1023)
+    // (กริดภาพรวม 5 คอลัมน์ไม่ถูกกฎนี้ทับ — #wct-summary-form~.kpi-grid specificity สูงกว่า .kpi-grid)
+    + '.kpi-grid{grid-template-columns:repeat(auto-fit,minmax(150px,1fr))}'
     + '.topbar{padding:0 var(--sp-4)}'
     + '.content{padding:var(--sp-4)}'
     + 'body.is-embed .content{padding:var(--sp-2) 0 var(--sp-4)}'
@@ -664,7 +684,24 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
     + '.rw-combobox-option{min-height:var(--tap-min)}'
     // ช่องพิมพ์ใน .datewrap ยืดตามกรอบ (height:auto ข้างบน) — min-height 40px จะดันให้ล้นกรอบที่สูง 40px รวมเส้นขอบ
     + '.datewrap input[type=text]{min-height:0}'
-    + '}';
+    + '}'
+    // การ์ดภาพรวม 10 ใบ: 5 → 2 → 1 คอลัมน์ (QA SB1 #98 — เดิม 5 คอลัมน์ถึง 641px ตัวเลขล้นการ์ดที่ ~641–1023)
+    // ไม่มีใบกำพร้าได้แค่ 5/2/1 · breakpoint คิดจากค่ายาว 15 อักขระ (-123,456,789.12 · Consolas 20px ≈ 165px)
+    // + padding 32 + เส้น 2 ≈ 199px ต่อใบ → 5 ใบ + gap 4×12 ต้องการกริด ≥1043px
+    //   เปิดเดี่ยว กริด = จอ − 48 (≥1024) → 5 คอลัมน์ตั้งแต่ 1100px · embed กริด = กรอบ iframe → ตั้งแต่ 1050px
+    //   (CCRC จอ 1366 ที่ sidebar เปิด กรอบ ~1088 ยังได้ 5 คอลัมน์) · 2 คอลัมน์ต้องการกริด ≥410 → ≤449 เหลือ 1
+    // วัดด้วย media ไม่ใช่ container query — container-type ที่ .content เป็นที่ยึดของ popup position:fixed
+    + '@media (max-width:1099px){#wct-summary-form~.kpi-grid{grid-template-columns:repeat(2,minmax(0,1fr))}}'
+    + '@media (min-width:1050px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}}'
+    // ช่วงจอ laptop (QA SB1 รอบสอง #98): CCRC จอ 1366 sidebar เปิด กรอบจริง ~1044 (scrollbar ของ CCRC กิน 17px)
+    // ต่ำกว่า 1050 แล้วกลายเป็น 2×5 การ์ดโล่งและดันตารางลง · ช่วงนี้คง 5 คอลัมน์แต่ตัวเลขลดเป็น --t-lg (18px)
+    // ค่า 15 อักขระ ≈ 149px + padding/เส้น 34 ≈ 183px ต่อใบ → 5 ใบ + gap 48 ต้องการกริด ≥963px
+    //   embed กริด = กรอบ → ตั้งแต่ 970px · เปิดเดี่ยว กริด = จอ − 48 → ตั้งแต่ 1020px
+    + '@media (min-width:970px) and (max-width:1049px){body.is-embed #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body.is-embed #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'
+    + '@media (min-width:1020px) and (max-width:1099px){body:not(.is-embed) #wct-summary-form~.kpi-grid{grid-template-columns:repeat(5,minmax(0,1fr))}'
+    + 'body:not(.is-embed) #wct-summary-form~.kpi-grid .kpi-value{font-size:var(--t-lg)}}'
+    + '@media (max-width:449px){#wct-summary-form~.kpi-grid{grid-template-columns:minmax(0,1fr)}}';
 
   const CSS = theme.css(REPORT_CSS);
 
@@ -706,6 +743,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme'], (query, log, runtim
   function shell(title, body, extraCss, helpParams) {
     return '<!doctype html><html lang="th"><head><meta charset="utf-8">'
       + '<meta name="viewport" content="width=device-width, initial-scale=1">'
+      // embed: บอก CCRC ว่าหน้านี้ให้กรอบสูงตามเนื้อหาได้ (ns-foodstar-9751184 50-appframes.js · #98)
+      // — CCRC ตั้ง --host-h ให้ และซ่อน scrollbar ของ iframe เอง · หน้าที่ไม่มี meta นี้ CCRC คงกรอบสูงคงที่
+      + (EMBED ? '<meta name="teibto-frame" content="autoheight">' : '')
       + '<title>' + esc(title) + '</title>'
       + CSS + (extraCss || '') + '</head>'
       + '<body' + (EMBED ? ' class="is-embed"' : '') + '>'

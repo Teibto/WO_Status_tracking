@@ -2504,12 +2504,6 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
           </div>
         </div>
       </details>
-      <div class="sub" style="margin-top:var(--sp-3)">
-        เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง"
-        · ค่าเริ่มต้นจับจากวันที่ปิดงานผลิต เพราะต้นทุนเกิดตอนปิดงาน ไม่ใช่ตอนสั่งผลิต
-        · RM Location = คลัง/ถังที่เบิกวัตถุดิบเข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ)
-        · รายการ location และไลน์ผลิตแสดงเฉพาะของบริษัทที่เลือก
-      </div>
       </details>
       <div class="act"><button type="submit" class="btn primary">ดูภาพรวม</button>${renderSummaryExportBtn(sm)}</div>
     </form>${renderListFieldScript()}${renderFilterCascadeScript()}`;
@@ -2984,10 +2978,11 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
       + kpi('รวมวัตถุดิบและบรรจุภัณฑ์', esc(fmt(rm, 2)), null, ofShown)
       + kpi('รวมต้นทุนแปรสภาพ', esc(fmt(dl, 2)), null, ofShown)
       + kpi('รวมต้นทุนการผลิต', esc(fmt(cost, 2)), null, ofShown)
-      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
-        'จาก ' + esc(String(sm.shown)) + ' ใบที่แสดง')
+      // ผลต่างสุทธิเป็นยอดเงิน — อยู่แถวบนกับยอดอื่น · จำนวนใบที่ไม่ปิดขึ้นต้นแถวล่าง (ใบที่มีปัญหา · #98)
       + kpi('ผลต่างสุทธิ', esc(fmt(gap, 0)), gapCount ? 'bad' : 'ok',
         'รวมค่าสัมบูรณ์ ' + esc(fmt(gapAbs, 0)) + ' · ' + ofShown)
+      + kpi('ใบที่ Summary Cost ไม่ปิด', esc(String(gapCount)), gapCount ? 'bad' : 'ok',
+        'จาก ' + esc(String(sm.shown)) + ' ใบที่แสดง')
       + kpi('ยังไม่เบิกวัตถุดิบ', esc(String(noIssue)), noIssue ? 'warn' : 'ok')
       + kpi('ยังไม่ปิดงานผลิต', esc(String(noWoc)), noWoc ? 'warn' : 'ok')
       + kpi('ยังไม่ปันส่วนแปรสภาพ', esc(String(noConv)), noConv ? 'warn' : 'ok',
@@ -3396,6 +3391,10 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   /** เนื้อหา "อ่านตารางนี้อย่างไร" ของชั้นภาพรวม — ย้ายจากท้ายหน้ารายงานมาหน้าคู่มือ (#96) ไม่แก้ถ้อยคำ */
   function renderSummaryGuide() {
     return '<div class="card"><table class="kv">'
+      // ย้ายมาจากย่อหน้าท้ายกล่องตัวกรองของหน้าภาพรวม (#98) — คำอธิบายยาวอยู่หน้าคู่มือ หน้ารายงานเหลือแต่ช่อง
+      + '<tr><td>ตัวกรอง</td><td>เลือกเดือน (ใน "ตัวกรองเพิ่มเติม") แล้วช่วงวันที่ถูกเติมเป็นทั้งเดือนให้ · '
+      + 'แก้วันที่เองแล้วช่องเดือนเปลี่ยนเป็น "กำหนดวันที่เอง" · <b>RM Location</b> = คลัง/ถังที่เบิกวัตถุดิบ'
+      + 'เข้าใบสั่งผลิต (คัดใบ ยอดยังเป็นทั้งใบ) · รายการ location และไลน์ผลิตแสดงเฉพาะของบริษัทที่เลือก</td></tr>'
       + '<tr><td>ช่วงวันที่</td><td>ค่าเริ่มต้นจับจาก<b>วันที่ใบปิดงานผลิต</b> เพราะต้นทุนเกิดตอนปิดงาน '
       + 'ใบที่สั่งผลิตเดือนก่อนแต่ปิดงานเดือนนี้จึงอยู่ในเดือนนี้ · เงื่อนไขคือ '
       + '"มีใบปิดงานผลิตอย่างน้อยหนึ่งใบในช่วง" แต่<b>ยอดผลิตได้และต้นทุนนับ WOC ทุกใบ</b>ของใบสั่งผลิตนั้น '
@@ -3462,7 +3461,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
   function renderWOHeader(s) {
     const w = s.wo, fg = s.fg || {};
     return `<div class="card"><table class="kv">
-      <tr><td>ใบสั่งผลิต</td><td>${tranLink('workorder', s.wo_id, asStr(w.wo_no))}<span class="tag">id ${esc(s.wo_id)}</span></td>
+      <tr><td>ใบสั่งผลิต</td><td><span title="รหัสภายใน NetSuite: ${esc(s.wo_id)}">${tranLink('workorder', s.wo_id, asStr(w.wo_no))}</span></td>
           <td>วันที่</td><td>${esc(asStr(w.wo_date))}</td></tr>
       <tr><td>สินค้าที่ผลิต</td><td colspan="3">${itemLink(fg.item_id, asStr(fg.item_code) + ' — ' + asStr(fg.item_name))}</td></tr>
       <tr><td>สั่งผลิต</td><td>${esc(fmt(asNum(fg.quantity), 4))} ${esc(asStr(fg.unit_name))}</td>
@@ -3570,7 +3569,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         const scCell = !ia
           ? (asNum(r.fg_qty) !== 0 ? '<span class="bad">ยังไม่ผูก</span>' : '')
           : (d ? tranLink(d.recordtype, ia, asStr(d.doc_no))
-               : '<span class="warn">ผูกเอกสาร id ' + esc(ia) + ' ที่ไม่ใช่ใบ summary cost</span>');
+               : '<span class="warn" title="รหัสภายใน NetSuite: ' + esc(ia) + '">ผูกเอกสารอื่นที่ไม่ใช่ใบ summary cost</span>');
         h += `<tr><td>${tranLink('workordercompletion', r.woc_id, asStr(r.woc_no))}</td>
           <td>${esc(asStr(r.woc_date))}</td><td>${esc(asStr(r.batch_id))}</td>
           <td>${esc(asStr(r.task_name) || asStr(r.task_no))}</td>`
@@ -4322,7 +4321,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
     // ปุ่ม i: เปิดเดี่ยวอยู่ใน topbar (ส่งให้ shell) · embed อยู่ใน pagehead — พารามิเตอร์ชุดเดียวกัน
     const helpParams = Object.assign(filterParams(m.filters), { wo: m.woKey, asof: m.asofParam });
     let h = '<div class="crumb"><a href="' + selfUrl(filterParams(m.filters))
-      + '">' + C.ICONS.arrowLeft + 'ภาพรวมหลายใบสั่งผลิต</a>'
+      + '">' + C.ICONS.arrowLeft + 'กลับภาพรวมต้นทุน</a>'
       // ลิงก์ข้ามไปหน้าความพร้อมพาตัวกรองของภาพรวมไปด้วย (QA รอบสอง ข้อ E) — ไม่งั้นกด "กลับภาพรวม"
       // จากหน้าความพร้อมแล้วตัวกรองหาย · embed ติดไปเองที่ selfUrl
       + (m.woKey ? ' · <a href="' + selfUrl(Object.assign(filterParams(m.filters), { ready: m.woKey }))
@@ -4345,7 +4344,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + esc(String(m.ambiguous.count)) + ' ใบ (เทียบโดยไม่สนขีดคั่น) — '
         + 'หน้านี้แสดงของ <b>' + esc(m.ambiguous.picked) + '</b> '
         + 'ส่วนใบที่เหลือคือ ' + esc(m.ambiguous.others.join(' · '))
-        + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
+        + ' · พิมพ์เลขที่ให้ตรงทุกตัวอักษร (รวมขีดคั่น) เพื่อเปิดใบที่ต้องการ</div>';
     }
     h += renderWOHeader(s);
     // สารบัญ (issue #77 ข้อ 2.4) — หน้านี้ยาว 7 หัวข้อ (log ย้ายไปหน้าคู่มือ #96) ของเดิมไม่มี anchor เลย จะดู
@@ -4469,6 +4468,9 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         rd.helpParams = readyParams;
         // ตัวกรองของหน้าภาพรวมติดมากับลิงก์ เพื่อให้กดกลับแล้วได้รายการเดิม (เหมือนชั้นเจาะลึก)
         rd.filters = filters;
+        // ชื่อบริษัทของใบสั่งผลิตในหัวหน้า (QA SB1 #98 — เดิมแสดงแถว "บริษัท (id)" เป็นเลข) · ใช้ query
+        // รายชื่อบริษัทตัวเดียวกับตัวกรองภาพรวม ไม่เพิ่มคอลัมน์ใหม่ใน query ของหน้านี้
+        if (rd.ok && asStr(rd.sub_id)) filters.subRows = qFilterSubsidiaries();
       } catch (e) {
         log.error({ title: 'buildReady', details: e.message + '\n' + (e.stack || '') });
         if (wantHelp) {
