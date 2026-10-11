@@ -121,5 +121,13 @@ const readyNoSub = run(Object.assign({ ready: 'WO-FSC-00000392' }, P));
 eq('หาชื่อบริษัทไม่เจอ = บอกเป็นคำ ไม่โชว์เลข', readyNoSub.indexOf('>บริษัทของใบสั่งผลิตนี้</span>') >= 0, true);
 eq('ทางเข้าด้วยรหัสสินค้ายังบอกว่าไม่จำกัดบริษัท', readyItem.indexOf('ไม่จำกัด (ไม่มีเอกสารให้อ่าน)') >= 0, true);
 
+// ข้อความเตือนเลขที่กำกวม (สถานะที่ fixture ปกติไม่ผ่าน) — เคยบอกให้ "ใช้ internal id"
+const WO_ROW = READY_FX['WO header'][0];
+FIX = Object.assign({}, READY_FX, { 'WO header': [WO_ROW, Object.assign({}, WO_ROW, { wo_id: 191299, wo_no: 'WOF-SC-00000392' })] });
+const readyAmb = run(Object.assign({ ready: 'WO-FSC-00000392' }, P));
+eq('ความพร้อม: เลขที่กำกวมยังเตือนอยู่', readyAmb.indexOf('ตรงกับใบสั่งผลิต 2 ใบ') >= 0, true);
+eq('ความพร้อม: คำเตือนไม่บอกให้ใช้ internal id', /internal id/i.test(visible(readyAmb)), false);
+eq('ความพร้อม: บอกวิธีเปิดใบที่ต้องการเป็นภาษาธุรกิจ', readyAmb.indexOf('พิมพ์เลขที่ให้ตรงทุกตัวอักษร (รวมขีดคั่น)') >= 0, true);
+
 console.log('\n' + (H.fails() ? H.fails() + ' รายการไม่ผ่าน' : 'ผ่านทั้งหมด'));
 process.exit(H.fails() ? 1 : 0);

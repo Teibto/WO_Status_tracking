@@ -1503,7 +1503,7 @@ define(['N/runtime', './WOCostTrace_Common'], (runtime, C) => {
         + esc(String(rd.ambiguous.count)) + ' ใบ (เทียบโดยไม่สนขีดคั่น) — หน้านี้ตรวจของ <b>'
         + esc(rd.ambiguous.picked) + '</b> ส่วนใบที่เหลือคือ '
         + esc(rd.ambiguous.others.join(' · '))
-        + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
+        + ' · พิมพ์เลขที่ให้ตรงทุกตัวอักษร (รวมขีดคั่น) เพื่อเปิดใบที่ต้องการ</div>';
     }
     h += renderReadyHeader(rd) + renderReadyKpis(rd) + renderReadyTodo(rd);
     if (rd.struct_failed) {

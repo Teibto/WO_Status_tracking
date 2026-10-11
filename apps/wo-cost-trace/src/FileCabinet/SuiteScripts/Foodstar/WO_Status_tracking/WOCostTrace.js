@@ -4344,7 +4344,7 @@ define(['N/query', 'N/log', 'N/runtime', './WOReportTheme',
         + esc(String(m.ambiguous.count)) + ' ใบ (เทียบโดยไม่สนขีดคั่น) — '
         + 'หน้านี้แสดงของ <b>' + esc(m.ambiguous.picked) + '</b> '
         + 'ส่วนใบที่เหลือคือ ' + esc(m.ambiguous.others.join(' · '))
-        + ' · พิมพ์เลขที่ให้ตรงตัวหรือใช้ internal id เพื่อเจาะใบที่ต้องการ</div>';
+        + ' · พิมพ์เลขที่ให้ตรงทุกตัวอักษร (รวมขีดคั่น) เพื่อเปิดใบที่ต้องการ</div>';
     }
     h += renderWOHeader(s);
     // สารบัญ (issue #77 ข้อ 2.4) — หน้านี้ยาว 7 หัวข้อ (log ย้ายไปหน้าคู่มือ #96) ของเดิมไม่มี anchor เลย จะดู
