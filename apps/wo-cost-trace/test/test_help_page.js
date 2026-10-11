@@ -60,7 +60,10 @@ console.log('\n── 1. หน้าภาพรวม (เปิดเดี�
 const solo = run(BASE).html;
 eq('ไม่มีย่อหน้าคำอธิบายใต้หัวเรื่อง', solo.indexOf(DESCRIPTION) >= 0, false);
 eq('ไม่มีท่อนท้ายของคำอธิบาย', solo.indexOf(DESCRIPTION_TAIL) >= 0, false);
-eq('เปิดเดี่ยว → ยังมี h1 ชื่อรายงาน', /<h1>ภาพรวมต้นทุนใบสั่งผลิต<\/h1>/.test(solo), true);
+// #96 QA ข้อ 14 — ชื่อหน้าอยู่ใน topbar เป็น h1.viewtitle แบบ CCRC (ไม่มี h1 ซ้ำใต้แถบ)
+eq('เปิดเดี่ยว → ยังมี h1 ชื่อรายงาน (h1.viewtitle ใน topbar)',
+  /<header class="topbar"><h1 class="viewtitle">ภาพรวมต้นทุนใบสั่งผลิต<\/h1>/.test(solo), true);
+eq('เปิดเดี่ยว → มี h1 ตัวเดียว', (solo.match(/<h1[\s>]/g) || []).length, 1);
 eq('ไม่มีหัวข้อ "อ่านตารางนี้อย่างไร" ในหน้ารายงาน', solo.indexOf('อ่านตารางนี้อย่างไร') >= 0, false);
 eq('ไม่มีหัวข้อ "เอกสารอ้างอิงทางเทคนิค" ในหน้ารายงาน', solo.indexOf('<h2>เอกสารอ้างอิงทางเทคนิค</h2>') >= 0, false);
 eq('ไม่มี query log ในหน้ารายงาน', solo.indexOf('รายละเอียดทางเทคนิค — คำสั่งดึงข้อมูล') >= 0, false);
@@ -69,7 +72,7 @@ eq('ไม่มีตาราง kv ของคู่มือในหน้
 const soloHref = helpHref(solo);
 eq('มีปุ่ม i (a.iconbtn)', soloHref.length > 0, true);
 const soloBtn = (solo.match(/<a class="iconbtn"[\s\S]*?<\/a>/) || [''])[0];
-eq('ปุ่ม i เป็น inline SVG 16px currentColor', /<svg width="16" height="16"[^>]*>/.test(soloBtn)
+eq('ปุ่ม i เป็น inline SVG 18px (--icon ของ CCRC) currentColor', /<svg width="18" height="18"[^>]*>/.test(soloBtn)
   && /stroke="currentColor"/.test(soloBtn), true);
 eq('ปุ่ม i มี aria-label และ title', /aria-label="[^"]+"/.test(soloBtn) && /title="[^"]+"/.test(soloBtn), true);
 eq('ปุ่ม i ไม่มีตัวอักษร i/emoji แทนไอคอน', soloBtn.replace(/<[^>]+>/g, '').trim(), '');
@@ -159,7 +162,9 @@ eq('ready → view=help + ready + rloc + embed',
 const readySrc = fs.readFileSync(path.join(DIR, 'WOCostTrace_Ready.js'), 'utf8');
 eq('หน้าความพร้อมไม่ต่อ renderQLog ท้ายหน้าแล้ว',
   /h \+= '<h2>เอกสารอ้างอิงทางเทคนิค<\/h2>' \+ renderQLog\(\)/.test(readySrc), false);
-eq('หน้าความพร้อมใช้ pageHead (มีปุ่ม i)', /pageHead\(READY_TITLE, rd\.helpParams/.test(readySrc), true);
+eq('หน้าความพร้อมใช้ pageHead (มีปุ่ม i)', /const helpParams = rd\.helpParams[\s\S]{0,80}pageHead\(READY_TITLE, helpParams/.test(readySrc), true);
+eq('หน้าความพร้อมส่ง helpParams ให้ shell (ปุ่ม i ใน topbar ตอนเปิดเดี่ยว)',
+  /shell\(READY_TITLE, body, READY_CSS, helpParams\)/.test(readySrc), true);
 const allSrc = ['WOCostTrace.js', 'WOCostTrace_Common.js', 'WOCostTrace_Ready.js']
   .map((f) => fs.readFileSync(path.join(DIR, f), 'utf8')).join('\n');
 eq('ไม่มีข้อความชี้ "ท้ายหน้า" ที่ไม่มีแล้วหลงเหลือในโค้ด (ไม่นับคอมเมนต์)',

@@ -13,8 +13,8 @@
  *   4. CSS ของ .fld ต้องมี `min-width:0` — flex item มี min-width:auto มาแต่เกิด ซึ่งดัน .fld
  *      ให้กว้างเท่า min-content ของลูก ชนะ flex-basis เงียบ ๆ · วัดจริงตอนทำ: ช่องช่วงวันที่
  *      บานจาก 270px เป็น 399px ทั้งที่ตั้ง flex:0 0 270px ไว้ (ไม่มี error ใด ๆ ให้เห็น)
- *   5. .filterbar ต้องไม่มีพื้น/เส้นขอบ/padding ของตัวเอง — `form` เป็นการ์ดอยู่แล้ว
- *      (กฎ form{} ใน REPORT_CSS) ใส่ซ้ำจะได้กล่องซ้อนกล่อง
+ *   5. .filterbar ต้องไม่มีพื้น/เส้นขอบ/padding ของตัวเอง — วางบนพื้นหน้าแบบ .filterbar ของ CCRC
+ *      (#96: ฟอร์มไม่มีการ์ดแล้ว · ชั้นภาพรวมมีกรอบจากกล่องพับ .filterbox ที่เป็น accordion)
  */
 const H = require('../../../test/lib/_harness');
 const FX = require('../../../test/lib/fixtures_parity');
@@ -190,8 +190,11 @@ const noneBlk = moreBlock(sumForm({}));
 eq('มีที่พับ <details class="morefld">', noneBlk.length > 0, true);
 eq('ไม่มีตัวกรองรอง → พับไว้ (ไม่มี open)', CLOSED.test(noneBlk), true);
 eq('ไม่มีตัวกรองรอง → summary ไม่มีคำว่า "ตั้งไว้"', noneBlk.indexOf('ตั้งไว้') >= 0, false);
+// #96 QA ข้อ 8 — summary เป็นหัว accordion ของ CCRC: ไอคอน svg + ข้อความใน .acclbl (marker ถูกซ่อน)
 eq('summary ยังบอกว่ามันคืออะไร',
-  noneBlk.indexOf('<summary>ตัวกรองเพิ่มเติม</summary>') > 0, true);
+  noneBlk.indexOf('<span class="acclbl">ตัวกรองเพิ่มเติม</span></summary>') > 0, true);
+eq('summary ของที่พับมีไอคอน svg (ตัวบอกกาง/พับแทน marker)',
+  /<summary><span class="accico"><svg[^>]*>/.test(noneBlk), true);
 
 // ทีละช่อง — แต่ละช่องต้องกางเองได้ด้วยตัวมันเอง
 [
@@ -314,14 +317,19 @@ eq('ไม่มี input/select หลุดออกนอก .fld ในท�
 
 // ── CSS ของที่พับ ─────────────────────────────────────────────────────────
 console.log('\n── CSS ของที่พับ ──');
-['.morefld{', '.morefld>summary{', '.morefld>.filterbar{'].forEach((needle) => {
+['.morefld{', '.morefld>.filterbar{', 'details>summary{'].forEach((needle) => {
   eq('CSS มี ' + needle, style.indexOf(needle) >= 0, true);
 });
 const moreCss = ((style.match(/\.morefld\{([^}]*)\}/) || [])[1] || '')
-  + ((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || '')
   + ((style.match(/\.morefld>\.filterbar\{([^}]*)\}/) || [])[1] || '');
-eq('summary ของที่พับไม่เปลี่ยน display (เปลี่ยนแล้วสามเหลี่ยมเปิด/ปิดหาย)',
-  /display:/.test((style.match(/\.morefld>summary\{([^}]*)\}/) || [])[1] || ''), false);
+// #96 QA ข้อ 8 — สัญญาเดิม "ห้ามแตะ display ของ summary (marker จะหาย)" ถูกแทนด้วยหน้าตา accordion
+// ของ CCRC: ซ่อน marker แล้ว**ต้องมี**ไอคอน svg ใน markup แทน (ตรวจข้างบน + test_help_page ข้อ 9)
+const accRule = (style.match(/details>summary\{([^}]*)\}/) || [])[1] || '';
+eq('หัวข้อพับเป็น flex สูงอย่างน้อย --tap-min padding 0 16px (45-redwood.css:127-132)',
+  /display:flex/.test(accRule) && /min-height:var\(--tap-min\)/.test(accRule)
+  && /padding:0 var\(--sp-4\)/.test(accRule) && /list-style:none/.test(accRule), true);
+eq('ซ่อน marker ของเบราว์เซอร์ (webkit)', style.indexOf('details>summary::-webkit-details-marker{display:none}') >= 0, true);
+eq('ไอคอนหมุนตอนกาง', /details\[open\]>summary>\.accico\{transform:rotate\(90deg\)\}/.test(style), true);
 
 
 // ── ทั้งกล่องตัวกรองหุบ/ขยายได้ `<details class="filterbox">` (issue #86) ──────
@@ -358,7 +366,8 @@ function boxBlock(html) {
 /** ข้อความใน <summary> ของกล่องนอกสุด (ตัวแรกในก้อน = ของ filterbox เอง) */
 function boxSummary(html) {
   const blk = boxBlock(html).html;
-  return (blk.match(/<summary>([\s\S]*?)<\/summary>/) || [, ''])[1];
+  // หัว accordion (#96): <summary><span class="accico">svg</span><span class="acclbl">ข้อความ</span></summary>
+  return (blk.match(/<summary>[\s\S]*?<span class="acclbl">([\s\S]*?)<\/span><\/summary>/) || [, ''])[1];
 }
 
 // 1. กางเป็นค่าเริ่มต้นเสมอ — ทุกชุด param ไม่มีข้อยกเว้น
@@ -509,7 +518,7 @@ console.log('\n── CSS ของกล่องตัวกรอง (#86) �
 ['.filterbox{', '.filterbox>summary{', '.filterbox>.filterbar{', 'form>.act{'].forEach((needle) => {
   eq('CSS มี ' + needle, style.indexOf(needle) >= 0, true);
 });
-eq('summary ของกล่องไม่เปลี่ยน display (เปลี่ยนแล้วสามเหลี่ยมเปิด/ปิดหาย)',
+eq('summary ของกล่องไม่ทับ display ของหัว accordion (flex มาจาก details>summary{})',
   /display:/.test((style.match(/\.filterbox>summary\{([^}]*)\}/) || [])[1] || ''), false);
 const formActRule = (style.match(/form>\.act\{([^}]*)\}/) || [])[1] || '';
 eq('แถว .act นอก .filterbar มี flex + gap ของตัวเอง',
